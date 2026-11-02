@@ -14,6 +14,7 @@ dist-ssr
 public/companion/
 public/companion-demo/
 src-tauri/binaries/agent-studio-runtime-*
+src-tauri/binaries/workbuddy-switch-next-*
 *.local
 
 # Rust / Tauri 构建产物（workspace target）

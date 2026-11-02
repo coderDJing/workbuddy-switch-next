@@ -1,6 +1,6 @@
 [package]
 name = "wb-switch-server"
-version = "0.2.0-rc.202611020952"
+version = "0.2.0-rc.202611021143"
 edition = "2021"
 description = "wb-switch HTTP server + CLI（npm 安装形态：wb-switch 命令启动本地 webui）"
 
@@ -15,3 +15,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signa
 serde_json = "1"
 chrono = "0.4"
 rust-embed = "8"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Environment", "Win32_UI_WindowsAndMessaging"] }

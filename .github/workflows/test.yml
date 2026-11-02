@@ -72,6 +72,9 @@ jobs:
       - name: npm launcher tests
         run: node --test npm/tests/cli-launcher.test.cjs
 
+      - name: Desktop CLI registration tests
+        run: node scripts/test-desktop-cli-install.mjs
+
       - name: Companion core and runtime tests
         run: cargo test --manifest-path vendor/agent-companion/Cargo.toml -p agent-studio-core -p agent-studio-runtime --locked
 
@@ -130,6 +133,7 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries
           touch "src-tauri/binaries/agent-studio-runtime-$(rustc -vV | sed -n "s/^host: //p")"
+          touch "src-tauri/binaries/workbuddy-switch-next-$(rustc -vV | sed -n "s/^host: //p")"
 
       - name: Check formatting
         run: cargo fmt --check -p wb-switch-core -p wb-switch-server -p wb-switch-rust

@@ -106,6 +106,12 @@ CLI 模块位于 crates/wb-switch-server/src/cli/，客户端操作集中在 Tar
 
 ## Next 分发与旧命令
 
-Next 主命令为 `workbuddy-switch-next`；npm 包同时提供 `workbuddy-switch` 兼容别名，两者调用同一启动器并读取同一账号库。npm registry 尚未发布时，请使用 Release 中的独立 CLI 或本地构建的 `wb-switch`。独立 CLI 可重命名为 `workbuddy-switch-next`（Windows 加 `.exe`）后放入 PATH。
+桌面安装包自带同版本 CLI，命令为 `workbuddy-switch-next`，与桌面程序共用账号库。
+
+- Windows：安装器将安装目录追加到当前用户 PATH，卸载时只移除自己添加的条目。安装或更新后请新开终端。
+- macOS / Linux AppImage：首次打开桌面应用时，将 CLI 保存到 `~/.local/share/workbuddy-switch-next/cli/`，并在 `~/.local/bin` 创建命令入口；为常见 shell 的用户配置添加带标记的 PATH 片段。请新开终端，应用更新后再次启动会同步 CLI。不会覆盖该目录里已有的同名命令。
+- Linux deb：CLI 随包安装至 `/usr/bin`。
+
+如命令不可用，先用 Windows 的 `where.exe workbuddy-switch-next` 或 macOS/Linux 的 `command -v workbuddy-switch-next` 检查 PATH 和同名命令；安装器不会覆盖已有命令。桌面安装目录里的程序也可按完整路径调用。Release 仍提供独立 CLI；npm 包在发布后同时提供 `workbuddy-switch` 兼容别名。
 
 原版 npm 包与 Next 包的旧命令别名会占用相同全局命令位置；迁移时先正常卸载旧 npm 包，再安装 Next，不需要删除 `~/.wb-switch`。

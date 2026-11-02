@@ -116,6 +116,12 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.select-matrix.outputs.version }}
         run: sh scripts/make-dmg.sh "$RELEASE_VERSION" "$UPDATE_ARCH" "target/$RUST_TARGET/release/bundle/macos/WorkBuddy Switch Next.app"
+      - name: Verify Windows desktop installer includes CLI
+        if: runner.os == 'Windows' && vars.PUBLISH_APP != 'false'
+        run: node scripts/verify-windows-cli-bundle.mjs
+      - name: Verify macOS and Linux desktop bundles include CLI
+        if: runner.os != 'Windows' && vars.PUBLISH_APP != 'false'
+        run: node scripts/verify-unix-cli-bundle.mjs
       - name: Collect signed archives and immutable updater manifests
         run: node scripts/release-artifacts.mjs collect
       - uses: actions/upload-artifact@v4

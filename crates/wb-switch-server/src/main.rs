@@ -9,6 +9,8 @@
 
 mod api;
 mod cli;
+#[cfg(windows)]
+mod cli_path;
 
 use serde_json::json;
 use std::process::ExitCode;
@@ -116,6 +118,19 @@ fn print_status(variant: WbVariant) {
 async fn main() -> ExitCode {
     let started = std::time::Instant::now();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    #[cfg(windows)]
+    if args
+        .first()
+        .is_some_and(|arg| arg == "--installer-cli-path")
+    {
+        return match cli_path::installer_command(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("CLI PATH setup failed: {error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let context = cli::Context::from_args(&args);
     let ascii_json = args.iter().any(|arg| arg == "--ascii-json");
     let json_output = context.json_output(&args);

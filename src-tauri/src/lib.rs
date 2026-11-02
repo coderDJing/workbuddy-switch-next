@@ -1,4 +1,9 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+#[cfg(all(
+    any(target_os = "macos", target_os = "linux"),
+    any(not(debug_assertions), test)
+))]
+mod cli_install;
 mod commands;
 mod companion;
 #[cfg(target_os = "macos")]
@@ -206,6 +211,12 @@ pub fn run() {
                 // notify 之前拦下正常第二实例，丢掉「再点开 → 既有窗口弹出」。
                 #[cfg(target_os = "macos")]
                 instance_lock::acquire_or_exit(app.handle());
+                #[cfg(all(not(debug_assertions), any(target_os = "macos", target_os = "linux")))]
+                if !is_screenshot_demo() {
+                    if let Err(error) = cli_install::install_for_current_user() {
+                        eprintln!("CLI command setup failed: {error}");
+                    }
+                }
                 tray::setup(app)?;
                 // 主窗口由配置创建为不可见；在事件循环呈现前决定本次启动是否静默。
                 // 仅系统自启（精确 `--hidden` 参数）进入静默托盘，普通启动立即显示主窗口。

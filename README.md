@@ -16,7 +16,7 @@ WorkBuddy、CodeBuddy IDE、CodeBuddy CLI 与 VS Code CodeBuddy 插件账号切�
 
 ## 快速开始
 
-当前维护预览版为 **0.2.0-rc.202611020103**。安装包以 [Next 预览版发布页](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview) 实际产物为准，也可按 [构建说明](docs/cli.md#构建与维护) 从源码构建。
+当前维护预览版与安装包以 [Next 预览版发布页](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview) 实际产物为准，也可按 [构建说明](docs/cli.md#构建与维护) 从源码构建。
 
 前往 [Next 预览版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview) 下载对应平台的安装包：
 
@@ -160,7 +160,9 @@ Token 统计页按来源展示 Token 总览与趋势、构成占比、活跃热�
 
 ## npm / webui 版本
 
-npm 包名为 `workbuddy-switch-next`，目前尚未发布到 registry；下列安装命令供发布后使用。现在可从 Release 下载独立 CLI，或从源码构建。旧命令 `workbuddy-switch` 将作为兼容别名保留。
+桌面安装包已自带同版本的 `workbuddy-switch-next` 命令。Windows 安装后请新开终端；macOS 与 Linux AppImage 首次启动应用后请新开终端，Linux deb 安装后可直接使用。详细的 PATH 与冲突处理见 [CLI 文档](docs/cli.md)。
+
+npm 包名为 `workbuddy-switch-next`，目前尚未发布到 registry；下列 npm 安装命令供发布后使用。独立 CLI 也可从 Release 下载。npm 包提供旧命令 `workbuddy-switch` 作为兼容别名。
 
 ```bash
 npm i -g workbuddy-switch-next@next
