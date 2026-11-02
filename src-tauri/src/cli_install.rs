@@ -151,6 +151,8 @@ fn append_shell_block(path: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
     struct Temp(std::path::PathBuf);
     impl Drop for Temp {
         fn drop(&mut self) {
@@ -169,17 +171,31 @@ mod tests {
         }
     }
     fn fixture() -> (Temp, std::path::PathBuf) {
-        let dir = std::env::temp_dir().join(format!(
-            "wb-cli-install-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        fs::create_dir_all(&dir).unwrap();
+        let dir = loop {
+            let candidate = std::env::temp_dir().join(format!(
+                "wb-cli-install-{}-{}",
+                std::process::id(),
+                NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
+            ));
+            match fs::create_dir(&candidate) {
+                Ok(()) => break candidate,
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(e) => panic!("无法创建测试目录: {e}"),
+            }
+        };
         let source = dir.join("source");
         fs::write(&source, b"cli-v1").unwrap();
         (Temp(dir), source)
+    }
+    #[test]
+    fn parallel_fixtures_use_separate_directories() {
+        let handles: Vec<_> = (0..32).map(|_| std::thread::spawn(fixture)).collect();
+        let fixtures: Vec<_> = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect();
+        let dirs: std::collections::HashSet<_> = fixtures.iter().map(|(dir, _)| &dir.0).collect();
+        assert_eq!(dirs.len(), fixtures.len());
     }
     #[test]
     fn install_is_idempotent_and_updates_its_own_binary() {

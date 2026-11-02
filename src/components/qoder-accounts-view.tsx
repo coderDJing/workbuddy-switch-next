@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Check, Columns3, Ellipsis, Loader2, Pencil, RefreshCw, Rows3, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,10 +22,11 @@ import { QoderCliMark, QoderMark } from "@/components/product-marks";
 import * as api from "@/lib/api";
 import type { QoderBundle, QoderStatus, QoderTarget, QoderTargetStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { normalizeVariant, variantLabel } from "@/lib/variant";
+import { qoderTargets, useQoderView } from "@/stores/qoder-view";
 
 type Pending = { kind: "switch" | "delete"; bundle: QoderBundle };
 
-const TARGETS: QoderTarget[] = ["desktop", "cli", "global_desktop", "global_cli"];
 const TARGET_LABELS: Record<QoderTarget, string> = {
   desktop: "Qoder CN", cli: "Qoder CN CLI", global_desktop: "Qoder 国际版", global_cli: "Qoder 国际版 CLI",
 };
@@ -60,7 +63,7 @@ function HeaderBadge({ target, status }: { target: QoderTarget; status: QoderTar
       </span>
       <span className="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden whitespace-nowrap rounded-md bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-lg ring-1 ring-black/5 group-hover:block">
         {status?.label ?? TARGET_LABELS[target]}：{stateText(status)} · 当前账号：
-        {status?.currentLabel ?? (status?.loggedIn ? "未认领" : "未登录")}
+        {status?.currentLabel ?? (status?.loggedIn ? status.echoName ?? "未认领" : "未登录")}
       </span>
     </span>
   );
@@ -68,6 +71,7 @@ function HeaderBadge({ target, status }: { target: QoderTarget; status: QoderTar
 
 interface CardProps {
   bundle: QoderBundle;
+  compact: boolean;
   active: boolean;
   /** 任一 Qoder 操作进行中：禁用全部按钮，防止并发切换。 */
   busy: boolean;
@@ -83,8 +87,21 @@ interface CardProps {
 }
 
 /** Qoder 账号卡片：外观与 WorkBuddy / CodeBuddy 账号卡片一致（圆角卡片、header 标识、footer 操作）。 */
-function QoderAccountCard({ bundle, active, busy, switching, editing, draft, onDraftChange, onStartRename, onCommitRename, onCancelRename, onSwitch, onDelete }: CardProps) {
+function QoderAccountCard({ bundle, compact, active, busy, switching, editing, draft, onDraftChange, onStartRename, onCommitRename, onCancelRename, onSwitch, onDelete }: CardProps) {
   const targetLabel = TARGET_LABELS[bundle.target];
+  const switchControl = active ? (
+    <span className="relative inline-flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10" aria-label={`${targetLabel} 当前账号`} title={`${targetLabel} 当前账号`}>
+      <TargetMark target={bundle.target} size={15} />
+      <span className="absolute -right-1 -top-1 flex size-3.5 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="size-2.5" strokeWidth={3} /></span>
+    </span>
+  ) : (
+    <DemoAction>
+      <Button variant="outline" size={compact ? "icon" : "sm"} className={compact ? "size-7 rounded-lg" : "h-7 rounded-full px-2.5 text-xs"} disabled={busy} onClick={onSwitch} aria-label={`切换到 ${targetLabel}`} title={`切换到 ${targetLabel}`}>
+        {switching ? <Loader2 className="size-4 animate-spin" /> : <TargetMark target={bundle.target} size={compact ? 15 : 18} />}
+        {!compact && <span>{switching ? "切换中…" : "设为当前"}</span>}
+      </Button>
+    </DemoAction>
+  );
   return (
     <article
       className={cn(
@@ -92,8 +109,8 @@ function QoderAccountCard({ bundle, active, busy, switching, editing, draft, onD
         active && "border-primary/50",
       )}
     >
-      <header className={cn("flex items-center gap-3 border-b border-border px-5 py-4", active && "bg-primary/[0.06]")}>
-        <TargetMark target={bundle.target} size={32} />
+      <header className={cn("flex items-center gap-2 border-b border-border", compact ? "min-h-[52px] px-3.5 py-1.5" : "min-h-[104px] px-5 py-3", active ? "bg-primary/5" : "bg-muted/30")}>
+        {!compact && <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-muted"><TargetMark target={bundle.target} size={30} /></div>}
         <div className="min-w-0 flex-1">
           {editing ? (
             <Input
@@ -109,7 +126,7 @@ function QoderAccountCard({ bundle, active, busy, switching, editing, draft, onD
               className="h-8"
             />
           ) : (
-            <div className="truncate font-semibold" title={bundle.label}>
+            <div className={cn("truncate font-semibold", compact ? "text-[13px]" : "text-sm")} title={bundle.label}>
               {bundle.label}
             </div>
           )}
@@ -118,57 +135,42 @@ function QoderAccountCard({ bundle, active, busy, switching, editing, draft, onD
             {bundle.echoName && bundle.echoName !== bundle.label ? ` · ${bundle.echoName}` : ""}
           </div>
         </div>
-        {active && (
-          <Badge variant="secondary" className="shrink-0 gap-1">
-            <Check className="size-3" />
-            当前
-          </Badge>
-        )}
+        {compact && switchControl}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-7 rounded-lg text-muted-foreground" aria-label={`管理账号 ${bundle.label}`} disabled={busy || api.isDemoMode()}><Ellipsis /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onSelect={onStartRename}><Pencil />重命名</DropdownMenuItem>
+            <DropdownMenuItem className="text-destructive focus:bg-destructive/5 focus:text-destructive" onSelect={onDelete}><Trash2 />删除账号</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </header>
-      <div className="flex-1 px-5 py-4 text-xs leading-5 text-muted-foreground">
+      <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}>
         <div>认领于 {formatTime(bundle.capturedAt)}</div>
         <div>上次切换 {formatTime(bundle.lastSwitchedAt)}</div>
       </div>
-      <footer className="flex items-center gap-2 border-t border-border px-5 py-3">
-        <DemoAction>
-          <Button size="sm" className="h-7 rounded-full px-3 text-xs" disabled={busy || active} onClick={onSwitch}>
-            {switching && <Loader2 className="animate-spin" />}
-            {active ? "使用中" : `切换到 ${targetLabel}`}
-          </Button>
-        </DemoAction>
-        <div className="ml-auto flex items-center gap-1">
-          <DemoAction>
-            <Button size="icon" variant="ghost" className="size-7" aria-label={`重命名 ${bundle.label}`} disabled={busy} onClick={onStartRename}>
-              <Pencil className="size-4" />
-            </Button>
-          </DemoAction>
-          <DemoAction>
-            <Button size="icon" variant="ghost" className="size-7" aria-label={`删除 ${bundle.label}`} disabled={busy} onClick={onDelete}>
-              <Trash2 className="size-4" />
-            </Button>
-          </DemoAction>
-        </div>
-      </footer>
+      {!compact && <footer className="flex items-center gap-2 border-t border-border px-5 py-2.5">{switchControl}{active && <span className="text-xs text-muted-foreground">当前使用</span>}</footer>}
     </article>
   );
 }
 
 /** 本机已登录但尚未保存的账号，也应出现在账号列表中。 */
-function CurrentLoginCard({ status, busy, saving, onSave }: { status: QoderTargetStatus; busy: boolean; saving: boolean; onSave: () => void }) {
+function CurrentLoginCard({ status, compact, busy, saving, onSave }: { status: QoderTargetStatus; compact: boolean; busy: boolean; saving: boolean; onSave: () => void }) {
   return (
     <article className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-primary/50 bg-card shadow-sm">
-      <header className="flex items-center gap-3 border-b border-border bg-primary/[0.06] px-5 py-4">
-        <TargetMark target={status.target} size={32} />
+      <header className={cn("flex items-center gap-3 border-b border-border bg-primary/5", compact ? "min-h-[52px] px-3.5 py-1.5" : "min-h-[104px] px-5 py-3")}>
+        {!compact && <TargetMark target={status.target} size={32} />}
         <div className="min-w-0 flex-1">
-          <div className="truncate font-semibold">{status.echoName || "当前登录"}</div>
+          <div className={cn("truncate font-semibold", compact ? "text-[13px]" : "text-sm")}>{status.echoName || "当前登录"}</div>
           <div className="truncate text-xs text-muted-foreground">{status.label}</div>
         </div>
         <Badge variant="secondary" className="shrink-0 gap-1"><Check className="size-3" />当前</Badge>
       </header>
-      <div className="flex-1 px-5 py-4 text-xs leading-5 text-muted-foreground">
-        已检测到本机登录，保存后可在切换账号时随时切回。
+      <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}>
+        已检测到本机登录凭据，保存后可在切换账号时随时切回。
       </div>
-      <footer className="border-t border-border px-5 py-3">
+      <footer className={cn("border-t border-border", compact ? "px-3.5 py-2" : "px-5 py-2.5")}>
         <DemoAction>
           <Button size="sm" className="h-7 rounded-full px-3 text-xs" disabled={busy} onClick={onSave}>
             {saving && <Loader2 className="animate-spin" />}保存当前登录
@@ -181,6 +183,7 @@ function CurrentLoginCard({ status, busy, saving, onSave }: { status: QoderTarge
 
 interface Props {
   compact?: boolean;
+  onToggleCompact?: () => void;
 }
 
 /**
@@ -189,7 +192,9 @@ interface Props {
  * Qoder 账号与 WorkBuddy / CodeBuddy 账号库不相通，这里的「账号」是账号包 —— 整组加密凭据文件的
  * 本机副本。认领 = 保存现场登录态；切换 = 备份现场后整组写回并校验。
  */
-export function QoderAccountsView({ compact = false }: Props) {
+export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
+  const variant = useQoderView((state) => state.variant);
+  const setVariant = useQoderView((state) => state.setVariant);
   const [status, setStatus] = useState<QoderStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -257,8 +262,9 @@ export function QoderAccountsView({ compact = false }: Props) {
     else doSwitch(bundle);
   }
 
-  const bundles = status?.bundles ?? [];
-  const currentLogins = TARGETS.map(targetStatus).filter((s): s is QoderTargetStatus => Boolean(s?.loggedIn && !s.currentId));
+  const targets = qoderTargets(variant);
+  const bundles = (status?.bundles ?? []).filter((bundle) => targets.includes(bundle.target));
+  const currentLogins = targets.map(targetStatus).filter((s): s is QoderTargetStatus => Boolean(s?.loggedIn && !s.currentId));
   const accountCount = bundles.length + currentLogins.length;
   const busy = busyKey !== null;
 
@@ -267,13 +273,19 @@ export function QoderAccountsView({ compact = false }: Props) {
       <header className="mb-6">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-[28px] font-semibold tracking-tight">Qoder 账号管理</h1>
+            <h1 className="text-[28px] font-semibold tracking-tight">账号管理</h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               管理国内版和国际版的桌面端及 CLI 账号，各端独立切换。
             </p>
+            <Tabs className="mt-4 gap-0" value={variant} onValueChange={(value) => setVariant(normalizeVariant(value))}>
+              <TabsList aria-label="Qoder 档位">
+                <TabsTrigger value="cn">国内版</TabsTrigger>
+                <TabsTrigger value="ai">国际版</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
           <div className="flex shrink-0 items-center gap-2.5 pt-1">
-            {TARGETS.map((target) => <HeaderBadge key={target} target={target} status={targetStatus(target)} />)}
+            {targets.map((target) => <HeaderBadge key={target} target={target} status={targetStatus(target)} />)}
           </div>
         </div>
       </header>
@@ -287,7 +299,7 @@ export function QoderAccountsView({ compact = false }: Props) {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
-            {TARGETS.map((target) => {
+            {targets.map((target) => {
               const s = targetStatus(target);
               const unclaimed = Boolean(s?.loggedIn && !s.currentId);
               return (
@@ -312,15 +324,18 @@ export function QoderAccountsView({ compact = false }: Props) {
       {loadError && <p className="mb-4 text-sm text-destructive">读取 Qoder 状态失败：{loadError}</p>}
 
       <section className="mt-7 min-w-0" aria-labelledby="qoder-accounts-title">
-        <div className="mb-4 flex items-center gap-2">
-          <h2 id="qoder-accounts-title" className="text-base font-semibold tracking-tight">账号</h2>
-          <Badge
-            variant="secondary"
-            className="h-6 min-w-6 rounded-full border-0 px-1.5 text-[11px] tabular-nums text-muted-foreground shadow-none"
-            aria-label={`${accountCount} 个 Qoder 账号`}
-          >
-            {accountCount}
-          </Badge>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h2 id="qoder-accounts-title" className="text-base font-semibold tracking-tight">账号</h2>
+            <Badge
+              variant="secondary"
+              className="h-6 min-w-6 rounded-full border-0 px-1.5 text-[11px] tabular-nums text-muted-foreground shadow-none"
+              aria-label={`${accountCount} 个${variantLabel(variant)} Qoder 账号`}
+            >
+              {accountCount}
+            </Badge>
+          </div>
+          {onToggleCompact && <Button variant="ghost" size="icon" className="size-9 rounded-lg" onClick={onToggleCompact} aria-label={compact ? "切换为宽松模式" : "切换为紧凑模式"} title={compact ? "切换为宽松模式" : "切换为紧凑模式"}>{compact ? <Rows3 /> : <Columns3 />}</Button>}
         </div>
         {!status && !loadError ? (
           <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground">
@@ -329,20 +344,21 @@ export function QoderAccountsView({ compact = false }: Props) {
           </div>
         ) : accountCount === 0 ? (
           <div className="rounded-xl border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
-            <p>暂无 Qoder 账号。</p>
+            <p>暂无{variantLabel(variant)} Qoder 账号。</p>
             <p className="mt-2 text-xs leading-5">
-              在 Qoder 国内版或国际版中登录后，点击上方「认领」保存，以便随时切回。
+              在{variantLabel(variant)} Qoder 桌面端或 CLI 登录后，点击上方「认领」保存，以便随时切回。
             </p>
           </div>
         ) : (
           <div className={cn("grid min-w-0 gap-5", compact ? "grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))]" : "grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))]")}>
             {currentLogins.map((s) => (
-              <CurrentLoginCard key={s.target} status={s} busy={busy} saving={busyKey === `capture:${s.target}`} onSave={() => capture(s.target)} />
+              <CurrentLoginCard key={s.target} status={s} compact={compact} busy={busy} saving={busyKey === `capture:${s.target}`} onSave={() => capture(s.target)} />
             ))}
             {bundles.map((bundle) => (
               <QoderAccountCard
                 key={bundle.id}
                 bundle={bundle}
+                compact={compact}
                 active={bundle.id === targetStatus(bundle.target)?.currentId}
                 busy={busy}
                 switching={busyKey === bundle.id}
