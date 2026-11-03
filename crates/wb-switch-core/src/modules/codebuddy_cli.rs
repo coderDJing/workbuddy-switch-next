@@ -356,6 +356,10 @@ const WINDOWS_CLI_PROCESS_FILTER: &str = "Where-Object { \
       ) \
     }";
 
+// Windows PowerShell and CIM can take longer to start on busy machines.
+#[cfg(target_os = "windows")]
+const WINDOWS_CLI_SCAN_TIMEOUT_SECS: u64 = 20;
+
 #[cfg(target_os = "windows")]
 fn windows_cli_pid_query() -> String {
     format!("Get-CimInstance Win32_Process -ErrorAction Stop | {WINDOWS_CLI_PROCESS_FILTER} | ForEach-Object {{ $_.ProcessId }}")
@@ -382,7 +386,7 @@ fn list_codebuddy_cli_pids() -> Result<Vec<u32>, String> {
                 "-Command",
                 &windows_cli_pid_query(),
             ],
-            5,
+            WINDOWS_CLI_SCAN_TIMEOUT_SECS,
         )
         .ok_or_else(|| process_scan_error("读取 CLI 进程列表失败或超时"))?;
         if !output.status.success() {
@@ -658,7 +662,7 @@ pub fn switch_process_preview() -> Result<Value, String> {
             // Starting Windows PowerShell/CIM can exceed five seconds under
             // load. The one-shot host emits progress while this bounded query
             // runs; a timeout remains an explicit failure, never an empty list.
-            20,
+            WINDOWS_CLI_SCAN_TIMEOUT_SECS,
         )
         .ok_or_else(|| process_scan_error("读取 CLI 进程清单失败或超时"))?;
         if !output.status.success() {
@@ -1837,6 +1841,13 @@ fn switch_active_account_locked(
 mod tests {
     use super::*;
 
+    // These tests launch PowerShell concurrently with the full core suite. The
+    // shared CI runner can take much longer than a desktop to start CIM.
+    #[cfg(target_os = "windows")]
+    static WINDOWS_PROCESS_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    #[cfg(target_os = "windows")]
+    const WINDOWS_PROCESS_TEST_TIMEOUT_SECS: u64 = 60;
+
     #[test]
     fn switch_receipt_never_fabricates_process_exit_or_persistent_backup() {
         for count in [0, 3] {
@@ -1947,14 +1958,20 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn windows_preview_query_returns_only_safe_metadata_from_a_mock_inventory() {
+        let _guard = WINDOWS_PROCESS_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let mock = "function Get-CimInstance { \
           [pscustomobject]@{ ProcessId=12; ParentProcessId=1; CommandLine='node @tencent-ai/codebuddy-code SECRET_PROMPT'; CreationDate=[datetime]::Parse('2026-10-13T03:04:05Z') }; \
           [pscustomobject]@{ ProcessId=20; ParentProcessId=12; CommandLine='worker SECRET_TOKEN'; CreationDate=$null }; \
           [pscustomobject]@{ ProcessId=40; ParentProcessId=1; CommandLine='unrelated'; CreationDate=$null }; \
           [pscustomobject]@{ ProcessId=$PID; ParentProcessId=1; CommandLine='codebuddy.cmd scanner'; CreationDate=$null }; \
         }; ";
-        let text = process::ps_output(&format!("{mock}{}", windows_cli_inventory_query()), 10)
-            .expect("mock process inventory runs");
+        let text = process::ps_output(
+            &format!("{mock}{}", windows_cli_inventory_query()),
+            WINDOWS_PROCESS_TEST_TIMEOUT_SECS,
+        )
+        .expect("mock process inventory failed to start or timed out after 60 seconds");
         assert!(!text.contains("SECRET_PROMPT"));
         assert!(!text.contains("SECRET_TOKEN"));
         assert!(!text.contains("CommandLine"));
@@ -1974,14 +1991,17 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn windows_process_scan_excludes_the_scanner_even_when_its_arguments_match() {
+        let _guard = WINDOWS_PROCESS_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let stdout = process::ps_output(
             &format!(
                 "{}; Write-Output ('scanner:' + $PID)",
                 windows_cli_pid_query()
             ),
-            10,
+            WINDOWS_PROCESS_TEST_TIMEOUT_SECS,
         )
-        .expect("PowerShell scanner should execute");
+        .expect("PowerShell scanner failed to start or timed out after 60 seconds");
         let scanner = stdout
             .lines()
             .find_map(|line| line.trim().strip_prefix("scanner:")?.parse::<u32>().ok())

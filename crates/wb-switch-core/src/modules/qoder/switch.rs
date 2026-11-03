@@ -311,7 +311,7 @@ pub fn execute(
     let mut warnings: Vec<String> = Vec::new();
 
     progress("备份当前凭据…");
-    let backup = backup_live(store, target, &specs).map_err(&restart_after_failure)?;
+    let backup = backup_live(store, target, &specs).map_err(restart_after_failure)?;
 
     progress("写入目标账号凭据…");
     let applied = apply(&specs, &payload);
