@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - macos-15
+          - macos-26
           - ubuntu-latest
           - windows-latest
     steps:
@@ -96,7 +96,7 @@ jobs:
   # clippy 必须带 --no-deps：vendor/agent-companion 是 path 依赖快照，其告警不归本仓库。
   lint:
     name: lint (tsc + fmt + clippy + server tests)
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
