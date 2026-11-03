@@ -246,12 +246,15 @@ export default function AccountsPage() {
     [autoCheckinConfig],
   );
   /** 今日签到状态只查未关闭自动签到的账号；配置就绪前不发请求。 */
-  const autoCheckinAccountIds = useMemo(() => {
-    if (!checkinAvailable || !autoCheckinSettled) return [];
-    return visibleAccounts
-      .filter((account) => !excludedCheckinIds.has(account.id))
-      .map((account) => account.id);
-  }, [visibleAccounts, checkinAvailable, autoCheckinSettled, excludedCheckinIds]);
+  const autoCheckinKey = JSON.stringify(
+    !checkinAvailable || !autoCheckinSettled
+      ? []
+      : visibleAccounts
+          .filter((account) => !excludedCheckinIds.has(account.id))
+          .map((account) => account.id),
+  );
+  // Account metadata can change without changing which accounts need a query.
+  const autoCheckinAccountIds = useMemo(() => JSON.parse(autoCheckinKey) as string[], [autoCheckinKey]);
   /** 紧凑模式：卡片更小、同屏更多列；默认开启，持久化到 localStorage */
   const [compact, setCompact] = useState<boolean>(() => {
     try {

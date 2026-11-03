@@ -35,7 +35,7 @@ use crate::modules::config::{
     add_checkin_log, http_request, is_route_missing, load_checkin_config, load_checkin_logs,
     now_ms, parse_clock, RunFlagGuard, CHECKIN_API_PREFIX,
 };
-use crate::modules::refresh::{ensure_fresh_token, refresh_account_token};
+use crate::modules::refresh::{ensure_fresh_token, refresh_after_unauthorized};
 use crate::modules::variant::WbVariant;
 
 static CHECKIN_RUNNING: AtomicBool = AtomicBool::new(false);
@@ -190,7 +190,7 @@ async fn checkin_request_once(path: &str, account: &Value, variant: WbVariant) -
             .unwrap_or("")
             .is_empty()
     {
-        let refreshed = refresh_account_token(account.clone()).await;
+        let refreshed = refresh_after_unauthorized(account.clone()).await;
         if let Some(error) = crate::modules::refresh::refresh_failure(&refreshed) {
             return json!({"code": -3, "message": error});
         }

@@ -37,8 +37,8 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // Rust build artifacts are unrelated to frontend HMR and change frequently.
+      ignored: ["**/src-tauri/**", "**/target/**"],
     },
   },
 }));

@@ -40,7 +40,13 @@ fn refresh_headers(account: &Value, refresh_token: &str) -> HashMap<String, Stri
 ///
 /// 刷新失败（refresh token 失效等）时给账号标记 needs_relogin，避免无限重试。
 pub async fn refresh_account_token(account: Value) -> Value {
-    refresh_account_token_with(account, false, send_refresh).await
+    refresh_account_token_with_mode(account, false, false, send_refresh).await
+}
+
+/// Automatic retries after an unauthorized response must not repeatedly persist
+/// the same failed refresh and trigger another round of background queries.
+pub(crate) async fn refresh_after_unauthorized(account: Value) -> Value {
+    refresh_account_token_with_mode(account, false, true, send_refresh).await
 }
 
 async fn send_refresh(url: String, headers: HashMap<String, String>) -> Value {
@@ -76,7 +82,20 @@ fn mark_relogin(account: &mut Value, reason: String) {
     account["relogin_failure_id"] = json!(uuid::Uuid::new_v4().to_string());
 }
 
-async fn refresh_account_token_with<F, Fut>(mut account: Value, recovery: bool, request: F) -> Value
+async fn refresh_account_token_with<F, Fut>(account: Value, recovery: bool, request: F) -> Value
+where
+    F: FnOnce(String, HashMap<String, String>) -> Fut,
+    Fut: std::future::Future<Output = Value>,
+{
+    refresh_account_token_with_mode(account, recovery, false, request).await
+}
+
+async fn refresh_account_token_with_mode<F, Fut>(
+    mut account: Value,
+    recovery: bool,
+    throttle_failed: bool,
+    request: F,
+) -> Value
 where
     F: FnOnce(String, HashMap<String, String>) -> Fut,
     Fut: std::future::Future<Output = Value>,
@@ -102,6 +121,14 @@ where
             }
             if recovery && !recovery_due(&request_context, &latest, now_ms()) {
                 return latest;
+            }
+            if throttle_failed
+                && latest["needs_relogin"] == true
+                && latest["relogin_recheck_at"]
+                    .as_i64()
+                    .is_some_and(|last| now_ms().saturating_sub(last) < RELOGIN_RECHECK_INTERVAL_MS)
+            {
+                return refresh_error(latest, "账号刷新失败，请重新登录".into());
             }
             account = latest;
         }
@@ -371,6 +398,7 @@ mod tests {
             "malformed",
             "expiry",
             "transient",
+            "unauthorized_cooldown",
         ] {
             let root = std::env::temp_dir().join(format!("wb-recovery-{}", uuid::Uuid::new_v4()));
             let output = std::process::Command::new(std::env::current_exe().unwrap())
@@ -413,6 +441,38 @@ mod tests {
             .unwrap();
         runtime.block_on(async {
             match case.as_str() {
+                "unauthorized_cooldown" => {
+                    let mut input = old.clone();
+                    input.as_object_mut().unwrap().remove("needs_relogin");
+                    save_accounts(&[input.clone(), other.clone()]).unwrap();
+                    let failed =
+                        refresh_account_token_with_mode(input.clone(), false, true, |_, _| async {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            json!({"code":12153,"message":"invalid refresh token"})
+                        })
+                        .await;
+                    assert_eq!(failed["needs_relogin"], true);
+                    let revision = crate::modules::state_lock::committed_revision();
+                    let skipped =
+                        refresh_account_token_with_mode(input, false, true, |_, _| async {
+                            panic!("a recent failure must not trigger another refresh")
+                        })
+                        .await;
+                    assert!(refresh_failure(&skipped).is_some());
+                    assert_eq!(find_account("a").unwrap(), failed);
+                    assert_eq!(crate::modules::state_lock::committed_revision(), revision);
+                    let mut retryable = failed;
+                    retryable["relogin_recheck_at"] = json!(now_ms() - RELOGIN_RECHECK_INTERVAL_MS);
+                    save_accounts(&[retryable.clone(), other.clone()]).unwrap();
+                    let recovered =
+                        refresh_account_token_with_mode(retryable, false, true, |_, _| async {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            success()
+                        })
+                        .await;
+                    assert_eq!(calls.load(Ordering::SeqCst), 2);
+                    assert!(recovered.get("needs_relogin").is_none());
+                }
                 "expiry" => {
                     let mut input = old.clone();
                     input["auth_raw"] = json!({"refreshExpiresAt":1});
