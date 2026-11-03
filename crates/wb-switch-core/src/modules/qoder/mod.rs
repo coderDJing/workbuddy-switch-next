@@ -3,18 +3,45 @@
 //! Qoder 账号与 WorkBuddy / CodeBuddy 账号库互不相通：这里存的是「账号包」
 //! （整组加密凭据文件的副本），不解密、不入 `accounts.json`、不参与 WebDAV 同步。
 //! 凭据布局与切换行为参考 NextAgentX/qoder-trae-workbuddy-switch 和 JIUSHIQINGSHAN/qoder-switch。
+mod authorized;
+mod auto;
+pub mod backup;
+pub mod credits;
+pub mod oauth;
 pub mod paths;
 pub mod proc;
 pub mod store;
 pub mod switch;
 #[cfg(test)]
 mod tests;
+#[cfg(windows)]
+mod vault;
 
 use serde_json::{json, Value};
 
 pub use paths::{QoderRoots, QoderTarget};
 use proc::{QoderProcessOps, RealProcessOps};
 pub use switch::SwitchOptions;
+
+/// Recover only the identity of a live credential after the client rewrites it.
+/// Automatic desktop reads are restricted to Windows so a status refresh never
+/// opens macOS Keychain or Linux keyring authorization prompts.
+fn live_identity(roots: &QoderRoots, target: QoderTarget) -> Option<String> {
+    if target.is_desktop() && !cfg!(windows) {
+        return None;
+    }
+    let specs = paths::credentials(roots, target);
+    let primary = specs.first()?;
+    let mut payload = vec![(primary.name.to_string(), std::fs::read(&primary.path).ok()?)];
+    if !target.is_desktop() {
+        if let Some(machine) = specs.iter().find(|spec| spec.name == "machine_id") {
+            if let Ok(bytes) = std::fs::read(&machine.path) {
+                payload.push((machine.name.to_string(), bytes));
+            }
+        }
+    }
+    authorized::snapshot_identity(roots, target, &payload)
+}
 
 fn target_status(roots: &QoderRoots, target: QoderTarget) -> Value {
     let store = store::default_store();
@@ -23,10 +50,25 @@ fn target_status(roots: &QoderRoots, target: QoderTarget) -> Value {
         QoderTarget::Cli | QoderTarget::GlobalCli => roots.cli_dir_for(target).is_dir(),
     };
     let current_id = store::current_id(&store, roots, target);
-    let current_label = current_id
+    let current_meta = current_id
         .as_deref()
-        .and_then(|id| store::load(&store, id).ok())
-        .map(|m| m.label);
+        .and_then(|id| store::load(&store, id).ok());
+    let current_identity = current_meta
+        .as_ref()
+        .and_then(|meta| meta.identity_key.clone())
+        .or_else(|| {
+            store::live_primary_sha(roots, target)
+                .and_then(|sha| authorized::cached_live_identity(target, &sha))
+                .or_else(|| live_identity(roots, target))
+        });
+    let current_label = current_meta.map(|m| m.label).or_else(|| {
+        let identity = current_identity.as_deref()?;
+        store::list(&store, Some(target))
+            .into_iter()
+            .rev()
+            .find(|item| item.identity_key.as_deref() == Some(identity))
+            .map(|item| item.label)
+    });
     json!({
         "target": target,
         "label": target.label(),
@@ -34,6 +76,8 @@ fn target_status(roots: &QoderRoots, target: QoderTarget) -> Value {
         "loggedIn": store::live_primary_sha(roots, target).is_some(),
         "running": !RealProcessOps.running_pids(target).is_empty(),
         "currentId": current_id,
+        "currentIdentityKey": current_identity,
+        "autoSuppressed": auto::is_current_suppressed(&store, roots, target),
         "currentLabel": current_label,
         "echoName": match target {
             QoderTarget::Desktop | QoderTarget::GlobalDesktop => store::read_echo_name(roots, target),
@@ -55,8 +99,28 @@ pub fn status() -> Value {
 }
 
 pub fn capture(target: QoderTarget, label: Option<&str>) -> Result<Value, String> {
-    let meta = store::capture(&store::default_store(), &QoderRoots::real(), target, label)?;
+    let root = store::default_store();
+    let _guard = crate::modules::state_lock::StateLock::wait_at(
+        &root.join("switch.lock"),
+        std::time::Duration::from_secs(2),
+    )
+    .map_err(|_| "Qoder 账号正忙，请稍后重试")?;
+    let roots = QoderRoots::real();
+    let (identity, detected_label) = auto::verified_live_identity(&roots, target)
+        .ok_or("无法识别账号，请允许系统访问 Qoder 登录信息后重试")?;
+    let meta = store::capture_verified(
+        &root,
+        &roots,
+        target,
+        label.or(detected_label.as_deref()),
+        &identity,
+    )?;
+    auto::allow(&root, meta.identity_key.as_deref(), Some(target))?;
     serde_json::to_value(meta).map_err(|e| e.to_string())
+}
+
+pub fn auto_capture() -> Result<Value, String> {
+    auto::reconcile()
 }
 
 pub fn rename(id: &str, label: &str) -> Result<Value, String> {
@@ -65,7 +129,18 @@ pub fn rename(id: &str, label: &str) -> Result<Value, String> {
 }
 
 pub fn delete(id: &str) -> Result<(), String> {
-    store::delete(&store::default_store(), id)
+    let root = store::default_store();
+    let _guard = crate::modules::state_lock::StateLock::wait_at(
+        &root.join("switch.lock"),
+        std::time::Duration::from_secs(2),
+    )
+    .map_err(|_| "Qoder 账号正忙，请稍后重试")?;
+    let meta = store::load(&root, id)?;
+    auto::record_deleted(&root, &QoderRoots::real(), &meta)?;
+    store::delete(&root, id)?;
+    #[cfg(not(windows))]
+    authorized::forget_desktop_profile(meta.target, meta.primary_sha());
+    Ok(())
 }
 
 pub fn switch_to(id: &str, opts: SwitchOptions, progress: &dyn Fn(&str)) -> Result<Value, String> {

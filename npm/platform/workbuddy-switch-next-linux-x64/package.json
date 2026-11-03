@@ -1,6 +1,6 @@
 {
   "name": "workbuddy-switch-next-linux-x64",
-  "version": "0.2.0-rc.202611021355",
+  "version": "0.2.0-rc.202611031325",
   "description": "workbuddy-switch-next-linux-x64 platform binary",
   "os": [
     "linux"

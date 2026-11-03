@@ -1,5 +1,5 @@
 // Export the approved Next artwork into web, desktop and tray assets.
-// Usage: node scripts/gen-next-icons.mjs (requires the existing Tauri CLI).
+// Usage: node scripts/gen-next-icons.mjs [--tray-only] (requires the existing Tauri CLI).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,6 +13,7 @@ const cutout = path.join(root, 'docs/assets/branding/workbuddy-switch-next-icon-
 const icons = path.join(root, 'src-tauri/icons');
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-switch-next-icons-'));
 const cli = path.join(root, 'node_modules/@tauri-apps/cli/tauri.js');
+const trayOnly = process.argv.includes('--tray-only');
 
 function exportIcons(input, output, sizes = []) {
   execFileSync(process.execPath, [cli, 'icon', input, '-o', output,
@@ -130,37 +131,40 @@ function retainMascot(image) {
 }
 
 try {
-  const square = path.join(scratch, 'square');
-  exportIcons(artwork, square);
-  fs.cpSync(square, icons, { recursive: true });
-  fs.copyFileSync(path.join(icons, 'icon.png'), path.join(root, 'public/icon.png'));
-  const extra = path.join(scratch, 'extra');
-  exportIcons(artwork, extra, [64]);
-  fs.copyFileSync(path.join(extra, '64x64.png'), path.join(icons, '64x64.png'));
+  if (!trayOnly) {
+    const square = path.join(scratch, 'square');
+    exportIcons(artwork, square);
+    fs.cpSync(square, icons, { recursive: true });
+    fs.copyFileSync(path.join(icons, 'icon.png'), path.join(root, 'public/icon.png'));
+    const extra = path.join(scratch, 'extra');
+    exportIcons(artwork, extra, [64]);
+    fs.copyFileSync(path.join(extra, '64x64.png'), path.join(icons, '64x64.png'));
 
-  // Windows displays the supplied bitmap directly, so bake its rounded corners.
-  const windowsSvg = path.join(scratch, 'windows.svg');
-  fs.writeFileSync(windowsSvg, `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><defs><clipPath id="round"><rect width="512" height="512" rx="114.5"/></clipPath></defs><image width="512" height="512" clip-path="url(#round)" href="data:image/png;base64,${fs.readFileSync(artwork).toString('base64')}"/></svg>`);
-  const windows = path.join(scratch, 'windows');
-  exportIcons(windowsSvg, windows);
-  for (const name of fs.readdirSync(windows)) {
-    if (name === 'icon.ico' || /^(Square.*Logo|StoreLogo)\.png$/.test(name)) {
-      fs.copyFileSync(path.join(windows, name), path.join(icons, name));
+    // Windows displays the supplied bitmap directly, so bake its rounded corners.
+    const windowsSvg = path.join(scratch, 'windows.svg');
+    fs.writeFileSync(windowsSvg, `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><defs><clipPath id="round"><rect width="512" height="512" rx="114.5"/></clipPath></defs><image width="512" height="512" clip-path="url(#round)" href="data:image/png;base64,${fs.readFileSync(artwork).toString('base64')}"/></svg>`);
+    const windows = path.join(scratch, 'windows');
+    exportIcons(windowsSvg, windows);
+    for (const name of fs.readdirSync(windows)) {
+      if (name === 'icon.ico' || /^(Square.*Logo|StoreLogo)\.png$/.test(name)) {
+        fs.copyFileSync(path.join(windows, name), path.join(icons, name));
+      }
     }
+    fs.copyFileSync(path.join(windows, 'icon.png'), path.join(icons, 'icon-windows.png'));
   }
-  fs.copyFileSync(path.join(windows, 'icon.png'), path.join(icons, 'icon-windows.png'));
 
   const extracted = path.join(scratch, 'extracted');
   exportIcons(cutout, extracted, [512]);
   const mascot = retainMascot(readPng(path.join(extracted, '512x512.png')));
-  const transparent = path.join(root, 'public/icon-transparent.png');
+  const transparent = trayOnly ? path.join(scratch, 'icon-transparent.png') : path.join(root, 'public/icon-transparent.png');
   writePng(transparent, mascot);
   const color = path.join(scratch, 'color');
   exportIcons(transparent, color, [32]);
   const tray = readPng(path.join(color, '32x32.png'));
   fs.writeFileSync(path.join(icons, 'tray-icon-color.rgba'), tray.rgba);
 
-  // Monochrome tray artwork: use negative space for the face and the cap's N.
+  // Monochrome tray artwork: use negative space for the face, the cap's N,
+  // and a narrow separator along the cap's lower edge.
   const mono = { ...mascot, rgba: Buffer.from(mascot.rgba) };
   for (let y = 0; y < mono.height; y++) for (let x = 0; x < mono.width; x++) {
     const i = (y * mono.width + x) * 4;
@@ -169,7 +173,11 @@ try {
       && x > mono.width * .33 && x < mono.width * .83 && b > g * 1.15 && b > r * 1.15;
     const letterN = y < mono.height * .29 && x > mono.width * .3 && x < mono.width * .65
       && r > 210 && g > 205 && b > 185;
-    if (eyeOrMouth || letterN) mono.rgba[i + 3] = 0;
+    const below = ((Math.min(y + 14, mono.height - 1) * mono.width) + x) * 4;
+    const capEdge = y < mono.height * .34 && x > mono.width * .2 && x < mono.width * .72
+      && b > g * 1.15 && b > r * 1.15 && mono.rgba[below + 3] > 128
+      && mono.rgba[below + 1] > mono.rgba[below + 2] * 1.1;
+    if (eyeOrMouth || letterN || capEdge) mono.rgba[i + 3] = 0;
     mono.rgba.fill(255, i, i + 3);
   }
   const monoSource = path.join(scratch, 'mono.png');
@@ -183,7 +191,7 @@ try {
     for (let i = 0; i < image.rgba.length; i += 4) image.rgba.set(rgb, i);
     fs.writeFileSync(path.join(icons, `tray-icon-mono-${name}.rgba`), image.rgba);
   }
-  console.log('Exported approved Next artwork: web PNG, desktop ICO/ICNS/PNG, mobile assets and 32/36px native tray variants.');
+  console.log(trayOnly ? 'Exported 32/36px native tray variants.' : 'Exported approved Next artwork: web PNG, desktop ICO/ICNS/PNG, mobile assets and 32/36px native tray variants.');
 } finally {
   // Delete only this invocation's freshly created, resolved temporary folder.
   const resolved = fs.realpathSync(scratch);

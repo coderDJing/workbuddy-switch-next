@@ -32,11 +32,12 @@ interface RailProps {
   onSettings: boolean;
   /** 各平台客户端是否在运行；缺省不画状态点。 */
   running: Partial<Record<PlatformId, boolean>>;
+  statusLabels: Partial<Record<PlatformId, string>>;
   topPadding: string;
 }
 
 /** 最左侧平台栏：应用标识、各平台图标（带运行状态点）、底部全局设置。 */
-export function PlatformRail({ platforms, activePlatform, onSettings, running, topPadding }: RailProps) {
+export function PlatformRail({ platforms, activePlatform, onSettings, running, statusLabels, topPadding }: RailProps) {
   return (
     <nav
       aria-label="平台"
@@ -63,16 +64,15 @@ export function PlatformRail({ platforms, activePlatform, onSettings, running, t
                   <span
                     aria-hidden
                     className={cn(
-                      "absolute bottom-1 right-1 size-2.5 rounded-full ring-2 ring-sidebar",
-                      isRunning ? "bg-emerald-500" : "bg-muted-foreground/40",
+                      "absolute bottom-1 right-1 size-2 rounded-full ring-1 ring-sidebar",
+                      isRunning ? "bg-emerald-500" : "bg-zinc-500 dark:bg-zinc-400",
                     )}
                   />
                 )}
               </Link>
             </TooltipTrigger>
             <TooltipContent side="right">
-              {p.label}
-              {isRunning !== undefined ? `：${isRunning ? "运行中" : "未运行"}` : ""}
+              {p.label} · {statusLabels[p.id] ?? "客户端"}：{isRunning === undefined ? "状态未知" : isRunning ? "运行中" : "未运行"}
             </TooltipContent>
           </Tooltip>
         );
@@ -109,7 +109,7 @@ export function PlatformNav({ platform, sessionsNavEnabled, demoMode, topPadding
     <aside className={cn("flex min-h-0 w-[200px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-3 pb-4", topPadding)}>
       <div className="px-2 pb-5 pt-1.5">
         <div
-          className="text-[15px] leading-5 tracking-[-0.02em] text-sidebar-foreground/90 [overflow-wrap:anywhere]"
+          className="h-5 truncate whitespace-nowrap text-[13px] leading-5 tracking-[-0.02em] text-sidebar-foreground/90"
           style={{ fontFamily: '"Bricolage Grotesque Variable", "SF Pro Display", ui-sans-serif, sans-serif', fontWeight: 640 }}
           title={platform.label}
         >

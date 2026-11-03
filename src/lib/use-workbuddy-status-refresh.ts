@@ -4,11 +4,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import * as api from "@/lib/api";
 import { useAccountsStore } from "@/stores/accounts";
+import { useQoderStatus } from "@/stores/qoder-status";
 
 export const WORKBUDDY_STATUS_REFRESH_INTERVAL_MS = 60 * 1000;
 
 /** Refresh WorkBuddy status only while the main window is visible and focused. */
-export function useWorkbuddyStatusRefresh() {
+export function useWorkbuddyStatusRefresh(qoderEnabled = false) {
   const activeRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
@@ -33,6 +34,7 @@ export function useWorkbuddyStatusRefresh() {
     function refreshStatus() {
       if (disposed || !activeRef.current) return;
       void useAccountsStore.getState().refreshStatus(abortControllerRef.current?.signal);
+      if (qoderEnabled) void useQoderStatus.getState().refresh();
     }
 
     function startTimer() {
@@ -117,5 +119,5 @@ export function useWorkbuddyStatusRefresh() {
       window.removeEventListener("blur", onBlur);
       unlisten?.();
     };
-  }, []);
+  }, [qoderEnabled]);
 }

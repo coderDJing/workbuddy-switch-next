@@ -151,13 +151,40 @@ fn load_payload(store: &Path, meta: &BundleMeta) -> Result<Vec<(String, Vec<u8>)
         .iter()
         .map(|f| {
             let bytes = std::fs::read(dir.join(&f.name))
-                .map_err(|_| format!("账号包缺少文件 {}，请重新认领该账号", f.name))?;
+                .map_err(|_| format!("账号包缺少文件 {}，请重新添加该账号", f.name))?;
             if sha256_hex(&bytes) != f.sha256 {
-                return Err(format!("账号包文件 {} 校验失败，请重新认领该账号", f.name));
+                return Err(format!("账号包文件 {} 校验失败，请重新添加该账号", f.name));
             }
             Ok((f.name.clone(), bytes))
         })
         .collect()
+}
+
+fn validate_payload(
+    target: QoderTarget,
+    specs: &[CredentialSpec],
+    payload: &[(String, Vec<u8>)],
+) -> Result<(), String> {
+    let mut names = std::collections::HashSet::new();
+    if payload
+        .iter()
+        .any(|(name, _)| !specs.iter().any(|spec| spec.name == name) || !names.insert(name))
+    {
+        return Err("账号包包含未知或重复文件，拒绝切换".into());
+    }
+    store::validate_cli_payload(target, payload)?;
+    for spec in specs
+        .iter()
+        .filter(|s| s.criticality == Criticality::Required)
+    {
+        if !payload.iter().any(|(name, _)| name == spec.name) {
+            return Err(format!(
+                "账号包缺少必需文件 {}，拒绝半换号，请重新添加该账号",
+                spec.name
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// 执行切换。`progress` 收到人话步骤，供 UI 显示。
@@ -169,50 +196,53 @@ pub fn execute(
     opts: SwitchOptions,
     progress: &dyn Fn(&str),
 ) -> Result<Value, String> {
-    let meta = store::load(store, bundle_id)?;
-    let target = meta.target;
-    let specs = credentials(roots, target);
-    // 账号包只能包含此目标的已知文件，不接受路径或重复项目。
-    let mut names = std::collections::HashSet::new();
-    if meta
-        .files
-        .iter()
-        .any(|f| !specs.iter().any(|s| s.name == f.name) || !names.insert(&f.name))
-    {
-        return Err("账号包包含未知或重复文件，拒绝切换".to_string());
-    }
-    let payload = load_payload(store, &meta)?;
-    store::validate_cli_payload(target, &payload)?;
-    for spec in specs
-        .iter()
-        .filter(|s| s.criticality == Criticality::Required)
-    {
-        if !payload.iter().any(|(n, _)| n == spec.name) {
-            return Err(format!(
-                "账号包缺少必需文件 {}，拒绝半换号，请重新认领该账号",
-                spec.name
-            ));
-        }
-    }
-
     let _lock = crate::modules::state_lock::StateLock::wait_at(
         &store.join("switch.lock"),
         SWITCH_LOCK_TIMEOUT,
     )
     .map_err(|e| e.to_string())?;
-
-    // 现场登录态还没存成账号包时先认领，避免切走后再也回不去。
-    let mut warnings: Vec<String> = Vec::new();
-    let mut auto_saved: Option<BundleMeta> = None;
-    if store::live_primary_sha(roots, target).is_some()
-        && store::current_id(store, roots, target).is_none()
+    #[allow(unused_mut)]
+    let mut meta = store::load(store, bundle_id)?;
+    let target = meta.target;
+    let specs = credentials(roots, target);
+    let is_vault =
+        cfg!(windows) && meta.files.len() == 1 && meta.files[0].name == "authorized.dpapi";
+    let mut names = std::collections::HashSet::new();
+    if !is_vault
+        && meta.files.iter().any(|file| {
+            !specs.iter().any(|spec| spec.name == file.name) || !names.insert(&file.name)
+        })
     {
-        progress("保存当前登录态…");
-        auto_saved = Some(
-            store::capture(store, roots, target, None)
-                .map_err(|e| format!("当前登录态未能自动保存，已取消切换: {e}"))?,
-        );
+        return Err("账号包包含未知或重复文件，拒绝切换".into());
     }
+    #[allow(unused_mut)]
+    let mut payload = load_payload(store, &meta)?;
+    #[cfg(windows)]
+    let vault = if is_vault {
+        if meta.identity_key.is_none() {
+            return Err("Qoder 账号身份缺失".into());
+        }
+        let value = super::vault::open(&payload[0].1)?;
+        if value
+            .0
+            .expires_at
+            .as_deref()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .is_some_and(|expires| expires <= chrono::Utc::now())
+        {
+            return Err("该 Qoder 账号的授权已过期，请重新登录添加后再切换".into());
+        }
+        Some(value)
+    } else {
+        None
+    };
+    #[cfg(windows)]
+    if vault.is_none() {
+        validate_payload(target, &specs, &payload)?;
+    }
+    #[cfg(not(windows))]
+    validate_payload(target, &specs, &payload)?;
+
     if store::current_id(store, roots, target).as_deref() == Some(meta.id.as_str()) {
         return Ok(json!({
             "ok": true, "target": target, "accountId": meta.id, "unchanged": true,
@@ -239,9 +269,49 @@ pub fn execute(
         progress(&format!("正在关闭 {}…", target.label()));
         ops.close(target, CLOSE_TIMEOUT)?;
     }
+    let restart_after_failure = |error: String| -> String {
+        if was_running
+            && opts.relaunch
+            && target.is_desktop()
+            && ops.launch(target, running_exe.clone()).is_err()
+        {
+            return format!("{error}；无法重新打开 {}，请手动打开", target.label());
+        }
+        error
+    };
+
+    // The client can update credentials while shutting down. Capture and build
+    // against that final state, while holding the same lock as the write.
+    let prepare = (|| -> Result<Option<BundleMeta>, String> {
+        let auto_saved = if store::live_primary_sha(roots, target).is_some()
+            && store::current_id(store, roots, target).is_none()
+            && !super::auto::is_current_suppressed(store, roots, target)
+        {
+            progress("保存当前登录态…");
+            Some(
+                store::capture(store, roots, target, None)
+                    .map_err(|e| format!("当前登录态未能自动保存，已取消切换: {e}"))?,
+            )
+        } else {
+            None
+        };
+        #[cfg(windows)]
+        if let Some((account, machine)) = vault {
+            payload = super::authorized::build_snapshot(roots, target, &account, &machine)?;
+            validate_payload(target, &specs, &payload)?;
+            let identity = meta.identity_key.as_deref().ok_or("Qoder 账号身份缺失")?;
+            meta = store::save_authorized(store, target, &meta.label, identity, payload.clone())?;
+        }
+        Ok(auto_saved)
+    })();
+    let auto_saved = match prepare {
+        Ok(value) => value,
+        Err(error) => return Err(restart_after_failure(error)),
+    };
+    let mut warnings: Vec<String> = Vec::new();
 
     progress("备份当前凭据…");
-    let backup = backup_live(store, target, &specs)?;
+    let backup = backup_live(store, target, &specs).map_err(&restart_after_failure)?;
 
     progress("写入目标账号凭据…");
     let applied = apply(&specs, &payload);
@@ -256,7 +326,12 @@ pub fn execute(
                 backup.display()
             )
         };
-        return Err(format!("切换失败：{reason}，{tail}"));
+        let error = format!("切换失败：{reason}，{tail}");
+        return Err(if failed.is_empty() {
+            restart_after_failure(error)
+        } else {
+            error
+        });
     }
     let _ = store::mark_switched(store, &meta.id);
     prune_backups(store, target);

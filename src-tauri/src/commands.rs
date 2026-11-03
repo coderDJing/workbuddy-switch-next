@@ -365,6 +365,67 @@ pub async fn get_qoder_status() -> Result<Value, String> {
         .map_err(|e| format!("查询 Qoder 状态失败: {e}"))
 }
 
+#[tauri::command]
+pub async fn auto_capture_qoder_accounts() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(qoder::auto_capture)
+        .await
+        .map_err(|_| "无法识别 Qoder 本机账号".to_string())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_qoder_credits(
+    bundle_ids: Vec<String>,
+    live_target: Option<String>,
+) -> Result<Value, String> {
+    let target = live_target.as_deref().map(parse_qoder_target).transpose()?;
+    Ok(qoder::credits::query(&bundle_ids, target).await)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn export_qoder_accounts(bundle_ids: Vec<String>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || qoder::backup::export(&bundle_ids))
+        .await
+        .map_err(|_| "导出 Qoder 账号失败".to_string())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn export_qoder_accounts_to_path(
+    bundle_ids: Vec<String>,
+    path: String,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || qoder::backup::export_to_path(&bundle_ids, &path))
+        .await
+        .map_err(|_| "导出 Qoder 账号失败".to_string())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn preview_qoder_backup(file_text: String) -> Result<Value, String> {
+    qoder::backup::preview(&file_text)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn import_qoder_backup(file_text: String, indexes: Vec<usize>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || qoder::backup::import(&file_text, &indexes))
+        .await
+        .map_err(|_| "导入 Qoder 账号失败".to_string())?
+}
+
+#[tauri::command]
+pub fn qoder_oauth_start(target: String) -> Result<Value, String> {
+    qoder::oauth::start(parse_qoder_target(&target)?)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn qoder_oauth_poll(login_id: String) -> Result<Value, String> {
+    Ok(qoder::oauth::poll(&login_id).await)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn qoder_oauth_cancel(login_id: String) -> Result<Value, String> {
+    qoder::oauth::cancel(&login_id);
+    Ok(json!({"ok": true}))
+}
+
 /// POST /api/qoder/capture —— 把现场登录态认领为账号包（同一账号会刷新而不是重复保存）。
 #[tauri::command]
 pub async fn capture_qoder_account(target: String, label: Option<String>) -> Result<Value, String> {

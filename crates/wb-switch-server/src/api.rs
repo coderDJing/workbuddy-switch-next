@@ -102,6 +102,14 @@ pub fn router() -> Router {
         .route("/api/jetbrains/switch", post(api_jetbrains_switch))
         .route("/api/jetbrains/detect", post(api_jetbrains_detect))
         .route("/api/qoder/status", get(api_qoder_status))
+        .route("/api/qoder/auto-capture", post(api_qoder_auto_capture))
+        .route("/api/qoder/credits", post(api_qoder_credits))
+        .route("/api/qoder/export", post(api_qoder_export))
+        .route("/api/qoder/backup/preview", post(api_qoder_backup_preview))
+        .route("/api/qoder/backup/import", post(api_qoder_backup_import))
+        .route("/api/qoder/oauth/start", post(api_qoder_oauth_start))
+        .route("/api/qoder/oauth/poll", post(api_qoder_oauth_poll))
+        .route("/api/qoder/oauth/cancel", post(api_qoder_oauth_cancel))
         .route("/api/qoder/capture", post(api_qoder_capture))
         .route("/api/qoder/rename", post(api_qoder_rename))
         .route("/api/qoder/delete", post(api_qoder_delete))
@@ -689,6 +697,99 @@ fn body_str<'a>(body: &'a Value, keys: &[&str]) -> &'a str {
 
 async fn api_qoder_status() -> Response {
     json_ok(qoder::status())
+}
+
+async fn api_qoder_auto_capture() -> Response {
+    match tokio::task::spawn_blocking(qoder::auto_capture).await {
+        Ok(Ok(value)) => json_ok(value),
+        Ok(Err(error)) => json_err(error, StatusCode::BAD_REQUEST),
+        Err(_) => json_err(
+            "无法识别 Qoder 本机账号".into(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    }
+}
+
+async fn api_qoder_export(Json(body): Json<Value>) -> Response {
+    let ids = body
+        .get("bundleIds")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    match qoder::backup::export(&ids) {
+        Ok(v) => json_ok(v),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+
+async fn api_qoder_backup_preview(Json(body): Json<Value>) -> Response {
+    match qoder::backup::preview(body_str(&body, &["fileText"])) {
+        Ok(v) => json_ok(v),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+
+async fn api_qoder_backup_import(Json(body): Json<Value>) -> Response {
+    let indexes = body
+        .get("indexes")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_u64)
+                .filter_map(|n| usize::try_from(n).ok())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    match qoder::backup::import(body_str(&body, &["fileText"]), &indexes) {
+        Ok(v) => json_ok(v),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+
+async fn api_qoder_credits(Json(body): Json<Value>) -> Response {
+    let ids: Vec<String> = body
+        .get("bundleIds")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let target = match body.get("liveTarget").and_then(Value::as_str) {
+        Some(value) => match qoder::QoderTarget::parse(value) {
+            Some(target) => Some(target),
+            None => return json_err("未知的 Qoder 目标".into(), StatusCode::BAD_REQUEST),
+        },
+        None => None,
+    };
+    json_ok(qoder::credits::query(&ids, target).await)
+}
+
+async fn api_qoder_oauth_start(Json(body): Json<Value>) -> Response {
+    let Some(target) = qoder::QoderTarget::parse(body_str(&body, &["target"])) else {
+        return json_err("未知的 Qoder 目标".to_string(), StatusCode::BAD_REQUEST);
+    };
+    match qoder::oauth::start(target) {
+        Ok(value) => json_ok(value),
+        Err(error) => json_err(error, StatusCode::BAD_REQUEST),
+    }
+}
+
+async fn api_qoder_oauth_poll(Json(body): Json<Value>) -> Response {
+    json_ok(qoder::oauth::poll(body_str(&body, &["loginId", "login_id"])).await)
+}
+
+async fn api_qoder_oauth_cancel(Json(body): Json<Value>) -> Response {
+    qoder::oauth::cancel(body_str(&body, &["loginId", "login_id"]));
+    json_ok(json!({"ok": true}))
 }
 
 async fn api_qoder_capture(Json(body): Json<Value>) -> Response {

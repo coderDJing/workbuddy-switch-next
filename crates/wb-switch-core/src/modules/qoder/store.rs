@@ -26,6 +26,9 @@ pub struct BundleMeta {
     /// 认领时从明文回显读到的名字（仅桌面端有）。
     #[serde(default)]
     pub echo_name: Option<String>,
+    /// 区域与账号身份的摘要，用来关联同一账号的桌面端和 CLI。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_key: Option<String>,
     pub captured_at: i64,
     #[serde(default)]
     pub last_switched_at: Option<i64>,
@@ -74,6 +77,58 @@ fn write_meta(store: &Path, meta: &BundleMeta) -> Result<(), String> {
     let json = serde_json::to_string_pretty(meta).map_err(|e| e.to_string())?;
     crate::modules::config::atomic_write(&dir.join("bundle.json"), &json)
         .map_err(|e| format!("写入账号包元数据失败: {e}"))
+}
+
+/// Store a newly authorized, already-encrypted client snapshot without changing
+/// the live client. Publish the directory only after all files are written.
+pub(super) fn save_authorized(
+    store: &Path,
+    target: QoderTarget,
+    label: &str,
+    identity_key: &str,
+    payload: Vec<(String, Vec<u8>)>,
+) -> Result<BundleMeta, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let base = bundles_dir(store);
+    std::fs::create_dir_all(&base).map_err(|_| "无法创建 Qoder 账号目录".to_string())?;
+    let staging = base.join(format!(".pending-{id}"));
+    std::fs::create_dir(&staging).map_err(|_| "无法创建 Qoder 临时账号目录".to_string())?;
+    let result = (|| {
+        let mut files = Vec::with_capacity(payload.len());
+        for (name, bytes) in payload {
+            if name.contains('/') || name.contains('\\') || name == "." || name == ".." {
+                return Err("无效的 Qoder 凭据文件名".to_string());
+            }
+            std::fs::write(staging.join(&name), &bytes)
+                .map_err(|_| "无法保存 Qoder 授权凭据".to_string())?;
+            files.push(BundleFile {
+                name,
+                sha256: sha256_hex(&bytes),
+                size: bytes.len() as u64,
+            });
+        }
+        let meta = BundleMeta {
+            id: id.clone(),
+            target,
+            label: label.to_string(),
+            echo_name: Some(label.to_string()),
+            identity_key: Some(identity_key.to_string()),
+            captured_at: now_ms(),
+            last_switched_at: None,
+            files,
+        };
+        let json =
+            serde_json::to_vec_pretty(&meta).map_err(|_| "无法编码 Qoder 账号信息".to_string())?;
+        std::fs::write(staging.join("bundle.json"), json)
+            .map_err(|_| "无法保存 Qoder 账号信息".to_string())?;
+        std::fs::rename(&staging, bundle_dir(store, &id)?)
+            .map_err(|_| "无法完成 Qoder 账号保存".to_string())?;
+        Ok(meta)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    result
 }
 
 pub fn load(store: &Path, id: &str) -> Result<BundleMeta, String> {
@@ -164,6 +219,27 @@ pub fn capture(
     target: QoderTarget,
     label: Option<&str>,
 ) -> Result<BundleMeta, String> {
+    capture_impl(store, roots, target, label, None)
+}
+
+/// Reject credentials that change identity or become invalid between detection and capture.
+pub(super) fn capture_verified(
+    store: &Path,
+    roots: &QoderRoots,
+    target: QoderTarget,
+    label: Option<&str>,
+    expected: &str,
+) -> Result<BundleMeta, String> {
+    capture_impl(store, roots, target, label, Some(expected))
+}
+
+fn capture_impl(
+    store: &Path,
+    roots: &QoderRoots,
+    target: QoderTarget,
+    label: Option<&str>,
+    expected: Option<&str>,
+) -> Result<BundleMeta, String> {
     let specs = credentials(roots, target);
     let mut payload: Vec<(String, Vec<u8>)> = Vec::new();
     for spec in &specs {
@@ -179,7 +255,7 @@ pub fn capture(
             Ok(_) => {}
             Err(_) if spec.criticality == Criticality::Required => {
                 return Err(format!(
-                    "{} 当前未登录（缺少 {}），请先在 {} 中登录后再认领",
+                    "{} 当前未登录（缺少 {}），请先在 {} 中登录后再导入",
                     target.label(),
                     spec.name,
                     target.label()
@@ -189,6 +265,19 @@ pub fn capture(
         }
     }
     validate_cli_payload(target, &payload)?;
+    if let Some(expected) = expected {
+        let profile =
+            super::authorized::snapshot_profile(&roots.desktop_dir_for(target), target, &payload)
+                .ok_or("Qoder 当前登录已变化，请重试")?;
+        let account = super::backup::profile_account(&profile).ok_or("Qoder 当前登录无法识别")?;
+        let identity = super::authorized::identity_from_json(
+            target,
+            &serde_json::json!({"user": account.user}),
+        );
+        if identity.as_deref() != Some(expected) {
+            return Err("Qoder 当前登录已变化，请重试".into());
+        }
+    }
     let echo_name = match target {
         QoderTarget::Desktop | QoderTarget::GlobalDesktop => read_echo_name(roots, target),
         QoderTarget::Cli | QoderTarget::GlobalCli => None,
@@ -239,6 +328,8 @@ pub fn capture(
         target,
         label,
         echo_name,
+        identity_key: super::authorized::snapshot_identity(roots, target, &payload)
+            .or_else(|| reuse.as_ref().and_then(|m| m.identity_key.clone())),
         captured_at: reuse.as_ref().map_or_else(now_ms, |m| m.captured_at),
         last_switched_at: reuse.and_then(|m| m.last_switched_at),
         files,

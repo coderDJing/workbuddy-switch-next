@@ -49,6 +49,7 @@ import type {
   JetbrainsStatus,
   JetbrainsSwitchResult,
   QoderBundle,
+  QoderCredit,
   QoderStatus,
   QoderSwitchResult,
   QoderTarget,
@@ -74,7 +75,7 @@ import { UpdateCheckTimeoutError, waitForUpdateCheck } from "./update-check";
  */
 
 const DEMO_READ_COMMANDS = new Set([
-  "get_status", "get_accounts", "get_codebuddy_cli_status", "get_codebuddy_cn_ide_status", "get_codebuddy_ide_status", "get_vscode_ext_status", "get_jetbrains_status", "get_qoder_status", "list_vscode_sessions", "list_codebuddy_ide_sessions", "list_codebuddy_intl_ide_sessions", "vscode_session_links_preview", "codebuddy_ide_session_links_preview", "codebuddy_intl_ide_session_links_preview", "list_account_sessions", "session_links_preview_cross", "list_session_groups", "get_session_group", "preview_session_group_pair", "get_checkin_status",
+  "get_status", "get_accounts", "get_codebuddy_cli_status", "get_codebuddy_cn_ide_status", "get_codebuddy_ide_status", "get_vscode_ext_status", "get_jetbrains_status", "get_qoder_status", "get_qoder_credits", "list_vscode_sessions", "list_codebuddy_ide_sessions", "list_codebuddy_intl_ide_sessions", "vscode_session_links_preview", "codebuddy_ide_session_links_preview", "codebuddy_intl_ide_session_links_preview", "list_account_sessions", "session_links_preview_cross", "list_session_groups", "get_session_group", "preview_session_group_pair", "get_checkin_status",
   "get_credit_expiry", "get_credit_statistics", "get_auto_checkin_config",
   "get_token_statistics",
   "get_checkin_logs", "get_auto_rotate_config", "rotate_status", "get_rotate_logs",
@@ -135,6 +136,14 @@ const ROUTES: Record<string, Route> = {
   switch_jetbrains_account: { method: "POST", path: "/api/jetbrains/switch" },
   detect_jetbrains_account: { method: "POST", path: "/api/jetbrains/detect" },
   get_qoder_status: { method: "GET", path: "/api/qoder/status" },
+  auto_capture_qoder_accounts: { method: "POST", path: "/api/qoder/auto-capture" },
+  get_qoder_credits: { method: "POST", path: "/api/qoder/credits" },
+  export_qoder_accounts: { method: "POST", path: "/api/qoder/export" },
+  preview_qoder_backup: { method: "POST", path: "/api/qoder/backup/preview" },
+  import_qoder_backup: { method: "POST", path: "/api/qoder/backup/import" },
+  qoder_oauth_start: { method: "POST", path: "/api/qoder/oauth/start" },
+  qoder_oauth_poll: { method: "POST", path: "/api/qoder/oauth/poll" },
+  qoder_oauth_cancel: { method: "POST", path: "/api/qoder/oauth/cancel" },
   capture_qoder_account: { method: "POST", path: "/api/qoder/capture" },
   rename_qoder_account: { method: "POST", path: "/api/qoder/rename" },
   delete_qoder_account: { method: "POST", path: "/api/qoder/delete" },
@@ -464,9 +473,43 @@ export function getQoderStatus(): Promise<QoderStatus> {
   return call("get_qoder_status");
 }
 
+export function getQoderCredits(bundleIds: string[], liveTarget?: QoderTarget): Promise<QoderCredit> {
+  return call("get_qoder_credits", { bundleIds, liveTarget: liveTarget ?? null });
+}
+
+export function startQoderLogin(target: QoderTarget): Promise<{loginId: string; verificationUri: string; expiresIn: number}> {
+  return call("qoder_oauth_start", { target });
+}
+
+export function pollQoderLogin(loginId: string): Promise<{done: boolean; result?: { label: string; clients: QoderTarget[]; warnings: string[] }; error?: string}> {
+  return call("qoder_oauth_poll", { loginId });
+}
+
+export function cancelQoderLogin(loginId: string): Promise<{ok: boolean}> {
+  return call("qoder_oauth_cancel", { loginId });
+}
+
 /** 把 Qoder 现场登录态认领为账号包；相同凭据再次认领会刷新原包。 */
 export function captureQoderAccount(target: QoderTarget, label?: string): Promise<QoderBundle> {
   return call("capture_qoder_account", { target, label });
+}
+
+export function autoCaptureQoderAccounts(): Promise<{added: number; failedTargets: QoderTarget[]; authorizationRequired: QoderTarget[]; deferred?: boolean}> {
+  return call("auto_capture_qoder_accounts");
+}
+
+export interface QoderBackupPreview { index: number; label: string; global: boolean; targets: QoderTarget[] }
+export function exportQoderAccounts(bundleIds: string[]): Promise<unknown> {
+  return call("export_qoder_accounts", { bundleIds });
+}
+export function exportQoderAccountsToPath(bundleIds: string[], path: string): Promise<{path: string}> {
+  return call("export_qoder_accounts_to_path", { bundleIds, path });
+}
+export function previewQoderBackup(fileText: string): Promise<{accounts: QoderBackupPreview[]}> {
+  return call("preview_qoder_backup", { fileText });
+}
+export function importQoderBackup(fileText: string, indexes: number[]): Promise<{imported: number; skipped: number; warnings: string[]}> {
+  return call("import_qoder_backup", { fileText, indexes });
 }
 
 export function renameQoderAccount(bundleId: string, label: string): Promise<QoderBundle> {

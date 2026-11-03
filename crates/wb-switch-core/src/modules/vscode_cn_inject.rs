@@ -464,7 +464,7 @@ fn dpapi_decrypt(encrypted: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(target_os = "windows")]
-fn get_windows_encryption_key(data_root: &Path) -> Result<Vec<u8>, String> {
+pub(crate) fn get_windows_encryption_key(data_root: &Path) -> Result<Vec<u8>, String> {
     let local_state = get_local_state_path(data_root)?;
     let text =
         std::fs::read_to_string(&local_state).map_err(|e| format!("读取 Local State 失败: {e}"))?;
@@ -487,7 +487,7 @@ fn get_windows_encryption_key(data_root: &Path) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(target_os = "windows")]
-fn decrypt_windows_gcm_v10(key: &[u8], encrypted: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn decrypt_windows_gcm_v10(key: &[u8], encrypted: &[u8]) -> Result<Vec<u8>, String> {
     if encrypted.len() < 31 {
         return Err("ciphertext too short for AES-GCM".to_string());
     }
@@ -507,7 +507,7 @@ fn decrypt_windows_gcm_v10(key: &[u8], encrypted: &[u8]) -> Result<Vec<u8>, Stri
 }
 
 #[cfg(target_os = "windows")]
-fn encrypt_windows_gcm_v10(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn encrypt_windows_gcm_v10(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes256Gcm::new(GenericArray::from_slice(key));
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
     let ciphertext = cipher
@@ -520,7 +520,7 @@ fn encrypt_windows_gcm_v10(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, Stri
     Ok(result)
 }
 
-fn decrypt_secret_payload(
+pub(crate) fn decrypt_secret_payload(
     encrypted: &[u8],
     data_root: &Path,
     target: &VscodeSafeStorageTarget,
@@ -567,7 +567,7 @@ fn decrypt_secret_payload(
     }
 }
 
-fn encrypt_secret_payload(
+pub(crate) fn encrypt_secret_payload(
     plaintext: &[u8],
     preferred_prefix: Option<&str>,
     data_root: &Path,

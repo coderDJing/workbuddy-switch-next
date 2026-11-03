@@ -30,6 +30,9 @@ import { useRotateDeferredNotice } from "@/lib/use-rotate-deferred-notice";
 import { useUpdateState } from "@/lib/use-update-state";
 import { useWorkbuddyStatusRefresh } from "@/lib/use-workbuddy-status-refresh";
 import { useAccountsStore } from "@/stores/accounts";
+import { useQoderStatus, qoderDesktopRunning } from "@/stores/qoder-status";
+import { useQoderView } from "@/stores/qoder-view";
+import { normalizeVariant, variantLabel } from "@/lib/variant";
 
 /**
  * 悬浮窗面板：从 footer 向上滑出，开关与设置同屏。
@@ -221,7 +224,12 @@ function UpdateCenter({ running }: { running: boolean | undefined }) {
 }
 
 function Layout() {
-  const running = useAccountsStore((s) => s.status?.running);
+  const workbuddyStatus = useAccountsStore((s) => s.status);
+  const workbuddyVariant = useAccountsStore((s) => s.variant);
+  const running = workbuddyStatus && normalizeVariant(workbuddyStatus.variant) === workbuddyVariant ? workbuddyStatus.running : undefined;
+  const qoderStatus = useQoderStatus((s) => s.status);
+  const qoderError = useQoderStatus((s) => s.error);
+  const qoderVariant = useQoderView((s) => s.variant);
   const hasUnifiedTitleBar =
     api.isDesktop() && typeof navigator !== "undefined" && navigator.userAgent.includes("Macintosh");
   const sessionsNavEnabled = useSessionsNavEnabled();
@@ -236,7 +244,7 @@ function Layout() {
     platforms[0];
   const topPadding = hasUnifiedTitleBar ? "pt-20" : "pt-4";
   useCreditAutoRefresh();
-  useWorkbuddyStatusRefresh();
+  useWorkbuddyStatusRefresh(platforms.some((p) => p.id === "qoder"));
   useRotateDeferredNotice();
 
   return (
@@ -252,7 +260,8 @@ function Layout() {
         platforms={platforms}
         activePlatform={activePlatform.id}
         onSettings={onSettings}
-        running={{ codebuddy: Boolean(running) }}
+        running={{ codebuddy: running, qoder: qoderDesktopRunning(qoderStatus, qoderError, qoderVariant) }}
+        statusLabels={{ codebuddy: `WorkBuddy ${variantLabel(workbuddyVariant)}`, qoder: variantLabel(qoderVariant) }}
         topPadding={topPadding}
       />
       <PlatformNav

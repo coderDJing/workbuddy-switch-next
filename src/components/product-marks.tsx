@@ -77,16 +77,17 @@ export function AppIconMark({ size = 32, className }: MarkProps) {
   );
 }
 
-export function CodeBuddyMark({ size = 32, className }: MarkProps) {
-  const icon = Math.max(10, Math.round(size));
+/** 终端图标共用底块；右下方保留产品官方图标，避开右上角的当前账号标记。 */
+function TerminalMark({ size = 32, className, brandIcon }: MarkProps & { brandIcon: string }) {
+  const badge = Math.max(7, Math.round(size * 0.43));
   return (
     <span
       aria-hidden
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-[22%] border border-white/10 bg-zinc-950 text-zinc-50 shadow-sm",
+        "relative inline-flex shrink-0 items-center justify-center rounded-[22%] border border-white/10 bg-zinc-950 text-zinc-50 shadow-sm",
         className,
       )}
-      style={{ width: size, height: size, fontSize: icon }}
+      style={{ width: size, height: size }}
     >
       <svg
         viewBox="0 0 24 24"
@@ -95,13 +96,23 @@ export function CodeBuddyMark({ size = 32, className }: MarkProps) {
         strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="size-[1em]"
+        className="size-[88%]"
       >
-        <path d="M4.4 7.4 10.4 12 4.4 16.6" />
-        <path d="M13 16.6h7" />
+        <path d="M3.8 5.8 9.8 10.2 3.8 14.6" />
+        <path d="M11.5 14.6h5" />
       </svg>
+      <span
+        className="absolute -bottom-px -right-px inline-flex items-center justify-center overflow-hidden rounded-full bg-white ring-1 ring-zinc-950"
+        style={{ width: badge, height: badge }}
+      >
+        <img src={brandIcon} alt="" className="size-full object-cover" />
+      </span>
     </span>
   );
+}
+
+export function CodeBuddyMark({ size = 32, className }: MarkProps) {
+  return <TerminalMark size={size} className={className} brandIcon={codebuddyCnIdeIcon} />;
 }
 
 /**
@@ -239,22 +250,7 @@ export function QoderMark({ size = 32, className, global = false }: MarkProps & 
   );
 }
 
-/** CLI 沿用 Qoder CN 官方图标，并以角标区分桌面端。 */
+/** CLI 用终端图形区分桌面端，角标保留对应地区的 Qoder 官方图标。 */
 export function QoderCliMark({ size = 32, className, global = false }: MarkProps & { global?: boolean }) {
-  const badge = Math.max(11, Math.round(size * 0.46));
-  return (
-    <span
-      aria-hidden
-      className={cn("relative inline-flex shrink-0", className)}
-      style={{ width: size, height: size }}
-    >
-      <QoderMark size={size} global={global} />
-      <span
-        className="absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center rounded-full border border-card bg-foreground px-[3px] font-semibold leading-none text-background"
-        style={{ minWidth: badge, height: badge, fontSize: Math.max(6, Math.round(badge * 0.5)) }}
-      >
-        CLI
-      </span>
-    </span>
-  );
+  return <TerminalMark size={size} className={className} brandIcon={global ? qoderGlobalIcon : qoderCnIcon} />;
 }

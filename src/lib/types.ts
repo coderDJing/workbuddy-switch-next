@@ -1146,6 +1146,8 @@ export interface QoderBundle {
   id: string;
   target: QoderTarget;
   label: string;
+  /** Stable account identity within the selected Qoder region. */
+  identityKey?: string | null;
   /** 认领时桌面端明文回显里的账号名。 */
   echoName?: string | null;
   capturedAt: number;
@@ -1158,9 +1160,11 @@ export interface QoderTargetStatus {
   label: string;
   installed: boolean;
   loggedIn: boolean;
+  autoSuppressed?: boolean;
   running: boolean;
   /** 现场登录态对应的账号包 id；现场未认领时为 null。 */
   currentId: string | null;
+  currentIdentityKey?: string | null;
   currentLabel: string | null;
   echoName: string | null;
 }
@@ -1172,6 +1176,10 @@ export interface QoderStatus {
   globalCli: QoderTargetStatus;
   bundles: QoderBundle[];
 }
+
+export type QoderCredit =
+  | { ok: true; remaining: number; total: number; used: number }
+  | { ok: false; error: string };
 
 export interface QoderSwitchResult {
   ok: boolean;
