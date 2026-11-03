@@ -15,6 +15,11 @@ use wb_switch_core::modules::{
     variant::WbVariant, vscode_ext, vscode_session, vscode_session_sync, webdav_sync,
 };
 
+#[tauri::command]
+pub fn is_macos() -> bool {
+    cfg!(target_os = "macos")
+}
+
 #[derive(Serialize)]
 pub struct AppStatus {
     running: bool,

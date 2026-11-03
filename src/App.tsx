@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { BrowserRouter, HashRouter, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { ArrowUp, Loader2, Play, Settings } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -225,14 +226,18 @@ function UpdateCenter({ running }: { running: boolean | undefined }) {
 }
 
 function Layout() {
+  const [macTitleBar, setMacTitleBar] = useState(() =>
+    !api.isWebui() && /Mac/i.test(navigator.platform || navigator.userAgent),
+  );
+  useEffect(() => {
+    if (!api.isWebui()) void invoke<boolean>("is_macos").then(setMacTitleBar).catch(() => {});
+  }, []);
   const workbuddyStatus = useAccountsStore((s) => s.status);
   const workbuddyVariant = useAccountsStore((s) => s.variant);
   const running = workbuddyStatus && normalizeVariant(workbuddyStatus.variant) === workbuddyVariant ? workbuddyStatus.running : undefined;
   const qoderStatus = useQoderStatus((s) => s.status);
   const qoderError = useQoderStatus((s) => s.error);
   const qoderVariant = useQoderView((s) => s.variant);
-  const hasUnifiedTitleBar =
-    api.isDesktop() && typeof navigator !== "undefined" && navigator.userAgent.includes("Macintosh");
   const sessionsNavEnabled = useSessionsNavEnabled();
   const platforms = useEnabledPlatforms();
   const { pathname } = useLocation();
@@ -243,20 +248,14 @@ function Layout() {
     platforms.find((p) => p.id === routePlatform?.id) ??
     platforms.find((p) => p.id === readLastPlatform()) ??
     platforms[0];
-  const topPadding = hasUnifiedTitleBar ? "pt-20" : "pt-4";
+  const topPadding = macTitleBar ? "pt-14" : "pt-4";
   useCreditAutoRefresh();
   useWorkbuddyStatusRefresh(platforms.some((p) => p.id === "qoder"));
   useRotateDeferredNotice();
 
   return (
     <div className="flex h-screen min-h-0 overflow-hidden bg-background">
-      {hasUnifiedTitleBar ? (
-        <div
-          data-tauri-drag-region
-          className="fixed inset-x-0 top-0 z-50 h-8"
-          aria-hidden="true"
-        />
-      ) : null}
+      {macTitleBar && <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-50 h-11" aria-hidden="true" />}
       <PlatformRail
         platforms={platforms}
         activePlatform={activePlatform.id}
@@ -264,6 +263,7 @@ function Layout() {
         running={{ codebuddy: running, qoder: qoderDesktopRunning(qoderStatus, qoderError, qoderVariant) }}
         statusLabels={{ codebuddy: `WorkBuddy ${variantLabel(workbuddyVariant)}`, qoder: variantLabel(qoderVariant) }}
         topPadding={topPadding}
+        macTitleBar={macTitleBar}
       />
       <PlatformNav
         platform={activePlatform}
@@ -272,15 +272,12 @@ function Layout() {
         topPadding={topPadding}
         footer={api.isWebui() && !demoModeEnabled ? null : <UpdateCenter running={running} />}
       />
-      <OverlayScrollArea
-        element="main"
-        className={cn(
-          "min-w-0 flex-1 bg-background overscroll-contain",
-          hasUnifiedTitleBar && "pt-16",
-        )}
-      >
-        <div className={hasUnifiedTitleBar ? "pt-4" : undefined}><Outlet /></div>
-      </OverlayScrollArea>
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+        {macTitleBar && <div className="h-11 shrink-0" aria-hidden="true" />}
+        <OverlayScrollArea element="main" className="min-h-0 flex-1 overscroll-contain">
+          <Outlet />
+        </OverlayScrollArea>
+      </div>
     </div>
   );
 }

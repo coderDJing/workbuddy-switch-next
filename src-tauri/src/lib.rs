@@ -234,6 +234,7 @@ pub fn run() {
         })
         .invoke_handler({
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+            commands::is_macos,
             commands::get_status,
             commands::get_accounts,
             commands::get_codebuddy_cli_status,

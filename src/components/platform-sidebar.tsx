@@ -34,14 +34,20 @@ interface RailProps {
   running: Partial<Record<PlatformId, boolean>>;
   statusLabels: Partial<Record<PlatformId, string>>;
   topPadding: string;
+  macTitleBar: boolean;
 }
 
 /** 最左侧平台栏：应用标识、各平台图标（带运行状态点）、底部全局设置。 */
-export function PlatformRail({ platforms, activePlatform, onSettings, running, statusLabels, topPadding }: RailProps) {
+export function PlatformRail({ platforms, activePlatform, onSettings, running, statusLabels, topPadding, macTitleBar }: RailProps) {
   return (
     <nav
       aria-label="平台"
-      className={cn("flex w-14 shrink-0 flex-col items-center gap-1.5 border-r border-sidebar-border bg-sidebar pb-4", topPadding)}
+      className={cn(
+        "relative flex w-14 shrink-0 flex-col items-center gap-1.5 bg-sidebar pb-4",
+        "after:absolute after:bottom-0 after:right-0 after:w-px after:bg-sidebar-border after:content-['']",
+        macTitleBar ? "after:top-11" : "after:top-0",
+        topPadding,
+      )}
     >
       <Tooltip>
         <TooltipTrigger asChild>

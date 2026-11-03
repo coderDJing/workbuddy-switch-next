@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "WorkBuddy Switch Next",
-  "version": "0.2.0-rc.202611031517",
+  "version": "0.2.0-rc.202611031721",
   "identifier": "io.github.coderdjing.workbuddyswitchnext",
   "build": {
     "beforeDevCommand": "npm run dev:desktop",
@@ -24,7 +24,7 @@
         "hiddenTitle": true,
         "trafficLightPosition": {
           "x": 16,
-          "y": 30
+          "y": 18
         },
         "visible": false
       }
