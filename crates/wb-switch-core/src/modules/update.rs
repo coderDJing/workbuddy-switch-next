@@ -24,7 +24,7 @@ use crate::modules::config::{
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const GITHUB_OWNER: &str = "coderDJing";
 pub const GITHUB_REPO: &str = "workbuddy-switch-next";
-pub const UPDATE_CHANNEL: &str = "preview";
+pub const UPDATE_CHANNEL: &str = "stable";
 
 /// 成功结果缓存有效期（6 小时）。自动轮询（30 分钟）命中缓存，不发网络请求；
 /// 设置页手动检查传 force=true 绕过缓存强制刷新。
@@ -361,14 +361,36 @@ pub async fn update_check(proxy: Option<&str>, force: bool) -> Value {
 mod tests {
     use super::*;
 
+    fn expected_download_base() -> &'static str {
+        if semver::Version::parse(APP_VERSION).unwrap().pre.is_empty() {
+            "https://github.com/coderDJing/workbuddy-switch-next/releases/latest/download"
+        } else {
+            "https://github.com/coderDJing/workbuddy-switch-next/releases/download/preview"
+        }
+    }
+
+    #[test]
+    fn release_page_matches_the_package_channel() {
+        let suffix = if semver::Version::parse(APP_VERSION).unwrap().pre.is_empty() {
+            "latest"
+        } else {
+            "tag/preview"
+        };
+        assert_eq!(
+            release_page_url("coderDJing", "workbuddy-switch-next"),
+            format!("https://github.com/coderDJing/workbuddy-switch-next/releases/{suffix}")
+        );
+    }
+
     #[test]
     fn updater_manifest_urls_macos_skips_duplicate_fallback() {
         let urls = updater_manifest_urls("coderDJing", "workbuddy-switch-next", "macos", "aarch64");
+        let base = expected_download_base();
         assert_eq!(
             urls,
             vec![
-                "https://github.com/coderDJing/workbuddy-switch-next/releases/download/preview/latest.json",
-                "https://github.com/coderDJing/workbuddy-switch-next/releases/download/preview/latest-macos-aarch64.json",
+                format!("{base}/latest.json"),
+                format!("{base}/latest-macos-aarch64.json"),
             ]
         );
     }
@@ -377,12 +399,13 @@ mod tests {
     fn updater_manifest_urls_windows_keeps_macos_compat() {
         let urls =
             updater_manifest_urls("coderDJing", "workbuddy-switch-next", "windows", "x86_64");
+        let base = expected_download_base();
         assert_eq!(
             urls,
             vec![
-                "https://github.com/coderDJing/workbuddy-switch-next/releases/download/preview/latest.json",
-                "https://github.com/coderDJing/workbuddy-switch-next/releases/download/preview/latest-windows-x86_64.json",
-                "https://github.com/coderDJing/workbuddy-switch-next/releases/download/preview/latest-macos-x86_64.json",
+                format!("{base}/latest.json"),
+                format!("{base}/latest-windows-x86_64.json"),
+                format!("{base}/latest-macos-x86_64.json"),
             ]
         );
     }

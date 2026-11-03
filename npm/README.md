@@ -1,75 +1,36 @@
 # WorkBuddy Switch Next
 
-基于 [WorkBuddy Switch](https://github.com/changexbc/workbuddy-switch) 的社区维护版本。Next npm 包尚待 registry 发布；可先使用 Next Release 中的独立 CLI。以下 npm 安装命令供发布后使用。
+基于 [WorkBuddy Switch](https://github.com/changexbc/workbuddy-switch) 的社区维护版本，提供桌面 GUI、浏览器 webui 和一次性 CLI。支持 WorkBuddy / CodeBuddy 各端、JetBrains 插件与 Qoder 国内版 / 国际版的账号管理与切换。
 
-WorkBuddy、CodeBuddy IDE、CodeBuddy CLI 与 VS Code CodeBuddy 插件账号切换工具，浏览器中操作（webui），四者均支持国内版 / 国际版，并提供积分到期与 Token 用量监控。同时提供桌面 App（Tauri）版本。
+从 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 获取桌面安装包或独立 CLI；桌面安装包已自带同版本命令。完整功能、截图和平台限制见 [项目 README](https://github.com/coderDJing/workbuddy-switch-next#readme)。
 
-多账号共享登录态，一键切换 WorkBuddy 登录账号。**会话复制**：把当前账号的会话以新 id 复制给目标账号，源账号数据不受影响，云端归属目标账号。
-
-**在线演示**：[打开 GitHub Pages 演示](https://coderdjing.github.io/workbuddy-switch-next/)（只读演示；账号、积分与请求记录均为虚构数据，所有业务操作均已禁用）
-
-## 快速开始
-
-### npm 安装（webui）
+## 安装与启动
 
 ```bash
-npm i -g workbuddy-switch-next@next
 workbuddy-switch-next              # 启动本地服务 + 自动打开浏览器
-workbuddy-switch-next status       # 终端查看当前账号
+workbuddy-switch-next version      # 查看版本
 ```
 
-webui 界面与桌面 App 一致，功能覆盖下方全部模块。
+支持 Windows x64、macOS Apple Silicon / Intel、Linux x64。桌面安装后请新开终端；macOS / Linux AppImage 需先启动桌面应用完成命令注册。独立 CLI 可按完整路径运行。
 
-### 桌面 App
-
-从 [GitHub Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview) 下载 macOS / Windows / Linux 安装包（Tauri，推荐日常使用）。
-
-> **macOS 提示「已损坏，无法打开」？** 未签名应用会触发隔离机制，在终端执行一次即可：
->
-> ```bash
-> xattr -rd com.apple.quarantine "/Applications/WorkBuddy Switch Next.app"
-> ```
-
-应用能启动但切换账号时提示无权限，请参阅下方 [macOS 权限说明](#macos-权限说明)。
+Next 继续使用 `~/.wb-switch` 账号库，无需删除或迁移账号数据；使用前退出不支持共享认证锁的旧版 GUI。
 
 ## 功能
 
 | 模块 | 说明 |
 | --- | --- |
-| 账号管理 | OAuth 扫码登录、导入导出账号、删除账号 |
-| 账号切换 | 一键切换 WorkBuddy 登录账号，切换过程实时显示进度 |
-| 会话复制 | 把当前账号勾选的会话复制给目标账号，源账号数据不受影响 |
-| 积分到期查询 | 自动查询每个账号的积分剩余量与到期时间；7 天内到期高亮，并按紧迫程度排序、标注「建议优先使用」 |
-| 积分统计 | 汇总官方请求用量：总览、近 30 天趋势、模型分类、账号消耗与请求明细 |
-| Token 统计 | 按来源查看 Token 总览与趋势，含构成占比、活跃热力图、项目/模型 Top 10 与会话排行 |
-| CodeBuddy CLI | 与 WorkBuddy 复用同一账号库，默认账号独立；切换后立即生效，无需重启 CLI |
-| CodeBuddy IDE | 支持切换 CodeBuddy IDE 桌面客户端账号，与 CodeBuddy CLI 相互独立 |
-| VS Code CodeBuddy 插件 | 支持切换 VS Code 内的 CodeBuddy 插件账号；VS Code 运行时可自动关闭并在写入后重新打开 |
-| 插件会话复制 | 切换插件账号时，可把当前插件账号的会话复制给目标账号（加法，源账号不变） |
-| 自动轮换 | 后台把积分最紧迫的账号设为 CodeBuddy CLI 后续启动账号；检测到 CLI 会话运行时会跳过 |
-| 自动更新 | 从 GitHub Releases 检查新版本，整包更新经签名校验 |
-| 权限检测 | macOS 授权引导（App 管理 / 完全磁盘访问拖拽授权 + 自动检测） |
+| WorkBuddy / CodeBuddy | 共用账号库；支持 WorkBuddy、CodeBuddy IDE、CLI、VS Code 与 JetBrains 插件账号切换，按客户端开关入口 |
+| Qoder | 独立账号库；支持国内版 / 国际版桌面端与 CLI 的网页登录添加、本机识别、积分查询、切换和备份迁移 |
+| 会话管理 | WorkBuddy / CodeBuddy 支持会话复制、跨账号关联、增量同步及分歧处理，具体能力按客户端区分 |
+| 用量统计 | WorkBuddy / CodeBuddy 的积分到期、请求用量、Token 趋势及按账号 / 模型统计 |
+| 平台设置 | CodeBuddy CLI 自动轮换、自动签到、限额监听及权限检测 |
+| WebDAV | 加密备份、选择恢复及跨设备同步，包含凭据新旧判断与并发保护；不包含 Qoder 账号 |
 
-## 使用
+webui 不提供桌面专属的 Agent Companion 悬浮窗。Qoder 目前完成 Windows 国内版网页登录、已有登录文件的桌面切换与恢复，以及隔离目录下的 CLI 登录身份确认；全新桌面首次启动、国际版、macOS / Linux、自动续期和跨客户端同时使用尚未完成真实验证。各端的功能矩阵与限制见 [项目 README](https://github.com/coderDJing/workbuddy-switch-next#支持的工具)。
 
-1. **添加与导出账号**：账号页 →「OAuth 扫码登录」「导入备份」；「导出」可将勾选账号备份为 JSON
-2. **切换账号与账号信息**：账号卡片 →「切换」，可勾选复制当前会话；「账号信息」可给账号添加备注，并选择卡片上显示账号名 / 手机号 / 备注
-3. **查看积分与统计**：账号页自动查询各账号积分到期情况，点「刷新积分」手动更新；侧栏进入「积分统计」「Token 统计」查看用量明细
-4. **切换各客户端账号**：CodeBuddy CLI、CodeBuddy IDE、VS Code CodeBuddy 插件均可在账号卡片一键切换；其中 VS Code 插件支持在弹窗中勾选复制当前账号的会话。CodeBuddy IDE 首次使用前需先手动打开并登录一次
-5. **自动轮换**：设置 → CodeBuddy CLI 自动轮换，开启后按积分紧迫程度自动设置默认账号
-6. **更新**：设置 → 自动更新可检查公开 GitHub Releases 源；npm 版本也可通过 `npm update -g workbuddy-switch-next` 升级
+切换 CodeBuddy CLI 会关闭运行中的 CLI，不自动重开。设置 →「支持工具」控制各端入口；自动轮换、签到、限额监听和权限检测位于 WorkBuddy / CodeBuddy →「平台设置」。
 
-## macOS 权限说明
-
-切换账号需要写入 WorkBuddy 认证文件，macOS 要求授权「App 管理」（或「完全磁盘访问」）：
-
-1. 首次切换报「无权限」时，点「打开系统设置」
-2. 优先在 **App 管理** 里打开 WorkBuddy Switch Next 开关；若没有，则去 **完全磁盘访问** 把 WorkBuddy Switch Next 拖进带箭头的框
-3. 授权后重启本应用生效；设置页「权限检测」可随时验证
-
-> webui 模式：由启动服务的终端进程权限决定；若终端已授权完全磁盘访问则无需额外操作。
-
-## CodeBuddy CLI / AI 调用
+## CLI / AI 调用
 
 无需打开 GUI，一次性命令执行后退出：
 
@@ -83,12 +44,16 @@ workbuddy-switch-next switch <ACCOUNT_ID> --dry-run  # 切号预览
 workbuddy-switch-next switch <ACCOUNT_ID>            # 实际切号
 ```
 
-默认 JSON，人工阅读加 `--text`；结果在 stdout，进度在 stderr。实际切号会关闭运行中的 CLI，不自动重开；未观察到限额不保证模型可用。与 GUI 同时写入须使用配套新版。
+一次性账号切换命令目前只支持 `codebuddy-cli`，Qoder 等其他客户端通过 GUI / webui 操作。查询与切换默认 JSON，人工阅读加 `--text`；结果在 stdout，进度在 stderr。积分查询可能刷新凭据并写入缓存；未观察到限额不代表模型可用。
 
-完整参数与返回约定见 [CLI 文档](../docs/cli.md)，或运行 `workbuddy-switch-next --help`。
+完整参数、返回约定及 PATH 排查见 [CLI 文档](https://github.com/coderDJing/workbuddy-switch-next/blob/main/docs/cli.md)，或运行 `workbuddy-switch-next --help`。
+
+## 升级与权限
+
+桌面版使用 Next 签名更新源：正式版走 `latest`，RC 走 `preview`，不互相自动迁移；RC 转正式版请手动安装正式版。独立 CLI 可从 Release 下载新版替换。
+
+macOS webui 的文件权限由启动服务的终端决定，切换账号遇到权限错误时按提示授权终端。桌面安装与 macOS 授权步骤见 [项目 README](https://github.com/coderDJing/workbuddy-switch-next#macos-权限说明)。
 
 ## 许可
 
-[MIT](./LICENSE)
-
-主命令 `workbuddy-switch-next` 与兼容别名 `workbuddy-switch` 使用同一启动器。继续读取 `~/.wb-switch` 账号库，迁移时无需删除账号数据。
+[MIT](https://github.com/coderDJing/workbuddy-switch-next/blob/main/LICENSE)。保留原项目版权与来源。

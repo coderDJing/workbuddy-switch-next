@@ -6,7 +6,7 @@
 
 用户于 2026-11-01 选定 **WorkBuddy Switch Next**。项目介绍、应用侧栏、网页/桌面窗口标题及系统通知使用该名称；简介为“持续维护的 WorkBuddy 多账号管理工具，支持桌面 GUI 与 CLI”。保留原项目来源、版权与 MIT 许可。
 
-当前仓库为 `coderDJing/workbuddy-switch-next`，首个独立维护预览版本为 `0.2.0-beta.1`。安装名称、应用标识、npm 包名和更新签名已独立；账号库与认证锁继续使用原目录。
+当前仓库为 `coderDJing/workbuddy-switch-next`，首个独立维护正式版本为 `0.2.0`，完整变化见 [版本说明](releases/0.2.0.md)。此前的 `0.2.0-beta.1` 为历史预览版本；后续仅发布 RC 与正式版。安装名称、应用标识、npm 包名和更新签名已独立；账号库与认证锁继续使用原目录。
 
 ### 正式图标
 
@@ -72,6 +72,18 @@
 
 保留 `14430ef9f3ec592f2c898fb088800cc7b7a70097` / 0.2.2 快照。`patches/agent-companion/host-compatibility.patch` 与版本清单记录维护差异。已实际从该固定提交归档、应用补丁并核对全部 292 个文件；不是仅检查补丁语法。更新脚本的回归测试覆盖幂等、忽略未提交源码以及失败保留原快照。
 
+## 0.2.0 正式版准备（2026-11-03）
+
+在上述维护基线上，0.2.0 同时包含以下 RC 阶段的变化：
+
+- WorkBuddy / CodeBuddy 与 Qoder 平台导航分开，区分全局设置与平台设置；按客户端开关入口与状态轮询。
+- Qoder 国内版 / 国际版桌面端与 CLI 独立账号管理，支持网页登录添加、本机识别、身份合并、备份导入导出，以及分类积分和可用到期信息展示。
+- 桌面安装包内置同版本 CLI，补齐 Windows、macOS、Linux 的命令注册与安装包内容校验。
+- 改善滚动条、macOS 标题栏和 Qoder 多客户端账号卡片，修复账号状态循环导致的内存增长。
+- RC 使用上海时间版本号及 `preview` 更新入口；正式版使用 `latest`。普通诊断日志只在 RC 启用。
+
+Qoder 的真实验证目前限于 Windows 国内版网页登录、已有登录文件的桌面切换与恢复，以及隔离目录下的官方 CLI 登录身份确认。全新桌面首次启动、国际版、macOS / Linux、自动续期与跨客户端同时使用仍待真实验证，详情见 [试验与验证记录](research/qoder-first-login-feasibility.md)。
+
 ## 后续维护
 
 本轮完成上表 PR 的整合，不等于所有上游 Issue 已解决。后续仍需调查跨账号副本不可见（#200）、IDE 新增关联入口（#195）、批量归档选择（#165）、企业登录（#177）及旧 WebKit（#196）。工作记忆、专家团、自动化跨账号迁移（#209、#154、#150）需另行确认数据所有权及恢复路径。
@@ -96,12 +108,18 @@
 
 ## 发布状态
 
-首个 Next 维护预览版为 `0.2.0-beta.1`。四平台构建、签名、完整更新清单及校验和由 `.github/workflows/build.yml` 产出。手动运行仅上传构建 artifacts；推送匹配版本的 tag 后才发布版本 Release，并更新 preview 更新入口。
+### 0.2.0 本地准备验证（2026-11-03）
 
-Next 使用独立签名和应用标识，预览更新指向自有仓库的 preview Release，清单内的下载 URL 固定到版本 tag。更新源配置写入 `github_config_next.json`；旧配置仅作一次性读取与代理迁移，不修改原配置或账号文件。
+- Windows 本机：正式版身份与版本校验、Cargo.lock 三个项目包版本及文档本地链接通过。
+- 主前端 121 项测试、生产构建通过；发布与 npm launcher 测试 19 项通过、1 项 Unix 专属测试跳过。
+- core 910 项单测通过、5 项按既有规则忽略，核心集成测试通过；server 36 项单测与 23 项端到端测试、桌面 33 项单测通过。三个包的格式检查及严格 Clippy 通过。
+- 更新地址测试已按包版本分别校验正式版 / RC 的预期入口。README 主界面截图使用当前只读演示重新采集，并新增 Qoder 页面预览。
+- 上述结果为本地验证；三平台 CI、四平台安装包构建、签名及 Release 发布以对应版本的 GitHub Actions 和 Release 实际产物为准。
 
-本机没有 npm registry 发布登录态；`PUBLISH_NPM=false`，包名、平台分包和兼容命令已准备。配置有效的 NPM_TOKEN 并显式启用该变量后，再发布 npm，避免桌面发布被 npm 凭据缺失阻断。
+`0.2.0` 使用正式版通道。四平台构建、更新包签名、完整更新清单及校验和由 `.github/workflows/build.yml` 产出。手动运行仅上传构建 artifacts；推送匹配版本的 tag 后才发布版本 Release。正式版标记为 GitHub latest；RC 标记为预发布并更新 `preview` 入口，成功后清理旧 RC 的 Release、tag 及过期 preview 附件，保留当前 RC、正式版及其他历史预发布类型。
+
+Next 使用独立签名和应用标识，正式版与 RC 分别从自有仓库的 `latest` / `preview` Release 获取更新，清单内的下载 URL 固定到版本 tag。两通道不互相更新；RC 用户转正式版需手动安装。更新源配置写入 `github_config_next.json`；旧配置仅作一次性读取与代理迁移，不修改原配置或账号文件。
 
 Windows 本机验证、三平台 CI 与正式发布结果按当前执行回执更新；配置完成不能替代这些运行结果。发布操作和签名维护详见 [开发指南](DEVELOPMENT.md)。
 
-本轮 Windows 试装通过，实际安装位置为 `D:\Program Files\WorkBuddy Switch Next`。签名安装包、独立 CLI、版本与更新来源已在隔离环境核对，账号库无实际切号操作。验证回执位于本机 `target/next-smoke-*`。
+早期预览版 Windows 试装通过，实际安装位置为 `D:\Program Files\WorkBuddy Switch Next`。当时的签名安装包、独立 CLI、版本与更新来源已在隔离环境核对，账号库无实际切号操作。验证回执位于本机 `target/next-smoke-*`，不替代本次正式版的安装包验收。

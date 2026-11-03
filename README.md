@@ -4,7 +4,7 @@
 
 本仓库是 [changexbc/workbuddy-switch](https://github.com/changexbc/workbuddy-switch) 的社区维护分支，维护完整的 GUI 与 CLI 体验，覆盖账号、认证、会话迁移、用量统计、客户端切换及会话悬浮窗。现有修复、维护计划、验证方式与发布状态见 [Fork 维护说明](docs/FORK-MAINTENANCE.md)。
 
-WorkBuddy、CodeBuddy IDE、CodeBuddy CLI 与 VS Code CodeBuddy 插件账号切换桌面 App（Tauri），四者均支持国内版 / 国际版，并提供积分到期与 Token 用量监控。
+支持 WorkBuddy / CodeBuddy 各端、JetBrains 插件及 Qoder 国内版 / 国际版的账号管理与切换。桌面 App 基于 Tauri，另提供浏览器 webui 与一次性 CLI；WorkBuddy / CodeBuddy 支持积分到期、请求用量及 Token 统计，Qoder 支持账号积分查询。
 
 <p align="center">
   <img src="public/icon-transparent.png" alt="WorkBuddy Switch Next 图标" width="128" />
@@ -16,9 +16,9 @@ WorkBuddy、CodeBuddy IDE、CodeBuddy CLI 与 VS Code CodeBuddy 插件账号切�
 
 ## 快速开始
 
-当前维护预览版与安装包以 [Next 预览版发布页](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview) 实际产物为准，也可按 [构建说明](docs/cli.md#构建与维护) 从源码构建。
+日常使用推荐 [最新正式版](https://github.com/coderDJing/workbuddy-switch-next/releases/latest)。本轮正式版为 **0.2.0**，变化与兼容说明见 [版本说明](docs/releases/0.2.0.md)；安装包以 Releases 实际产物为准。需要提前体验后续变化时，可使用 [RC 候选版](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview)。也可按 [构建说明](docs/cli.md#构建与维护) 从源码构建。
 
-前往 [Next 预览版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview) 下载对应平台的安装包：
+前往 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 下载对应平台的安装包：
 
 | 平台 | 安装包 | 安装方式 |
 | --- | --- | --- |
@@ -26,6 +26,8 @@ WorkBuddy、CodeBuddy IDE、CodeBuddy CLI 与 VS Code CodeBuddy 插件账号切�
 | macOS Intel（x86_64） | `workbuddy-switch-next-macos-x86_64.dmg` | 打开 DMG，将 `WorkBuddy Switch Next.app` 拖入「应用程序」 |
 | Windows x64 | `workbuddy-switch-next-windows-x86_64-setup.exe` | 运行安装程序并按提示完成安装 |
 | Linux x64 | `workbuddy-switch-next-linux-x86_64.deb` / `workbuddy-switch-next-linux-x86_64.AppImage` | Debian/Ubuntu 安装 `.deb`；其他发行版可给 AppImage 添加执行权限后直接运行 |
+
+正式版只接收正式版更新，RC 只通过 `preview` 接收 RC 更新。已安装 RC 的用户如需转正式版，请退出应用后手动安装正式版，无需删除 `~/.wb-switch` 账号库。安装包与独立 CLI 可用同一 Release 中的 `SHA256SUMS` 核对完整性。
 
 macOS 首次启动若提示无法验证开发者，先在 Finder 中按住 Control 点击应用并选择「打开」，或前往「系统设置 → 隐私与安全性」选择「仍要打开」。仅当安装包来自上述官方 Releases、且系统仍提示「已损坏」时，再执行：
 
@@ -35,13 +37,14 @@ xattr -rd com.apple.quarantine "/Applications/WorkBuddy Switch Next.app"
 
 应用能启动但切换账号时提示无权限，请参阅下方 [macOS 权限说明](#macos-权限说明)。
 
-另有 npm / webui 版本可在浏览器中使用，见文末 [npm / webui 版本](#npm--webui-版本)。
+也可通过 CLI 启动本地 webui，在浏览器中使用，见文末 [CLI 与 webui](#cli-与-webui)。
 
 ## 功能
 
 | 模块 | 说明 |
 | --- | --- |
 | 账号管理 | OAuth 扫码登录、导入导出账号、删除账号 |
+| Qoder 账号管理 | 独立管理国内版 / 国际版桌面端与 CLI 账号，支持网页登录添加、本机识别、积分查询及备份迁移；验证范围见下文 |
 | 账号切换 | 一键切换 WorkBuddy 登录账号，切换过程实时显示进度 |
 | 会话复制 | 把当前账号勾选的会话复制给目标账号，源账号数据不受影响 |
 | 关联会话 | 复制过的会话自动建立跨账号关联；按客户端集中查看同一会话在各账号中的副本状态，支持增量同步、分歧处理与新增 / 解除关联 |
@@ -79,13 +82,14 @@ xattr -rd com.apple.quarantine "/Applications/WorkBuddy Switch Next.app"
 
 最左侧平台栏切换「WorkBuddy / CodeBuddy」与「Qoder」，各平台平级、账号库互不相通：WorkBuddy / CodeBuddy 各端（WorkBuddy / CodeBuddy IDE / CodeBuddy CLI / VS Code / JetBrains 插件）共用一个账号库，Qoder 独立管理「账号包」。每个平台只显示它支持的页面：关联会话、Token 统计、积分统计目前只有 WorkBuddy / CodeBuddy 有数据源，Qoder 只有「账号管理」；平台栏底部是全局设置（外观、支持工具、悬浮窗、通知、WebDAV、更新），自动签到、CLI 自动轮换、限额监听与权限检测在 WorkBuddy / CodeBuddy 的「平台设置」里。关闭设置 →「支持工具」里的 Qoder 后，平台栏不再显示 Qoder。
 
-- **登录添加**：选择国内版或国际版，点击「登录添加」，在 Qoder 官方网页完成授权。Windows 试验版将授权独立加密保存，添加时无需先登录客户端；切换时按所选客户端生成登录数据，包括全新桌面端的登录文件。首次桌面切换目前只通过模拟数据和客户端字段检查，尚未完成真实账号验证。macOS / Linux 仍使用客户端存储，桌面端需要已有登录文件。登录添加不自动切换当前客户端。
+- **登录添加**：选择国内版或国际版，点击「登录添加」，在 Qoder 官方网页完成授权。Windows 将授权独立加密保存，添加时无需先登录客户端；切换时按所选客户端生成登录数据。macOS / Linux 仍使用客户端存储，桌面端需要已有登录文件。登录添加不自动切换当前客户端。
 - **本机账号识别**：打开 Qoder 页面时自动识别并保存已登录的国内版、国际版桌面端和 CLI 账号，按可验证的账号身份合并展示，不会切换当前客户端。macOS / Linux 桌面端需要时通过页面提示授权系统密钥访问；删除的账号不会被后台识别重新添加。
 - **账号积分**：每张账号卡显示 Qoder 返回的剩余、总计和已用积分，进入页面后查询，并每 5 分钟自动更新，也可手动刷新。桌面端和 CLI 共用同一账号余额；查询失败时显示错误，不按零积分处理。
 - **切换**：先把现场凭据整组备份（各端保留最近 10 份），再写入目标账号包，写入后逐份比对 sha256，任何一步失败整组回滚。现场登录态还没导入时会先自动保存；保存失败则取消切换。
 - **进程**：对应桌面端运行中会先关闭、写入后重新打开；CLI 运行中会被关闭，不会自动重开。从 Qoder 内置终端启动本工具时拒绝关闭 Qoder，需先手动退出。
 - **备份迁移**：可选择国内版、国际版账号导出为 JSON，在另一台电脑导入。备份包含登录凭据，应妥善保管；凭据过期时需重新登录。导入不会切换当前客户端。macOS / Linux 的桌面端需要可用的 Qoder 本机加密存储；无法准备的客户端会在导入结果中提示。
 - **限制**：Qoder 账号不参与 WebDAV 同步；Qoder 会话历史不按账号隔离，切换后不同账号可见同一份本地历史。同一账号的各客户端凭据分别保存，按稳定账号身份合并展示；无法读取账号身份的本机导入项不会按名称猜测合并。
+- **验证范围**：Windows Qoder CN 0.4.11 已验证真实网页登录添加、已有登录文件的桌面端切换及恢复原账号，并用官方 CLI 在隔离目录确认生成的登录身份。全新桌面目录的首次启动、国际版、macOS / Linux、自动续期及跨客户端同时使用尚未完成真实验证。详见 [Qoder 验证记录](docs/research/qoder-first-login-feasibility.md)。
 
 凭据布局与切换流程参考 [NextAgentX/qoder-trae-workbuddy-switch](https://github.com/NextAgentX/qoder-trae-workbuddy-switch) 及 [JIUSHIQINGSHAN/qoder-switch](https://github.com/JIUSHIQINGSHAN/qoder-switch)，代码按本项目结构重写。
 
@@ -120,16 +124,24 @@ CodeBuddy CLI 切换时会先关闭正在运行的 CLI，当前会话会中断�
 5. **管理关联会话**：侧栏「关联会话」按客户端查看同一会话在各账号中的副本状态，把新增内容增量同步到目标账号、处理内容分歧；「新增关联会话」可把会话复制到新账号并建立关联
 6. **开关各端入口**：设置 →「支持工具」可按客户端逐个开启 / 关闭入口；关闭后该端在账号页隐藏、不再轮询状态，不影响账号库。JetBrains 端默认关闭
 7. **自动轮换**：WorkBuddy / CodeBuddy →「平台设置」→ CodeBuddy CLI 自动轮换，开启后按积分紧迫程度自动设置默认账号
-8. **更新**：应用会自动检查 Next 自有签名的更新源，预览版通过 preview 入口接收更新；发现新版本后可在左下角直接升级，也可从设置页打开 Release 页面手动下载
+8. **更新**：应用会自动检查 Next 自有签名的更新源；正式版使用 `latest`，RC 使用 `preview`，两个通道互不自动迁移。发现同通道新版本后可在左下角直接升级，也可从设置页打开 Release 页面手动下载
 9. **WebDAV 备份 / 跨设备同步**：设置 →「WebDAV 备份 / 跨设备同步」，配置私有 WebDAV 服务器（地址 / 用户名 / 口令 / 远端目录）与备份加密密码；「立即备份」把整库账号与功能配置加密上传，「从云端恢复」可勾选账号并可选同时写回配置，「同步」拉取合并后回推整库（同 UID 和客户端类型匹配，旧凭据不会覆盖新凭据，冲突提示；ETag 防止并发覆盖）
 
 ## 界面预览
+
+以下截图来自 0.2.0 只读演示，账号、积分与请求记录均为虚构数据。
 
 ### 管理 WorkBuddy 与 CodeBuddy 账号
 
 账号卡片集中展示登录状态、积分余额和到期资源，临期积分直接标注在对应卡片内，并按紧迫程度优先排列。
 
-![账号管理页面（账号信息已脱敏）](docs/images/accounts-overview.png)
+![WorkBuddy / CodeBuddy 账号管理页面（演示数据）](docs/images/accounts-overview.png)
+
+### 管理 Qoder 账号
+
+通过最左侧平台栏进入 Qoder，分别管理国内版与国际版账号；同一身份的桌面端和 CLI 凭据合并展示，各端独立切换。
+
+![Qoder 账号管理页面（演示数据）](docs/images/qoder-accounts.png)
 
 ### 关联会话
 
@@ -161,16 +173,15 @@ Token 统计页按来源展示 Token 总览与趋势、构成占比、活跃热�
 2. 优先在 **App 管理** 里打开 WorkBuddy Switch Next 开关；若没有，则去 **完全磁盘访问** 把 WorkBuddy Switch Next 拖进带箭头的框
 3. 授权后重启本应用生效；WorkBuddy / CodeBuddy →「平台设置」→「权限检测」可随时验证
 
-## npm / webui 版本
+## CLI 与 webui
 
 桌面安装包已自带同版本的 `workbuddy-switch-next` 命令。Windows 安装后请新开终端；macOS 与 Linux AppImage 首次启动应用后请新开终端，Linux deb 安装后可直接使用。详细的 PATH 与冲突处理见 [CLI 文档](docs/cli.md)。
 
-npm 包名为 `workbuddy-switch-next`，目前尚未发布到 registry；下列 npm 安装命令供发布后使用。独立 CLI 也可从 Release 下载。npm 包提供旧命令 `workbuddy-switch` 作为兼容别名。
+不安装桌面版时，也可从 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 下载对应平台的独立 CLI，按完整路径运行。
 
 ```bash
-npm i -g workbuddy-switch-next@next
 workbuddy-switch-next              # 启动本地服务 + 自动打开浏览器
-workbuddy-switch-next status       # 终端查看当前账号
+workbuddy-switch-next status --target codebuddy-cli  # 终端查看当前 CLI 账号
 ```
 
 界面与桌面 App 一致，功能覆盖上方全部模块，但不提供会话悬浮窗（桌面版专属）。webui 模式下的 macOS 权限由启动服务的终端进程决定；若终端已授权完全磁盘访问则无需额外操作。

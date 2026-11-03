@@ -40,7 +40,17 @@ npm run build:app:release
 
 ## RC 诊断日志
 
-版本的首个预发布标识为 `rc` 时启用诊断（例如 `0.2.0-rc.4`），Beta 和正式版不写入。日志为 `~/.wb-switch/diagnostics/rc-debug.log`，每份最多 1 MiB，保留一份 `.1` 备份。记录启动、IPC 接收/分发与更新检查各阶段，只传递命令名、状态、计数和耗时；禁止记录命令参数、凭据、响应正文、代理地址或原始错误字符串。桌面设置的自动更新区可打开日志位置。
+版本的首个预发布标识为 `rc` 时启用诊断（例如 `0.2.0-rc.202611031733`），正式版不写入普通诊断，正常错误日志继续保留。日志为 `~/.wb-switch/diagnostics/rc-debug.log`，每份最多 1 MiB，保留一份 `.1` 备份。记录启动、IPC 接收/分发与更新检查各阶段，只传递命令名、状态、计数和耗时；禁止记录命令参数、凭据、响应正文、代理地址或原始错误字符串。桌面设置的自动更新区可打开日志位置。
+
+## 正式版发布准备
+
+1. 对齐最新 `main`，核对本轮功能、修复和已知限制；同步根 README、npm README、维护说明与 CLI 文档。
+2. 运行 `npm run version:set -- stable`，将当前 RC 的基础版本转为正式版；用 `cargo check -p wb-switch-core` 更新 Cargo.lock。
+3. 新建 `docs/releases/<版本>.md`。发布工作流直接读取此文件，必须写明本版变化、安装迁移、更新通道和验证边界。
+4. 运行 `npm run release:check`、前端测试与生产构建、发布脚本测试、Rust 测试和格式检查。核对 Cargo.lock 中三个项目包的版本，以及 Tauri 和 core 的正式版更新地址。
+5. 检查通过后，按「提交 → push main → 打对应版本 tag → push tag」执行。准备阶段可以停在本地；只有推送 tag 才触发正式发布。四平台构建与签名成功后，才以 Release 的实际产物作为发布完成依据。
+
+从正式版开始新 RC 周期时，用 `npm run version:set -- rc`，脚本将补丁位加一并按十进位进位，例如 `1.1.9 → 1.2.0`；已有 RC 保持基础版本不变。RC 用户转正式版需手动安装；正式版发布不改写 `preview` 更新入口。
 
 ## 更新签名
 
@@ -61,7 +71,7 @@ Next 使用自己的 Tauri updater 签名。当前机器的签名材料在用户
 2. 先复用完整三平台 test 工作流作为发布门禁，再检查发布身份与版本；构建后收集 CLI、安装包、签名和平台更新清单。
 3. 按「提交 → push main → 打 tag → push tag」发布。版本 tag 必须等于所有包的版本，例如 `v0.2.0-rc.202611020100`。tag 构建四个平台，任一构建失败均不发布 Release。
 4. 合并清单必须覆盖四种目标与 Linux 两种安装形态；所有清单的版本、下载来源、归档及签名必须一致。
-5. 生成 SHA256SUMS，再发布版本 Release。预览版本另外更新名为 preview 的发布入口。
+5. 生成 SHA256SUMS，再发布版本 Release。正式版设为 GitHub latest；RC 另外更新名为 preview 的发布入口，成功后清理旧 RC Release、tag 和 preview 中过期的附件，保留当前 RC、正式版及其他历史预发布类型。
 
 预览清单位于 `/releases/download/preview/latest.json`；清单里的实际安装包 URL 指向不可变版本 tag，避免拉取更新清单后入口移动导致版本错配。预览版不回退到 GitHub `/latest`，因为它不包含预发布版本。
 
@@ -69,7 +79,7 @@ macOS DMG 由固定版本 dmgbuild 制作，支持无 Finder 的 CI。Windows �
 
 ## npm 发布
 
-仓库变量 `PUBLISH_NPM` 必须显式设为 `true`，并提供有效 `NPM_TOKEN`，才会在 tag 构建中发布。当前为 false；桌面发布独立继续。平台包全部成功后才发布主包，预览版使用 npm dist-tag `next`。
+仓库变量 `PUBLISH_NPM` 必须显式设为 `true`，并提供有效 `NPM_TOKEN`，才会在 tag 构建中发布。当前为 false；桌面发布独立继续。平台包全部成功后才发布主包，RC 使用 npm dist-tag `next`，正式版使用 `latest`。
 
 本地可用 `npm pack --dry-run --json` 检查 npm 主包内容。安装脚本只从 Next 平台包复制二进制，不会回退到原作者的 npm 包。`WB_SWITCH_BINARY` 本地覆盖入口保留。
 
