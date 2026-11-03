@@ -159,9 +159,10 @@ function QoderAccountCard({ group, targets, targetStatus, compact, busy, busyKey
   const [infoOpen, setInfoOpen] = useState(false);
   const [localRefresh, setLocalRefresh] = useState(0);
   const activeFor = (target: QoderTarget) => group.bundles.some((bundle) => bundle.target === target && (bundle.id === targetStatus(target)?.currentId || (bundle.identityKey && bundle.identityKey === targetStatus(target)?.currentIdentityKey)));
-  const active = targets.some(activeFor);
+  const activeTargets = targets.filter(activeFor);
+  const active = activeTargets.length > 0;
   const first = group.bundles[0];
-  const liveTarget = targets.find(activeFor);
+  const liveTarget = activeTargets[0];
   const switchControls = <span className="inline-flex items-center gap-1.5">{targets.map((target) => {
     const bundle = group.targets[target];
     const targetLabel = TARGET_LABELS[target];
@@ -181,7 +182,16 @@ function QoderAccountCard({ group, targets, targetStatus, compact, busy, busyKey
       <header className={cn("relative flex items-center gap-2 border-b border-border", compact ? "min-h-[52px] px-3.5 py-1.5" : "min-h-[104px] px-5 py-3", active ? "bg-primary/5" : "bg-muted/30")}>
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className={cn("absolute -right-10 -top-16 rounded-full blur-2xl", compact ? "size-20" : "size-24", active ? "bg-primary/15" : "bg-muted/30")} />
-          {active && <div className="absolute right-5 top-[64%] -translate-y-1/2 rotate-[7deg] opacity-[0.075] saturate-50"><TargetMark target={liveTarget ?? targets[0]} size={compact ? 40 : 56} /></div>}
+          {activeTargets.map((target, index) => (
+            <div key={target} className={cn(
+              "absolute top-[64%] -translate-y-1/2 opacity-[0.075] saturate-50 grayscale-[10%]",
+              activeTargets.length > 1
+                ? index === 0 ? "right-[68px] rotate-[8deg]" : "right-1 -rotate-[8deg]"
+                : "right-5 rotate-[7deg]",
+            )}>
+              <TargetMark target={target} size={compact ? 40 : 56} />
+            </div>
+          ))}
         </div>
         {!compact && <div className={cn("relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full text-base font-semibold ring-4 ring-white/65", avatarTone(group.label))}>{group.label.charAt(0).toUpperCase()}</div>}
         <div className="relative z-10 min-w-0 flex-1">
