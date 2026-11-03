@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - macos-26
+          - macos-26-intel
           - ubuntu-latest
           - windows-latest
     steps:
@@ -53,8 +53,8 @@ jobs:
             ${{ runner.os }}-cargo-
 
       # 只跑 core：零 tauri 依赖，不需要 webkit / npm / 前端 dist。
-      # 不传 --target，用 runner 原生 target——build.yml 的 mac-x64 是 arm runner 上
-      # 交叉编译 x86_64，跑测试需要 Rosetta，不适用于本 job。
+      # 不传 --target，使用 runner 原生 target。Apple Silicon 安装包在 build.yml
+      # 中交叉编译；这里运行本机架构测试，不执行交叉编译产物。
       - name: Run tests
         run: cargo test -p wb-switch-core
         env:
@@ -96,7 +96,7 @@ jobs:
   # clippy 必须带 --no-deps：vendor/agent-companion 是 path 依赖快照，其告警不归本仓库。
   lint:
     name: lint (tsc + fmt + clippy + server tests)
-    runs-on: macos-26
+    runs-on: macos-26-intel
     steps:
       - uses: actions/checkout@v4
 
