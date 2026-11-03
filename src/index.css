@@ -3,6 +3,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+.os-scrollbar.os-theme-wb {
+  --os-size: 10px;
+  --os-padding-perpendicular: 2px;
+  --os-padding-axis: 3px;
+  --os-handle-border-radius: 9999px;
+  --os-handle-bg: color-mix(in srgb, var(--foreground) 30%, transparent);
+  --os-handle-bg-hover: color-mix(in srgb, var(--foreground) 48%, transparent);
+  --os-handle-bg-active: color-mix(in srgb, var(--foreground) 60%, transparent);
+  --os-handle-min-size: 32px;
+}
+
+/* Native fallback for controls whose scrolling is owned by another component. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 30%, transparent) transparent;
+}
+
 :root {
   color-scheme: light;
   --background: oklch(1 0 0);

@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "@fontsource-variable/bricolage-grotesque";
+import "overlayscrollbars/overlayscrollbars.css";
 import App from "./App";
 import "./index.css";
 import { AppErrorBoundary } from "./components/app-error-boundary";

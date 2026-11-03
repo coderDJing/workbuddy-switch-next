@@ -1178,8 +1178,10 @@ export interface QoderStatus {
 }
 
 export type QoderCredit =
-  | { ok: true; remaining: number; total: number; used: number }
+  | { ok: true; remaining: number; total: number; used: number; planExpiresAt?: number | null; plan?: QoderQuotaPart | null; addOn?: QoderQuotaPart | null; dedicated?: (QoderQuotaPart & { expiresAt: number | null })[] }
   | { ok: false; error: string };
+
+export interface QoderQuotaPart { remaining: number; total: number; used: number }
 
 export interface QoderSwitchResult {
   ok: boolean;

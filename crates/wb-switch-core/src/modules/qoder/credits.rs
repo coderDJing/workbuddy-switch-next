@@ -125,20 +125,25 @@ fn from_live(roots: &QoderRoots, target: QoderTarget, expected: Option<&str>) ->
     from_profile(target, &profile, expected)
 }
 
-fn quota(payload: &Value) -> Option<(f64, f64, f64)> {
-    let body = if payload.get("userQuota").is_some() || payload.get("addOnQuota").is_some() {
+fn quota_body(payload: &Value) -> &Value {
+    if payload.get("userQuota").is_some() || payload.get("addOnQuota").is_some() {
         payload
     } else {
         payload
             .get("data")
             .filter(|value| value.is_object())
             .unwrap_or(payload)
-    };
+    }
+}
+
+fn quota(payload: &Value) -> Option<(f64, f64, f64)> {
+    let body = quota_body(payload);
     let parts: Vec<&Value> = ["userQuota", "addOnQuota"]
         .iter()
         .filter_map(|key| body.get(*key).filter(|v| v.is_object()))
         .collect();
-    if parts.is_empty() {
+    let dedicated = dedicated_parts(payload)?;
+    if parts.is_empty() && dedicated.is_empty() {
         return None;
     }
     let mut remaining = 0.0;
@@ -162,7 +167,88 @@ fn quota(payload: &Value) -> Option<(f64, f64, f64)> {
         total += number("total")?;
         used += number("used")?;
     }
+    for part in &dedicated {
+        remaining += part.get("remaining")?.as_f64()?;
+        total += part.get("total")?.as_f64()?;
+        used += part.get("used")?.as_f64()?;
+    }
     Some((remaining, total, used))
+}
+
+/// The upstream `expiresAt` is the plan expiry, not an add-on pack expiry.
+fn plan_expiry(payload: &Value) -> Option<i64> {
+    expiry_ms(quota_body(payload).get("expiresAt")?)
+}
+
+fn expiry_ms(value: &Value) -> Option<i64> {
+    let raw = value
+        .as_i64()
+        .or_else(|| value.as_str()?.parse::<i64>().ok())?;
+    let millis = if raw < 100_000_000_000 {
+        raw.checked_mul(1000)?
+    } else {
+        raw
+    };
+    (978_307_200_000..4_102_444_800_000)
+        .contains(&millis)
+        .then_some(millis)
+}
+
+/// Dedicated packages are separate from plan and add-on buckets. Some Qoder
+/// accounts expose a specific expiry per package in the normal quota response.
+fn dedicated_parts(payload: &Value) -> Option<Vec<Value>> {
+    let value = quota_body(payload).get("dedicatedResourcePackages");
+    let Some(value) = value else {
+        return Some(Vec::new());
+    };
+    if value.is_null() {
+        return Some(Vec::new());
+    }
+    let mut parts = Vec::new();
+    for part in value.as_array()? {
+        if part.get("available").and_then(Value::as_bool) == Some(false) {
+            continue;
+        }
+        let status = part
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_ascii_uppercase();
+        if [
+            "EXPIRED", "INVALID", "INACTIVE", "DISABLED", "USED_UP", "DEPLETED",
+        ]
+        .iter()
+        .any(|s| status.contains(s))
+        {
+            continue;
+        }
+        if part
+            .get("unit")
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.eq_ignore_ascii_case("credits"))
+        {
+            return None;
+        }
+        let number = |key| {
+            part.get(key)
+                .and_then(Value::as_f64)
+                .filter(|n| n.is_finite() && *n >= 0.0)
+        };
+        parts.push(json!({"remaining":number("remaining")?,"total":number("total")?,"used":number("used")?,"expiresAt":part.get("expiresAt").and_then(expiry_ms)}));
+    }
+    Some(parts)
+}
+
+fn quota_part(payload: &Value, key: &str) -> Option<Value> {
+    let part = quota_body(payload).get(key)?;
+    let number = |name| {
+        part.get(name)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite() && *v >= 0.0)
+    };
+    Some(
+        json!({"remaining":number("remaining")?, "total":number("total")?, "used":number("used")?}),
+    )
 }
 
 pub async fn query(ids: &[String], live_target: Option<QoderTarget>) -> Value {
@@ -176,7 +262,7 @@ pub async fn query(ids: &[String], live_target: Option<QoderTarget>) -> Value {
     .await
 }
 
-async fn query_with(
+pub(super) async fn query_with(
     root: &Path,
     roots: &QoderRoots,
     ids: &[String],
@@ -246,6 +332,8 @@ async fn query_with(
     };
     let mut seen = HashSet::new();
     let mut expired = false;
+    let mut unavailable = false;
+    let mut invalid_response = false;
     for candidate in candidates {
         if seen.len() >= 6 {
             break;
@@ -254,34 +342,135 @@ async fn query_with(
             continue;
         }
         let base = endpoint.unwrap_or(quota_base(candidate.target));
-        let response = client
-            .get(format!("{base}/api/v2/quota/usage"))
-            .header("Accept", "application/json")
-            .bearer_auth(&candidate.token)
-            .send()
-            .await;
-        let Ok(response) = response else {
-            continue;
-        };
-        if matches!(response.status().as_u16(), 401 | 403) {
-            expired = true;
-            continue;
-        }
-        if !response.status().is_success() {
-            continue;
-        }
-        if let Ok(data) = response.json::<Value>().await {
-            if let Some((remaining, total, used)) = quota(&data) {
-                return json!({"ok":true,"remaining":remaining,"total":total,"used":used});
+        for attempt in 0..2 {
+            let response = client
+                .get(format!("{base}/api/v2/quota/usage"))
+                .header("Accept", "application/json")
+                .bearer_auth(&candidate.token)
+                .send()
+                .await;
+            let retry = match response {
+                Err(_) => true,
+                Ok(response) if matches!(response.status().as_u16(), 401 | 403) => {
+                    expired = true;
+                    break;
+                }
+                Ok(response)
+                    if response.status().as_u16() == 429 || response.status().is_server_error() =>
+                {
+                    true
+                }
+                Ok(response) if !response.status().is_success() => {
+                    unavailable = true;
+                    break;
+                }
+                Ok(response) => {
+                    if let Ok(data) = response.json::<Value>().await {
+                        if let Some((remaining, total, used)) = quota(&data) {
+                            return json!({"ok":true,"remaining":remaining,"total":total,"used":used,
+                                "planExpiresAt":plan_expiry(&data), "plan":quota_part(&data,"userQuota"),
+                                "addOn":quota_part(&data,"addOnQuota"), "dedicated":dedicated_parts(&data)});
+                        }
+                    }
+                    invalid_response = true;
+                    break;
+                }
+            };
+            if retry {
+                unavailable = true;
+                if attempt == 0 {
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                }
             }
         }
     }
-    json!({"ok":false,"error":if expired {"登录状态可能已失效，请重新登录"} else {"积分查询失败，请稍后重试"}})
+    json!({"ok":false,"error":if unavailable {"积分服务暂时不可用，请检查网络后刷新"} else if invalid_response {"积分服务返回的数据无法识别，请稍后刷新"} else if expired {"登录状态可能已失效，请重新登录"} else {"积分查询失败，请稍后重试"}})
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[tokio::test]
+    #[ignore = "requires locally authorized Qoder accounts and network"]
+    async fn real_expiry_field_probe_without_secrets() {
+        let root = store::default_store();
+        let roots = QoderRoots::real();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(15))
+            .build()
+            .unwrap();
+        let mut identities = HashSet::new();
+        for meta in store::list(&root, None) {
+            let Some(identity) = &meta.identity_key else {
+                continue;
+            };
+            if !identities.insert(identity.clone()) {
+                continue;
+            }
+            let Some(candidate) = from_bundle(&root, &roots, &meta) else {
+                continue;
+            };
+            let reply = client
+                .get(format!("{}/api/v2/quota/usage", quota_base(meta.target)))
+                .bearer_auth(&candidate.token)
+                .send()
+                .await;
+            let Ok(reply) = reply else {
+                println!("quota=network-error");
+                continue;
+            };
+            let status = reply.status().as_u16();
+            let payload = reply.json::<Value>().await.unwrap_or(Value::Null);
+            let root = payload
+                .get("data")
+                .filter(|v| v.is_object())
+                .unwrap_or(&payload);
+            let describe = |value: Option<&Value>| -> &'static str {
+                match value.and_then(Value::as_i64) {
+                    None => "missing-or-nonnumeric",
+                    Some(n) if n <= 0 || n >= 4_102_444_800_000 => "sentinel-or-invalid",
+                    Some(_) => "plausible",
+                }
+            };
+            let plan = client
+                .get(format!("{}/api/v2/user/plan", quota_base(meta.target)))
+                .bearer_auth(&candidate.token)
+                .send()
+                .await;
+            let (plan_status, plan_has_expiry) = match plan {
+                Ok(response) => {
+                    let code = response.status().as_u16();
+                    let body = response.json::<Value>().await.unwrap_or(Value::Null);
+                    let found = body.as_object().is_some_and(|map| {
+                        map.keys().any(|key| {
+                            let key = key.to_ascii_lowercase();
+                            key.contains("expire") || key.contains("end_time")
+                        })
+                    });
+                    (code, found)
+                }
+                Err(_) => (0, false),
+            };
+            let website = if meta.target.is_global() {
+                "https://qoder.com"
+            } else {
+                "https://qoder.com.cn"
+            };
+            let web_status = client
+                .get(format!("{website}/api/v2/me/usages/big_model_credits"))
+                .bearer_auth(&candidate.token)
+                .send()
+                .await
+                .map(|r| r.status().as_u16())
+                .unwrap_or(0);
+            println!("quota={status} plan-expiry={} user-quota-expiry={} addon-expiry={} plan-api={plan_status} plan-has-expiry={plan_has_expiry} web-bearer={web_status}",
+                describe(root.get("expiresAt")),
+                describe(root.get("userQuota").and_then(|v| v.get("expiresAt"))),
+                describe(root.get("addOnQuota").and_then(|v| v.get("expiresAt"))));
+        }
+    }
 
     #[cfg(windows)]
     #[tokio::test]
@@ -298,6 +487,7 @@ mod tests {
         assert!(!identities.is_empty());
         let mut successes = 0;
         let mut failures = 0;
+        let mut with_plan_expiry = 0;
         for identity in identities {
             let ids: Vec<String> = entries
                 .iter()
@@ -307,11 +497,14 @@ mod tests {
             let result = query(&ids, None).await;
             if result["ok"] == true {
                 successes += 1;
+                if result["planExpiresAt"].is_i64() {
+                    with_plan_expiry += 1;
+                }
             } else {
                 failures += 1;
             }
         }
-        println!("Real credit probe: successes={successes}, failures={failures}");
+        println!("Real credit probe: successes={successes}, failures={failures}, plan_expiry={with_plan_expiry}");
         assert!(successes > 0, "no real account balance was readable");
     }
 
@@ -333,6 +526,39 @@ mod tests {
             quota(&json!({"userQuota":{"remaining":0,"used":3,"total":3}})),
             Some((0.0, 3.0, 3.0))
         );
+    }
+
+    #[test]
+    fn plan_expiry_is_not_fabricated_from_add_on_quota_or_sentinels() {
+        assert_eq!(
+            plan_expiry(&json!({"expiresAt":1795595404000_i64})),
+            Some(1795595404000)
+        );
+        assert_eq!(
+            plan_expiry(&json!({"data":{"expiresAt":1795595404_i64}})),
+            Some(1795595404000)
+        );
+        assert_eq!(plan_expiry(&json!({"expiresAt":253402214400000_i64})), None);
+        assert_eq!(
+            plan_expiry(&json!({"addOnQuota":{"expiresAt":1795595404000_i64}})),
+            None
+        );
+        assert_eq!(plan_expiry(&json!({"expiresAt":0})), None);
+    }
+
+    #[test]
+    fn dedicated_credits_are_counted_and_keep_their_own_expiry() {
+        let data = json!({"userQuota":{"remaining":10,"total":20,"used":10},
+        "dedicatedResourcePackages":[
+            {"remaining":3.5,"total":5,"used":1.5,"expiresAt":1795595404000_i64},
+            {"remaining":99,"total":100,"used":1,"available":false},
+            {"remaining":99,"total":100,"used":1,"status":"QUOTA_DETAIL_STATUS_EXPIRED"}
+        ]});
+        assert_eq!(quota(&data), Some((13.5, 25.0, 11.5)));
+        let parts = dedicated_parts(&data).unwrap();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0]["expiresAt"], 1795595404000_i64);
+        assert!(quota(&json!({"dedicatedResourcePackages":[{"remaining":1}]})).is_none());
     }
 
     #[test]
@@ -371,7 +597,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn falls_back_to_same_account_snapshot_when_live_token_is_rejected() {
+    async fn falls_back_to_same_account_snapshot_and_retries_temporary_failure() {
         use std::io::{Read, Write};
         let temp = std::env::temp_dir().join(format!("wb-qoder-credit-{}", uuid::Uuid::new_v4()));
         let roots = QoderRoots {
@@ -401,7 +627,7 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let endpoint = format!("http://{}", listener.local_addr().unwrap());
         let server = std::thread::spawn(move || {
-            for index in 0..2 {
+            for index in 0..3 {
                 let (mut stream, _) = listener.accept().unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(10)))
@@ -416,10 +642,12 @@ mod tests {
                 }));
                 let (status, body) = if index == 0 {
                     ("401 Unauthorized", "{}")
+                } else if index == 1 {
+                    ("503 Service Unavailable", "{}")
                 } else {
                     (
                         "200 OK",
-                        r#"{"userQuota":{"remaining":12.5,"total":20,"used":7.5}}"#,
+                        r#"{"expiresAt":1795595404000,"userQuota":{"remaining":12.5,"total":20,"used":7.5},"addOnQuota":{"remaining":3,"total":5,"used":2}}"#,
                     )
                 };
                 write!(stream, "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
@@ -435,7 +663,10 @@ mod tests {
         .await;
         server.join().unwrap();
         assert_eq!(result["ok"], true);
-        assert_eq!(result["remaining"], 12.5);
+        assert_eq!(result["remaining"], 15.5);
+        assert_eq!(result["planExpiresAt"], 1795595404000_i64);
+        assert_eq!(result["plan"]["remaining"], 12.5);
+        assert_eq!(result["addOn"]["remaining"], 3.0);
         assert!(!result.to_string().contains("valid-test"));
         std::fs::remove_dir_all(temp).unwrap();
     }

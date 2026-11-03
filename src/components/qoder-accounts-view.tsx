@@ -92,6 +92,11 @@ function QoderCreditPanel({ bundleIds, liveTarget, compact, creditId, refreshVer
       <div className="flex items-center justify-between gap-3 text-[11px]"><span className="rounded-lg bg-muted/80 px-1.5 py-0.5 font-medium tabular-nums text-foreground">{format(credit.remaining)} 积分</span><span className="tabular-nums">总计 {format(credit.total)}</span></div>
       <div className="h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${ratio}%` }} /></div>
       <div className="text-[11px] tabular-nums text-muted-foreground">已用 {format(credit.used)} 积分</div>
+      {(credit.plan?.total || credit.addOn?.total || credit.planExpiresAt || credit.dedicated?.length) ? <div className="space-y-1.5 border-t border-border/60 pt-2">
+        {credit.plan?.total ? <div className="flex items-center justify-between gap-2"><span>套餐积分 · 剩余 {format(credit.plan.remaining)}</span><span className="shrink-0 tabular-nums">{credit.planExpiresAt ? `套餐 ${new Date(credit.planExpiresAt).toLocaleDateString("zh-CN")} 到期` : "套餐到期时间未提供"}</span></div> : credit.planExpiresAt ? <div className="flex items-center justify-between gap-2"><span>套餐</span><span className="shrink-0 tabular-nums">{new Date(credit.planExpiresAt).toLocaleDateString("zh-CN")} 到期</span></div> : null}
+        {credit.addOn?.total ? <div className="flex items-center justify-between gap-2"><span>额外积分 · 剩余 {format(credit.addOn.remaining)}</span><span className="shrink-0">到期时间未提供</span></div> : null}
+        {credit.dedicated?.filter((part) => part.total > 0).map((part, index) => <div key={`${part.expiresAt}-${index}`} className="flex items-center justify-between gap-2"><span>专属积分 · 剩余 {format(part.remaining)}</span><span className="shrink-0 tabular-nums">{part.expiresAt ? `${new Date(part.expiresAt).toLocaleDateString("zh-CN")} 到期` : "到期时间未提供"}</span></div>)}
+      </div> : null}
     </div>
   </div>;
 }

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { ChevronDown, ChevronRight, Folder } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { OverlayScrollArea } from "@/components/ui/overlay-scroll-area";
 import type { Session } from "@/lib/types";
 
 /**
@@ -165,7 +166,7 @@ export function SessionTreeList({
   className?: string;
 }) {
   return (
-    <div className={className}>
+    <OverlayScrollArea className={className}>
       {buildSessionTree(sessions).map((kind) => {
         const kindOpen = expanded.has(kind.key);
         const kindSel = selectionState(kind.sessions, selected);
@@ -254,6 +255,6 @@ export function SessionTreeList({
           </div>
         );
       })}
-    </div>
+    </OverlayScrollArea>
   );
 }

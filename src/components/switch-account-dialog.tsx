@@ -437,7 +437,7 @@ export function SwitchAccountDialog({ open, onOpenChange, account, onDone }: Pro
           onToggleSession={toggleSession}
           onToggleGroup={toggleFolder}
           onToggleExpanded={toggleExpanded}
-          className={`max-h-[min(22rem,45vh)] overflow-y-auto pr-1 ${LIST_MIN_H}`}
+          className={`max-h-[min(22rem,45vh)] pr-1 ${LIST_MIN_H}`}
         />
       )}
     </>

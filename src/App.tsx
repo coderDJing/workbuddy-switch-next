@@ -15,6 +15,7 @@ import { StatusDot } from "@/components/product-marks";
 import { CompanionDemoDialog } from "@/components/companion-demo-dialog";
 import { UpdateInstallDialog } from "@/components/update-install-dialog";
 import { Button } from "@/components/ui/button";
+import { OverlayScrollArea } from "@/components/ui/overlay-scroll-area";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/sonner";
 import { Switch } from "@/components/ui/switch";
@@ -271,14 +272,15 @@ function Layout() {
         topPadding={topPadding}
         footer={api.isWebui() && !demoModeEnabled ? null : <UpdateCenter running={running} />}
       />
-      <main
+      <OverlayScrollArea
+        element="main"
         className={cn(
-          "min-w-0 flex-1 overflow-y-auto bg-background overscroll-contain",
-          hasUnifiedTitleBar && "pt-16 [&>div]:pt-4",
+          "min-w-0 flex-1 bg-background overscroll-contain",
+          hasUnifiedTitleBar && "pt-16",
         )}
       >
-        <Outlet />
-      </main>
+        <div className={hasUnifiedTitleBar ? "pt-4" : undefined}><Outlet /></div>
+      </OverlayScrollArea>
     </div>
   );
 }

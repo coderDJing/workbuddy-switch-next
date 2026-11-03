@@ -881,7 +881,7 @@ function AddLinkedSessionDialog({ client, disabled, onDone, requestRestartConfir
                     onToggleSession={toggleSession}
                     onToggleGroup={toggleGroup}
                     onToggleExpanded={toggleExpanded}
-                    className={`max-h-[min(22rem,45vh)] overflow-y-auto pr-1 ${LINKED_TREE_MIN_H}`}
+                    className={`max-h-[min(22rem,45vh)] pr-1 ${LINKED_TREE_MIN_H}`}
                   />}
         </div>
         <div className="min-w-0 space-y-1.5"><p className="text-xs font-medium">目标账号</p>

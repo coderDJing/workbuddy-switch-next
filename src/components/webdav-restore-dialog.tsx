@@ -4,6 +4,7 @@ import { CloudDownload, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { OverlayScrollArea } from "@/components/ui/overlay-scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -196,7 +197,8 @@ export function WebdavRestoreDialog({
                 {allSelected ? "取消全选" : "全选"}
               </button>
             </div>
-            <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+            <OverlayScrollArea className="max-h-56">
+              <div className="space-y-1 pr-1">
               {preview.map((a) => (
                 <label
                   key={a.index}
@@ -216,7 +218,8 @@ export function WebdavRestoreDialog({
                   )}
                 </label>
               ))}
-            </div>
+              </div>
+            </OverlayScrollArea>
           </>
         )}
 

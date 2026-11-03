@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import * as api from "@/lib/api";
 import type { QoderAccountGroup } from "@/lib/qoder-accounts";
+import { OverlayScrollArea } from "@/components/ui/overlay-scroll-area";
 
 type Props = {
   mode: "export" | "import" | null;
@@ -151,7 +152,8 @@ export function QoderBackupDialog({ mode, onClose, groups, onImported }: Props) 
               <span className="text-muted-foreground">共 {items.length} 个账号，已选 {selected.size} 个</span>
               <button type="button" className="cursor-pointer text-primary hover:underline" onClick={() => setSelected(allSelected ? new Set() : new Set(items.map((item) => item.id)))}>{allSelected ? "取消全选" : "全选"}</button>
             </div>
-            <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+            <OverlayScrollArea className="max-h-56">
+              <div className="space-y-1 pr-1">
               {items.map((item) => (
                 <label key={item.id} className="flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 hover:bg-accent/50">
                   <input type="checkbox" className="size-4 accent-primary" checked={selected.has(item.id)} onChange={() => toggle(item.id)} />
@@ -159,7 +161,8 @@ export function QoderBackupDialog({ mode, onClose, groups, onImported }: Props) 
                   <span className="text-xs text-muted-foreground">{item.global ? "国际版" : "国内版"}</span>
                 </label>
               ))}
-            </div>
+              </div>
+            </OverlayScrollArea>
           </>
         )}
         {mode === "export" && !items.length && <p className="py-4 text-center text-sm text-muted-foreground">暂无账号可导出。</p>}

@@ -432,8 +432,8 @@ mod tests {
         }
     }
     #[cfg(windows)]
-    #[test]
-    fn backup_round_trip_restores_both_regions_without_touching_live_clients() {
+    #[tokio::test]
+    async fn backup_round_trip_restores_both_regions_without_touching_live_clients() {
         let temp =
             std::env::temp_dir().join(format!("wb-qoder-backup-test-{}", uuid::Uuid::new_v4()));
         let source = temp.join("source");
@@ -480,6 +480,50 @@ mod tests {
         assert_eq!(store::list(&destination_store, None).len(), 4);
         assert!(!destination_roots.home.exists());
         assert!(!destination_roots.app_data.exists());
+        // A portable account must also be usable for credit queries before any
+        // Qoder client is installed or switched on the destination machine.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            let (mut stream, _) = loop {
+                match listener.accept() {
+                    Ok(connection) => break connection,
+                    Err(error)
+                        if error.kind() == std::io::ErrorKind::WouldBlock
+                            && std::time::Instant::now() < deadline =>
+                    {
+                        std::thread::sleep(Duration::from_millis(10))
+                    }
+                    Err(error) => panic!("mock credit server did not receive request: {error}"),
+                }
+            };
+            stream.set_nonblocking(false).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            let mut buffer = [0; 8192];
+            let n = stream.read(&mut buffer).unwrap();
+            assert!(String::from_utf8_lossy(&buffer[..n])
+                .to_ascii_lowercase()
+                .contains("bearer secret-token"));
+            let body = r#"{"userQuota":{"remaining":12,"total":20,"used":8}}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+        });
+        let imported_id = store::list(&destination_store, None)[0].id.clone();
+        let credit = super::super::credits::query_with(
+            &destination_store,
+            &destination_roots,
+            &[imported_id],
+            None,
+            Some(&endpoint),
+        )
+        .await;
+        server.join().unwrap();
+        assert_eq!(credit["ok"], true);
+        assert_eq!(credit["remaining"], 12.0);
         for meta in store::list(&destination_store, None) {
             let encrypted = std::fs::read(
                 store::bundle_dir(&destination_store, &meta.id)
@@ -525,9 +569,9 @@ mod tests {
     }
 
     #[cfg(windows)]
-    #[test]
+    #[tokio::test]
     #[ignore = "requires explicitly authorized local Qoder accounts"]
-    fn real_accounts_export_and_import_into_isolated_store() {
+    async fn real_accounts_export_and_import_into_isolated_store() {
         let source = store::default_store();
         let source_roots = QoderRoots::real();
         let mut latest = HashMap::new();
@@ -588,6 +632,42 @@ mod tests {
             assert!(profile_account(&profile)
                 .is_some_and(|restored| restored.access_token == imported.access_token));
         }
+        let mut queried = 0;
+        for entry in &backup.accounts {
+            let identity =
+                account_identity(entry.credentials[0].target, &entry.credentials[0].account)
+                    .unwrap();
+            let original: Vec<_> = store::list(&source, None)
+                .into_iter()
+                .filter(|meta| meta.identity_key.as_deref() == Some(identity.as_str()))
+                .map(|meta| meta.id)
+                .collect();
+            let restored: Vec<_> = store::list(&target.join("store"), None)
+                .into_iter()
+                .filter(|meta| meta.identity_key.as_deref() == Some(identity.as_str()))
+                .map(|meta| meta.id)
+                .collect();
+            let before =
+                super::super::credits::query_with(&source, &source_roots, &original, None, None)
+                    .await;
+            let after = super::super::credits::query_with(
+                &target.join("store"),
+                &target_roots,
+                &restored,
+                None,
+                None,
+            )
+            .await;
+            if before["ok"] == true {
+                assert_eq!(
+                    after["ok"], true,
+                    "isolated imported account could not query credits"
+                );
+                queried += 1;
+            }
+        }
+        println!("Portable real-account credit probe: successful accounts={queried}");
+        assert!(queried > 0, "no original account credits could be queried");
         std::fs::remove_dir_all(target).unwrap();
     }
 }
