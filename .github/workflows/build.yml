@@ -50,7 +50,7 @@ jobs:
     uses: ./.github/workflows/test.yml
 
   build:
-    needs: [select-matrix, verify]
+    needs: [select-matrix]
     name: ${{ matrix.name }}
     strategy:
       fail-fast: false
@@ -73,6 +73,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           rustflags: ""
+          cache: false # The target-specific cache below already covers Cargo and target/.
       - uses: actions/cache@v4
         with:
           path: |
@@ -133,15 +134,41 @@ jobs:
           name: next-${{ matrix.name }}
           path: dist-bin/
           if-no-files-found: error
-      - name: Publish platform npm package (explicit opt-in)
+      - name: Upload platform npm binaries (explicit opt-in)
         if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_NPM == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-${{ matrix.name }}
+          path: npm/platform/workbuddy-switch-next-${{ matrix.platform }}/bin/
+          if-no-files-found: error
+
+  publish-platform-npm:
+    needs: [build, verify, select-matrix]
+    if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_NPM == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select-matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-${{ matrix.name }}
+          path: npm/platform/workbuddy-switch-next-${{ matrix.platform }}/bin/
+      - name: Publish platform npm package
         working-directory: npm/platform/workbuddy-switch-next-${{ matrix.platform }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --tag ${{ needs.select-matrix.outputs.preview == 'true' && 'next' || 'latest' }}
+        run: |
+          chmod +x bin/*
+          npm publish --access public --tag ${{ needs.select-matrix.outputs.preview == 'true' && 'next' || 'latest' }}
 
   publish-npm:
-    needs: [build, select-matrix]
+    needs: [publish-platform-npm, select-matrix]
     if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_NPM == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -156,7 +183,7 @@ jobs:
         run: npm publish --access public --tag ${{ needs.select-matrix.outputs.preview == 'true' && 'next' || 'latest' }}
 
   release:
-    needs: [build, select-matrix]
+    needs: [build, verify, select-matrix]
     if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_APP != 'false'
     runs-on: ubuntu-latest
     env:

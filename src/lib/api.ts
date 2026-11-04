@@ -120,6 +120,9 @@ type Route = { method: "GET" | "POST"; path: string };
 const ROUTES: Record<string, Route> = {
   get_status: { method: "GET", path: "/api/status" },
   get_accounts: { method: "GET", path: "/api/accounts" },
+  export_all_accounts: { method: "POST", path: "/api/accounts/all/export" },
+  preview_all_accounts: { method: "POST", path: "/api/accounts/all/preview" },
+  import_all_accounts: { method: "POST", path: "/api/accounts/all/import" },
   get_codebuddy_cli_status: { method: "GET", path: "/api/codebuddy-cli/status" },
   install_codebuddy_cli_helper: { method: "POST", path: "/api/codebuddy-cli/install-helper" },
   switch_codebuddy_cli_account: { method: "POST", path: "/api/codebuddy-cli/switch" },
@@ -473,6 +476,16 @@ export function detectJetbrainsAccount(): Promise<{
 
 export function getQoderStatus(): Promise<QoderStatus> {
   return call("get_qoder_status");
+}
+
+export function exportAllAccounts(path?: string): Promise<unknown> {
+  return call("export_all_accounts", { path: path ?? null });
+}
+export function previewAllAccounts(fileText: string): Promise<{workbuddy: number; qoder: number}> {
+  return call("preview_all_accounts", { fileText });
+}
+export function importAllAccounts(fileText: string): Promise<{workbuddy: {imported: number; skipped: number}; qoder: {imported: number; skipped: number; warnings: string[]}}> {
+  return call("import_all_accounts", { fileText });
 }
 
 export function getQoderCredits(bundleIds: string[], liveTarget?: QoderTarget): Promise<QoderCredit> {

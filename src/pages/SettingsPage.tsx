@@ -2426,6 +2426,76 @@ function SettingsShell({ title, description, children }: { title: string; descri
   );
 }
 
+function AllAccountsBackupCard() {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [fileText, setFileText] = useState("");
+  const [preview, setPreview] = useState<{workbuddy: number; qoder: number} | null>(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function exportBackup() {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const filename = `workbuddy-switch-all-accounts-${new Date().toISOString().slice(0, 10)}.json`;
+      if (api.isWebui()) {
+        const data = await api.exportAllAccounts();
+        const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: "application/json"}));
+        const link = document.createElement("a");
+        link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+        URL.revokeObjectURL(url);
+        setMessage("备份已下载。");
+      } else {
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        const path = await save({title: "导出全部账号", defaultPath: filename, filters: [{name: "JSON", extensions: ["json"]}]});
+        if (path) { await api.exportAllAccounts(path); setMessage(`备份已保存：${path}`); }
+      }
+    } catch (e) { setError(api.asError(e)); } finally { setBusy(false); }
+  }
+
+  async function selectFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]; event.target.value = "";
+    if (!file) return;
+    setBusy(true); setError(""); setMessage(""); setPreview(null); setFileText("");
+    try {
+      const text = await file.text();
+      const result = await api.previewAllAccounts(text);
+      setFileText(text); setPreview(result);
+    } catch (e) { setError(api.asError(e)); } finally { setBusy(false); }
+  }
+
+  async function importBackup() {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const result = await api.importAllAccounts(fileText);
+      setPreview(null); setFileText("");
+      setMessage(`WorkBuddy / CodeBuddy：导入 ${result.workbuddy.imported}，跳过 ${result.workbuddy.skipped}；Qoder：导入 ${result.qoder.imported}，跳过 ${result.qoder.skipped}。${result.qoder.warnings.join("；")}`);
+      await useAccountsStore.getState().reconcileAccounts();
+    } catch (e) { setError(api.asError(e)); } finally { setBusy(false); }
+  }
+
+  return (
+    <SettingsGroup id="settings-all-accounts-backup" title="全部账号备份">
+      <Card><CardContent className="space-y-4 pt-6">
+        <p className="text-sm text-muted-foreground">一次备份或恢复所有 WorkBuddy、CodeBuddy 和 Qoder 账号。导入时跳过已有账号，保留本机凭据；Qoder 缺少的客户端账号会补充导入。</p>
+        <p className="text-sm text-muted-foreground">部分 WorkBuddy 加密凭据可能绑定原设备，跨设备恢复后可能需要重新登录。</p>
+        <Alert variant="warning"><AlertTitle>备份文件含登录凭据</AlertTitle><AlertDescription>请妥善保管，切勿发送给他人。</AlertDescription></Alert>
+        <input ref={input} type="file" accept=".json,application/json" className="hidden" onChange={(e) => void selectFile(e)} />
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" disabled={busy} onClick={() => void exportBackup()}>导出全部账号</Button>
+          <Button variant="outline" disabled={busy} onClick={() => input.current?.click()}>选择备份导入</Button>
+        </div>
+        {preview && <div className="space-y-2 text-sm">
+          <p>备份包含 WorkBuddy / CodeBuddy {preview.workbuddy} 个，Qoder {preview.qoder} 个。已有账号会跳过。</p>
+          <div className="flex gap-2"><Button disabled={busy} onClick={() => void importBackup()}>确认导入</Button><Button variant="outline" disabled={busy} onClick={() => { setPreview(null); setFileText(""); }}>取消</Button></div>
+        </div>}
+        {message && <p className="break-all text-sm">{message}</p>}
+        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      </CardContent></Card>
+    </SettingsGroup>
+  );
+}
+
 /** 全局设置（平台栏底部）：与具体平台无关的应用级配置。 */
 export default function SettingsPage() {
   return (
@@ -2436,6 +2506,7 @@ export default function SettingsPage() {
       {api.isDesktop() || api.isDemoMode() ? <StartupCard /> : null}
       <NotificationHistoryCard />
       <ErrorLogCard />
+      {!api.isDemoMode() && <AllAccountsBackupCard />}
       <WebdavSyncCard />
       {api.isWebui() && !api.isDemoMode() ? null : <UpdateCard />}
     </SettingsShell>

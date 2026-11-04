@@ -268,11 +268,29 @@ pub fn preview(text: &str) -> Result<Value, String> {
 pub fn import(text: &str, indexes: &[usize]) -> Result<Value, String> {
     import_with(&store::default_store(), &QoderRoots::real(), text, indexes)
 }
+pub fn import_missing(text: &str, indexes: &[usize]) -> Result<Value, String> {
+    import_with_policy(
+        &store::default_store(),
+        &QoderRoots::real(),
+        text,
+        indexes,
+        true,
+    )
+}
 fn import_with(
     root: &Path,
     roots: &QoderRoots,
     text: &str,
     indexes: &[usize],
+) -> Result<Value, String> {
+    import_with_policy(root, roots, text, indexes, false)
+}
+fn import_with_policy(
+    root: &Path,
+    roots: &QoderRoots,
+    text: &str,
+    indexes: &[usize],
+    skip_existing: bool,
 ) -> Result<Value, String> {
     let backup = parse(text)?;
     if indexes.is_empty() || indexes.iter().any(|i| *i >= backup.accounts.len()) {
@@ -326,6 +344,14 @@ fn import_with(
         let mut already_present = 0;
         for (target, account) in destinations {
             let identity = account_identity(target, account)?;
+            if skip_existing
+                && store::list(root, Some(target))
+                    .iter()
+                    .any(|m| m.identity_key.as_deref() == Some(identity.as_str()))
+            {
+                already_present += 1;
+                continue;
+            }
             let same = store::list(root, Some(target))
                 .into_iter()
                 .rev()
@@ -477,6 +503,19 @@ mod tests {
         let repeated = import_with(&destination_store, &destination_roots, &text, &[0, 1]).unwrap();
         assert_eq!(repeated["imported"], 0);
         assert_eq!(repeated["skipped"], 2);
+        assert_eq!(store::list(&destination_store, None).len(), 4);
+        let mut changed: Value = serde_json::from_str(&text).unwrap();
+        changed["accounts"][0]["credentials"][0]["account"]["access_token"] = json!("older-token");
+        let preserved = import_with_policy(
+            &destination_store,
+            &destination_roots,
+            &changed.to_string(),
+            &[0, 1],
+            true,
+        )
+        .unwrap();
+        assert_eq!(preserved["imported"], 0);
+        assert_eq!(preserved["skipped"], 2);
         assert_eq!(store::list(&destination_store, None).len(), 4);
         assert!(!destination_roots.home.exists());
         assert!(!destination_roots.app_data.exists());

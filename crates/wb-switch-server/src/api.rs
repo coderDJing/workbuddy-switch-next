@@ -136,6 +136,17 @@ pub fn router() -> Router {
         .route("/api/oauth/status", post(api_oauth_status))
         .route("/api/import-local", post(api_import_local))
         .route("/api/export-accounts", post(api_export_accounts))
+        .route("/api/accounts/all/export", post(api_export_all_accounts))
+        .route(
+            "/api/accounts/all/preview",
+            post(api_preview_all_accounts)
+                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+        )
+        .route(
+            "/api/accounts/all/import",
+            post(api_import_all_accounts)
+                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+        )
         .route(
             "/api/export-accounts-to-path",
             post(api_export_accounts_to_path),
@@ -897,6 +908,30 @@ async fn api_import_local(body: Option<Json<Value>>) -> Response {
 // ---------------------------------------------------------------------------
 // 导出 / 导入账号
 // ---------------------------------------------------------------------------
+
+async fn api_export_all_accounts() -> Response {
+    match tokio::task::spawn_blocking(export_import::export_all).await {
+        Ok(Ok(value)) => json_ok(value),
+        Ok(Err(e)) => json_err(e, StatusCode::BAD_REQUEST),
+        Err(_) => json_err("导出账号失败".into(), StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+async fn api_preview_all_accounts(Json(body): Json<Value>) -> Response {
+    match export_import::preview_all(body_str(&body, &["fileText"])) {
+        Ok(value) => json_ok(value),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+
+async fn api_import_all_accounts(Json(body): Json<Value>) -> Response {
+    let text = body_str(&body, &["fileText"]).to_string();
+    match tokio::task::spawn_blocking(move || export_import::import_all(&text)).await {
+        Ok(Ok(value)) => json_ok(value),
+        Ok(Err(e)) => json_err(e, StatusCode::BAD_REQUEST),
+        Err(_) => json_err("导入账号失败".into(), StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
 
 async fn api_export_accounts(Json(body): Json<Value>) -> Response {
     let ids: Vec<String> = body

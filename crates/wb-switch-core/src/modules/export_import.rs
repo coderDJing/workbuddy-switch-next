@@ -246,9 +246,158 @@ pub fn export_accounts_to_path(ids: &[String], path: &str) -> Result<String, Str
     Ok(path_buf.to_string_lossy().into_owned())
 }
 
+/// Unified portable account backup. Qoder's own format remains nested unchanged.
+pub fn export_all() -> Result<Value, String> {
+    let workbuddy = account::load_accounts_for_update().map_err(|_| "读取账号库失败")?;
+    let ids: Vec<String> =
+        crate::modules::qoder::store::list(&crate::modules::qoder::store::default_store(), None)
+            .into_iter()
+            .map(|item| item.id)
+            .collect();
+    let qoder = if ids.is_empty() {
+        Value::Null
+    } else {
+        crate::modules::qoder::backup::export(&ids)?
+    };
+    Ok(json!({"format":"wb-switch-all-accounts","version":1,"workbuddy":workbuddy,"qoder":qoder}))
+}
+
+fn parse_all(text: &str) -> Result<(Vec<Value>, Option<Value>), String> {
+    if text.len() > 32 * 1024 * 1024 {
+        return Err("备份文件过大".into());
+    }
+    let value: Value = serde_json::from_str(text).map_err(|_| "备份文件不是有效的 JSON")?;
+    if value.get("format").and_then(Value::as_str) != Some("wb-switch-all-accounts")
+        || value.get("version").and_then(Value::as_u64) != Some(1)
+    {
+        return Err("不是受支持的全部账号备份".into());
+    }
+    let records = value
+        .get("workbuddy")
+        .and_then(Value::as_array)
+        .ok_or("缺少 WorkBuddy 账号列表")?
+        .clone();
+    if records.iter().any(|v| !v.is_object()) {
+        return Err("WorkBuddy 账号数据无效".into());
+    }
+    let qoder = value.get("qoder").ok_or("缺少 Qoder 账号列表")?;
+    let qoder = if qoder.is_null() {
+        None
+    } else {
+        crate::modules::qoder::backup::preview(&qoder.to_string())?;
+        Some(qoder.clone())
+    };
+    Ok((records, qoder))
+}
+
+pub fn preview_all(text: &str) -> Result<Value, String> {
+    let (records, qoder) = parse_all(text)?;
+    let count = qoder
+        .as_ref()
+        .and_then(|v| v.get("accounts"))
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    Ok(json!({"workbuddy":records.len(),"qoder":count}))
+}
+
+pub fn export_all_to_path(path: &str) -> Result<Value, String> {
+    validate_export_path(path)?;
+    let text = serde_json::to_string_pretty(&export_all()?).map_err(|_| "无法生成备份")?;
+    crate::modules::config::atomic_write(Path::new(path.trim()), &text)
+        .map_err(|_| "无法保存备份")?;
+    Ok(json!({"path":path.trim()}))
+}
+
+fn merge_missing(accounts: &mut Vec<Value>, records: &[Value]) -> ImportResult {
+    let mut result = ImportResult::default();
+    for item in records {
+        let duplicate = accounts.iter().any(|existing| {
+            let same_id = account::get_str(item, "id")
+                .is_some_and(|id| account::get_str(existing, "id").as_deref() == Some(id.as_str()));
+            let same_uid = account::variant_of(item) == account::variant_of(existing)
+                && account::get_str(item, "uid").is_some_and(|uid| {
+                    account::get_str(existing, "uid").as_deref() == Some(uid.as_str())
+                });
+            same_id || same_uid
+        });
+        if duplicate {
+            result.skipped += 1;
+            continue;
+        }
+        if account::secret_value(item, "access_token").is_none() {
+            result.skipped += 1;
+            continue;
+        }
+        let mut appended = item.clone();
+        if account::get_str(&appended, "id").is_none() {
+            appended["id"] = Value::String(uuid::Uuid::new_v4().to_string());
+        }
+        accounts.push(appended);
+        result.imported += 1;
+    }
+    result
+}
+
+pub fn import_all(text: &str) -> Result<Value, String> {
+    let (records, qoder) = parse_all(text)?;
+    let qoder_result = if let Some(qoder) = qoder {
+        let count = qoder["accounts"].as_array().map_or(0, Vec::len);
+        crate::modules::qoder::backup::import_missing(
+            &qoder.to_string(),
+            &(0..count).collect::<Vec<_>>(),
+        )?
+    } else {
+        json!({"imported":0,"skipped":0,"warnings":[]})
+    };
+    let guard = crate::modules::state_lock::try_auth()
+        .map_err(|_| "WorkBuddy 账号库正忙；Qoder 账号可能已导入，请重试")?;
+    let mut accounts = account::load_accounts_for_update()
+        .map_err(|_| "读取 WorkBuddy 账号库失败；Qoder 账号可能已导入")?;
+    let result = merge_missing(&mut accounts, &records);
+    account::save_accounts_locked(&accounts, &guard)
+        .map_err(|_| "保存 WorkBuddy 账号库失败；Qoder 账号可能已导入")?;
+    Ok(
+        json!({"workbuddy":{"imported":result.imported,"skipped":result.skipped},"qoder":qoder_result}),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unified_backup_validates_before_import_and_hides_secrets_in_preview() {
+        let value = json!({"format":"wb-switch-all-accounts","version":1,
+            "workbuddy":[{"uid":"u1","access_token":"secret"}],"qoder":null});
+        let preview = preview_all(&value.to_string()).unwrap();
+        assert_eq!(preview["workbuddy"], 1);
+        assert_eq!(preview["qoder"], 0);
+        assert!(!preview.to_string().contains("secret"));
+        let mut invalid = value;
+        invalid["qoder"] = json!({"format":"invalid"});
+        assert!(preview_all(&invalid.to_string()).is_err());
+    }
+
+    #[test]
+    fn unified_import_skips_existing_and_duplicates_without_overwriting() {
+        let local = record("local", Some("uid"), "local", None, true);
+        let mut accounts = vec![local.clone()];
+        let records = vec![
+            record("other", Some("uid"), "old", None, true),
+            record("new", Some("new-uid"), "new", None, true),
+            record("new", Some("new-uid"), "duplicate", None, true),
+            record("missing", None, "missing", None, false),
+        ];
+        let result = merge_missing(&mut accounts, &records);
+        assert_eq!((result.imported, result.skipped), (1, 3));
+        assert_eq!(accounts[0], local);
+        assert_eq!(accounts.len(), 2);
+        let mut international = record("intl", Some("uid"), "international", None, true);
+        international["variant"] = json!("ai");
+        let result = merge_missing(&mut accounts, &[international]);
+        assert_eq!(result.imported, 1);
+        assert_eq!(accounts.len(), 3);
+    }
 
     fn record(
         id: &str,

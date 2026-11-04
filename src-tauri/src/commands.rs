@@ -602,6 +602,28 @@ pub fn import_local(variant: Option<String>) -> Result<Value, String> {
 // 导出 / 导入账号
 // ---------------------------------------------------------------------------
 
+#[tauri::command]
+pub async fn export_all_accounts(path: Option<String>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || match path {
+        Some(path) => export_import::export_all_to_path(&path),
+        None => export_import::export_all(),
+    })
+    .await
+    .map_err(|_| "导出账号失败".to_string())?
+}
+
+#[tauri::command]
+pub fn preview_all_accounts(file_text: String) -> Result<Value, String> {
+    export_import::preview_all(&file_text)
+}
+
+#[tauri::command]
+pub async fn import_all_accounts(file_text: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || export_import::import_all(&file_text))
+        .await
+        .map_err(|_| "导入账号失败".to_string())?
+}
+
 /// POST /api/export-accounts —— 按账号 id 列表导出完整记录（含 token）。
 #[tauri::command]
 pub fn export_accounts(account_ids: Vec<String>) -> Result<Value, String> {
