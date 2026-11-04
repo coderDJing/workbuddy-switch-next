@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Clock3, Columns3, Ellipsis, FileDown, FileUp, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
+import { Check, Clock3, Columns3, Ellipsis, FileDown, FileUp, Gift, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -408,8 +408,8 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
   const busy = busyKey !== null;
   const refreshingCredits = [...groups.map((group) => group.key), ...currentLogins.map((s) => `live:${s.target}`)].some((key) => creditLoading[key]);
 
-  async function refreshAndClaim() {
-    if (claimingRewards || refreshingCredits) return;
+  async function claimRewards() {
+    if (claimingRewards) return;
     setClaimingRewards(true);
     const progressToast = toast.loading("正在领取 Qoder 奖励…");
     const outcomes: string[] = [];
@@ -501,13 +501,14 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
               {accountCount}
             </Badge>
           </div>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
             <Select value={sortKey} onValueChange={(value) => { const next = value as QoderSortKey; setSortKey(next); try { localStorage.setItem("wb-switch.qoder.sort", next); } catch { /* Sorting still works for this session. */ } }}>
               <SelectTrigger size="sm" className="w-auto min-w-32 gap-1.5 border-0 bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground" aria-label="账号排序方式"><SlidersHorizontal className="size-4" aria-hidden="true" /><SelectValue /></SelectTrigger>
               <SelectContent>{QODER_SORT_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
             </Select>
             {onToggleCompact && <Button variant="ghost" size="icon" className={cn("size-9 rounded-lg", compact && "bg-accent text-accent-foreground")} onClick={onToggleCompact} aria-label={compact ? "切换为宽松模式" : "切换为紧凑模式"} title={compact ? "切换为宽松模式" : "切换为紧凑模式"}>{compact ? <Rows3 /> : <Columns3 />}</Button>}
-            <DemoAction><Button variant="ghost" size="icon" className="size-9 rounded-lg" disabled={refreshingCredits || claimingRewards || accountCount === 0} onClick={() => void refreshAndClaim()} aria-label="领取奖励并刷新所有积分" title="领取奖励并刷新所有积分"><RefreshCw className={refreshingCredits || claimingRewards ? "animate-spin" : undefined} /></Button></DemoAction>
+            <DemoAction><Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" disabled={refreshingCredits || accountCount === 0} onClick={() => setCreditVersion((value) => value + 1)} aria-label="刷新积分" title="查询当前档位所有账号的积分"><RefreshCw className={refreshingCredits ? "animate-spin" : undefined} />刷新积分</Button></DemoAction>
+            <DemoAction><Button variant="outline" size="sm" className="h-9 rounded-lg text-xs" disabled={claimingRewards || accountCount === 0} onClick={() => void claimRewards()} aria-label="领取积分" title="领取可用奖励，完成后刷新积分">{claimingRewards ? <Loader2 className="animate-spin" /> : <Gift />}领取积分</Button></DemoAction>
           </div>
         </div>
         {(!autoReady || (!status && !loadError)) ? (

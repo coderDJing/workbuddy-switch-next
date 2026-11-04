@@ -721,7 +721,7 @@ function AutoCheckinCard() {
               <AccordionSettingsRow
                 value="excluded"
                 label="参与签到和每日任务的账号"
-                description="关闭后跳过该账号的后台签到和刷新附带的每日任务；积分仍会刷新。国内版可在账号卡片手动签到。"
+                description="关闭后跳过该账号的后台签到和批量领取任务；积分仍可刷新。国内版可在账号卡片手动签到。"
               >
                 <div className={INSET_PANEL}>
                   {checkinAccounts.length === 0 ? (

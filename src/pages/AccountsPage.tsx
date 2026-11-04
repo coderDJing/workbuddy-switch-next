@@ -6,6 +6,7 @@ import {
   ExternalLink,
   FileDown,
   FileUp,
+  Gift,
   Loader2,
   QrCode,
   RefreshCw,
@@ -185,7 +186,7 @@ export default function AccountsPage() {
   const [infoTarget, setInfoTarget] = useState<AccountMeta | null>(null);
   /**
    * 自动签到配置（只读）：只用于决定账号卡片是否展示「自动签到已关闭」chip，
-   * 以及状态查询、刷新时跳过哪些账号。控制入口在设置页。
+   * 以及状态查询、领取任务时跳过哪些账号。控制入口在设置页。
    */
   const [autoCheckinConfig, setAutoCheckinConfig] = useState<CheckinConfig | null>(null);
   /** 配置是否已读取完毕（成功或失败）：区分「尚未读到」与「读取失败」。 */
@@ -220,8 +221,9 @@ export default function AccountsPage() {
   /** JetBrains 切换弹窗目标（null=关闭）；切换与目标 IDE 选择在弹窗内完成。 */
   const [jetbrainsSwitchTarget, setJetbrainsSwitchTarget] = useState<AccountMeta | null>(null);
   const [installingCodebuddyCli, setInstallingCodebuddyCli] = useState(false);
-  /** 刷新按钮触发的批量签到进行中 */
+  /** 领取按钮触发的每日任务进行中。 */
   const [checkinAllRunning, setCheckinAllRunning] = useState(false);
+  const manualCreditRefresh = useRef<Promise<void> | null>(null);
   /** 接入/升级 CLI helper 确认框 */
   const [installConfirmOpen, setInstallConfirmOpen] = useState(false);
   /** 切换 CodeBuddy CLI 确认目标（null=关闭） */
@@ -238,8 +240,7 @@ export default function AccountsPage() {
   const checkinAvailable = variantSupportsCheckin(variant);
   /** 旅行 chip 与旅行状态轮询只在自动旅行开启后生效（配置未读到 = 未开启）。 */
   const autoTravelEnabled = travelAvailable && autoTravelConfig?.enabled === true;
-  /** 完整任务可能需要等待上游活动与对话执行。 */
-  const refreshCreditsLabel = "执行每日任务并刷新积分（可能消耗积分或能量；签到遵守时间段，任务遵守账号开关）";
+  const claimCreditsHint = "执行每日任务并领取奖励（可能消耗积分或能量；签到遵守时间段，任务遵守账号开关）";
   /** 关闭自动签到的账号 id（配置未读到/读取失败 = 空名单）。 */
   const excludedCheckinIds = useMemo(
     () => new Set(autoCheckinConfig?.excluded_account_ids ?? []),
@@ -628,15 +629,30 @@ export default function AccountsPage() {
     }
   }
 
-  /** 刷新附带的签到遵守账号开关与签到时间段；所有账号照常刷新积分，提示实际忽略/未到时间段数量。 */
+  /** 仅查询当前档位账号的积分，不执行每日任务。 */
   async function onRefreshCredits() {
-    if (!visibleAccounts.length || refreshingCredits || checkinAllRunning) return;
+    if (!visibleAccounts.length || refreshingCredits || manualCreditRefresh.current) return;
+    const ids = visibleAccounts.map((account) => account.id);
+    const pending = refreshCredits(ids);
+    manualCreditRefresh.current = pending;
+    try {
+      await pending;
+    } catch (error) {
+      toast.error("刷新积分失败", { description: api.asError(error) });
+    } finally {
+      if (manualCreditRefresh.current === pending) manualCreditRefresh.current = null;
+    }
+  }
+
+  /** 领取任务遵守账号开关和签到时间段；完成后更新积分与状态。 */
+  async function onClaimCredits() {
+    if (!visibleAccounts.length || checkinAllRunning) return;
     setCheckinAllRunning(true);
     const progressToast = toast.loading("正在执行每日任务…", { description: "任务可能需要几分钟，完成后会刷新积分。" });
     const ids = visibleAccounts.map((account) => account.id);
     let summary = "";
     let notify = toast.success;
-    let title = "积分到期情况已刷新";
+    let title = "每日任务已完成";
     try {
       {
         try {
@@ -660,21 +676,25 @@ export default function AccountsPage() {
           if (skipped > 0) parts.push(`已忽略 ${skipped} 个关闭自动签到的账号`);
           if (outsideWindow > 0) parts.push(`${outsideWindow} 个不在签到时间段，已跳过签到`);
           summary = res.status === "skipped" && res.reason === "already_running"
-            ? "签到任务正在进行，本次仅刷新积分"
-            : parts.length > 0 ? parts.join("，") : "无账号需要签到";
+            ? "每日任务正在进行"
+            : parts.length > 0 ? parts.join("，") : "无账号需要领取";
           const allFailed = entries.length > 0 && failed === entries.length;
           const allSkippedOrInactive = res.status === "skipped" || entries.length === 0 ||
             (success === 0 && already === 0 && failed === 0 && !entries.some((entry) => entry.rewards));
           if (rewardErrors > 0) {
             notify = toast.warning;
-            title = "积分已刷新，部分每日任务未完成";
+            title = "部分每日任务未完成";
           } else if (allFailed) {
             // 全部失败：没有成功、已签、未开放或忽略的账号。
             notify = toast.error;
-            title = "积分已刷新，签到出现错误";
+            title = "签到出现错误";
           } else if (allSkippedOrInactive) {
             // 全部被跳过或官方未开放签到活动：既不算成功也不算失败，不呈现为绿色成功。
             notify = toast.info;
+            title = res.reason === "already_running" ? "每日任务正在进行" : "没有需要执行的每日任务";
+          } else if (failed > 0) {
+            notify = toast.warning;
+            title = "部分签到未完成";
           }
           // 只重查实际处理过的账号状态；被跳过的账号本次未发请求，状态保持未知。
           const next = checkinAvailable ? await fetchTodayCheckinMap(entries.filter((e) => e.result !== "skipped").map((e) => e.accountId)) : {};
@@ -683,10 +703,12 @@ export default function AccountsPage() {
           }
         } catch (e) {
           notify = toast.error;
-          title = "积分已刷新，签到出现错误";
+          title = "每日任务执行失败";
           summary = api.asError(e);
         }
       }
+      // 领取期间仍可手动刷新；等这次查询结束后再读取一次最新余额。
+      if (manualCreditRefresh.current) await manualCreditRefresh.current.catch(() => {});
       await refreshCredits(ids);
       if (autoTravelEnabled) await loadTravelMap(ids);
       notify(title, { description: summary || undefined, duration: 12000 });
@@ -1003,7 +1025,7 @@ export default function AccountsPage() {
             </Badge>
           </div>
           <TooltipProvider delayDuration={400}>
-            <div className="ml-auto flex items-center gap-1">
+            <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
               <Select
                 value={sortKey}
                 onValueChange={(value) => setSortKey(value as AccountSortKey)}
@@ -1044,18 +1066,39 @@ export default function AccountsPage() {
                     <DemoAction>
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="size-9 rounded-lg"
-                        disabled={refreshingCredits || checkinAllRunning || visibleAccounts.length === 0}
+                        size="sm"
+                        className="h-9 rounded-lg text-xs"
+                        disabled={refreshingCredits || visibleAccounts.length === 0}
                         onClick={() => void onRefreshCredits()}
-                        aria-label={refreshCreditsLabel}
+                        aria-label="刷新积分"
                       >
-                        <RefreshCw className={refreshingCredits || checkinAllRunning ? "animate-spin" : undefined} />
+                        <RefreshCw className={refreshingCredits ? "animate-spin" : undefined} />
+                        刷新积分
                       </Button>
                     </DemoAction>
                   </span>
                 </TooltipTrigger>
-                <TooltipContent side="top">{api.isDemoMode() ? "演示模式下不可操作" : refreshCreditsLabel}</TooltipContent>
+                <TooltipContent side="top">{api.isDemoMode() ? "演示模式下不可操作" : "查询当前档位所有账号的积分"}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <DemoAction>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-lg text-xs"
+                        disabled={checkinAllRunning || visibleAccounts.length === 0}
+                        onClick={() => void onClaimCredits()}
+                        aria-label="领取积分"
+                      >
+                        {checkinAllRunning ? <Loader2 className="animate-spin" /> : <Gift />}
+                        领取积分
+                      </Button>
+                    </DemoAction>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">{api.isDemoMode() ? "演示模式下不可操作" : claimCreditsHint}</TooltipContent>
               </Tooltip>
             </div>
           </TooltipProvider>

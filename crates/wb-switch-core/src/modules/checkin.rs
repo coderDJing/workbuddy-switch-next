@@ -13,7 +13,7 @@
 //! 未到点整轮不发任何请求。窗口未生效（字段为空/非法）时节奏、payload 与日志
 //! 行为与既有实现逐字一致。
 //!
-//! 账号页「刷新并签到」按 `respect_window=true` 调用 `run_checkin_all`：窗口生效且
+//! 调用 `run_checkin_all` 时设置 `respect_window=true`：窗口生效且
 //! 当前时刻不在 `[start, end)` 内时整轮跳过，逐账号返回 `skipped` /
 //! `outside_checkin_window`，不查状态、不提交、不写日志。设置页 / 托盘 / 单账号
 //! 手动入口不传该参数（默认 `false`），保持「立即签到」语义。
@@ -895,14 +895,14 @@ fn latest_today_result<'a>(logs: &'a [Value], account_id: &str, today: &str) -> 
         .and_then(|entry| entry.get("result").and_then(Value::as_str))
 }
 
-/// 对全部账号批量签到（前端「刷新并签到」/ 一键签到）。
+/// 对全部账号批量签到（设置页 / 托盘一键签到）。
 ///
 /// `variant = None` 覆盖全部档位（设置页与托盘「立即签到」语义）；
-/// 显式传入时只处理该档位（账号页按当前档位触发，避免跨档位误签到）。
+/// 显式传入时只处理该档位，避免跨档位误签到。
 /// 无论哪种取值，都只处理支持签到的档位：国际版没有签到接口，绝不发起请求；
 /// 关闭自动签到的账号同样跳过，并逐账号返回 skipped 原因。
 ///
-/// `respect_window` 只由账号页「刷新并签到」传 `true`：窗口生效且当前不在
+/// `respect_window` 为 `true` 时，窗口生效且当前不在
 /// `[start, end)` 内时整轮跳过（逐账号 `skipped` / `outside_checkin_window`，
 /// 返回 `{"status":"skipped","reason":"outside_checkin_window"}`），窗口外不发
 /// 任何签到请求。设置页 / 托盘 / 单账号手动入口传 `false`，保持立即签到语义。

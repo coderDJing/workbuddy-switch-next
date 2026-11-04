@@ -988,7 +988,7 @@ export function checkin(accountId: string): Promise<CheckinResult> {
  * 批量签到：不传档位时覆盖全部档位；显式传入时只处理该档位。
  * 关闭自动签到的账号会被跳过，并逐账号返回 skipped 原因（设置页与托盘同样遵守）。
  * `respectWindow=true` 时遵守签到时间段：窗口外整轮返回 skipped /
- * `outside_checkin_window`，不发起任何签到请求（账号页「刷新并签到」专用）；
+ * `outside_checkin_window`，不发起任何签到请求；
  * 缺省不下发该字段，保持设置页 / 托盘 / 旧客户端的立即签到语义。
  *
  * 这里**不能**用 `variantArgs`：`checkin_all` 的缺省语义是「全部档位」，国内版若

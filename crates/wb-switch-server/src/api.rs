@@ -1691,8 +1691,8 @@ async fn api_checkin_all(body: Option<Json<Value>>) -> Response {
         .and_then(|Json(value)| value.get("variant"))
         .and_then(|value| value.as_str())
         .map(|raw| WbVariant::parse(Some(raw)));
-    // `respectWindow`（camelCase，与 `accountId` 先例一致）只由账号页「刷新并签到」
-    // 传 true：窗口生效且当前不在时间段内时整轮跳过；缺省 false 保持设置页 /
+    // `respectWindow`（camelCase，与 `accountId` 先例一致）为 true 时：
+    // 窗口生效且当前不在时间段内时整轮跳过；缺省 false 保持设置页 /
     // 托盘 / 旧客户端的立即签到语义。
     let respect_window = body
         .as_ref()

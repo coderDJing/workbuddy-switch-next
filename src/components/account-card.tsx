@@ -461,7 +461,7 @@ export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInf
         statusIconChip({
           icon: <CalendarOff className="size-3.5" />,
           label: "自动签到已关闭",
-          tooltip: `${todayCheckedIn === undefined ? "" : todayCheckedIn ? "今日已签到。" : "今日未签到。"}该账号已关闭自动签到，刷新时也会忽略，仍可手动签到`,
+          tooltip: `${todayCheckedIn === undefined ? "" : todayCheckedIn ? "今日已签到。" : "今日未签到。"}该账号已关闭自动签到，批量领取时也会忽略，仍可手动签到`,
           variant: "secondary",
         })}
       {autoCheckinAllowed !== false && todayCheckedIn !== undefined &&
