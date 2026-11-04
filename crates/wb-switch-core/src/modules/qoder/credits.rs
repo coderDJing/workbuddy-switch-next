@@ -16,6 +16,7 @@ use super::{
 struct Candidate {
     target: QoderTarget,
     token: String,
+    uid: String,
 }
 
 fn quota_base(target: QoderTarget) -> &'static str {
@@ -53,9 +54,19 @@ fn from_profile(target: QoderTarget, profile: &Value, expected: Option<&str>) ->
             .and_then(Value::as_str)
             .filter(|v| !v.is_empty())
     })?;
+    let id = profile
+        .get("user")
+        .and_then(|v| v.get("id").or_else(|| v.get("user_id")))
+        .or_else(|| profile.get("uid"))
+        .or_else(|| profile.get("user_id"))?;
+    let uid = id
+        .as_str()
+        .map(str::to_string)
+        .or_else(|| id.as_i64().map(|id| id.to_string()))?;
     Some(Candidate {
         target,
         token: token.to_string(),
+        uid,
     })
 }
 
@@ -79,6 +90,7 @@ fn from_bundle(root: &Path, roots: &QoderRoots, meta: &store::BundleMeta) -> Opt
         return (!account.access_token.is_empty()).then_some(Candidate {
             target: meta.target,
             token: account.access_token,
+            uid: id.to_string(),
         });
     }
     let specs = credentials(roots, meta.target);
@@ -251,26 +263,14 @@ fn quota_part(payload: &Value, key: &str) -> Option<Value> {
     )
 }
 
-pub async fn query(ids: &[String], live_target: Option<QoderTarget>) -> Value {
-    query_with(
-        &store::default_store(),
-        &QoderRoots::real(),
-        ids,
-        live_target,
-        None,
-    )
-    .await
-}
-
-pub(super) async fn query_with(
+fn candidates_for(
     root: &Path,
     roots: &QoderRoots,
     ids: &[String],
     live_target: Option<QoderTarget>,
-    endpoint: Option<&str>,
-) -> Value {
+) -> Result<Vec<Candidate>, &'static str> {
     if ids.len() > 64 {
-        return json!({"ok":false,"error":"账号数据过多"});
+        return Err("账号数据过多");
     }
     let mut metas: Vec<_> = ids
         .iter()
@@ -279,16 +279,16 @@ pub(super) async fn query_with(
     metas.sort_by_key(|m| std::cmp::Reverse(m.captured_at));
     let expected = metas.first().and_then(|m| m.identity_key.as_deref());
     if expected.is_none() && metas.len() > 1 {
-        return json!({"ok":false,"error":"无法确认账号身份"});
+        return Err("无法确认账号身份");
     }
     if metas.iter().any(|m| {
         m.identity_key.as_deref() != expected || m.target.is_global() != metas[0].target.is_global()
     }) {
-        return json!({"ok":false,"error":"账号身份不一致"});
+        return Err("账号身份不一致");
     }
     if let (Some(target), Some(meta)) = (live_target, metas.first()) {
         if target.is_global() != meta.target.is_global() {
-            return json!({"ok":false,"error":"账号区域不一致"});
+            return Err("账号区域不一致");
         }
     }
     let mut candidates = Vec::new();
@@ -320,8 +320,33 @@ pub(super) async fn query_with(
         }
     }
     if candidates.is_empty() {
-        return json!({"ok":false,"error":"无法读取账号凭据，请授权识别或重新登录"});
+        return Err("无法读取账号凭据，请授权识别或重新登录");
     }
+    Ok(candidates)
+}
+
+pub async fn query(ids: &[String], live_target: Option<QoderTarget>) -> Value {
+    query_with(
+        &store::default_store(),
+        &QoderRoots::real(),
+        ids,
+        live_target,
+        None,
+    )
+    .await
+}
+
+pub(super) async fn query_with(
+    root: &Path,
+    roots: &QoderRoots,
+    ids: &[String],
+    live_target: Option<QoderTarget>,
+    endpoint: Option<&str>,
+) -> Value {
+    let candidates = match candidates_for(root, roots, ids, live_target) {
+        Ok(value) => value,
+        Err(error) => return json!({"ok":false,"error":error}),
+    };
     let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(12));
     if endpoint.is_some() {
         builder = builder.no_proxy();
@@ -385,6 +410,37 @@ pub(super) async fn query_with(
         }
     }
     json!({"ok":false,"error":if unavailable {"积分服务暂时不可用，请检查网络后刷新"} else if invalid_response {"积分服务返回的数据无法识别，请稍后刷新"} else if expired {"登录状态可能已失效，请重新登录"} else {"积分查询失败，请稍后重试"}})
+}
+
+/// Run the upstream campaign and Pro benefit workflow with the same
+/// identity-checked credential candidates as the balance query.
+pub async fn claim(ids: &[String], live_target: Option<QoderTarget>) -> Value {
+    let candidates = match candidates_for(
+        &store::default_store(),
+        &QoderRoots::real(),
+        ids,
+        live_target,
+    ) {
+        Ok(candidates) => candidates,
+        Err(error) => return json!({"ok":false,"message":error}),
+    };
+    let mut seen = HashSet::new();
+    for candidate in candidates {
+        if !seen.insert(store::sha256_hex(candidate.token.as_bytes())) {
+            continue;
+        }
+        let mode = if candidate.target.is_global() {
+            "qoder-global"
+        } else {
+            "qoder-cn"
+        };
+        let result =
+            crate::modules::daily_runner::run(mode, candidate.token, candidate.uid, false).await;
+        if result.get("authInvalid").and_then(Value::as_bool) != Some(true) {
+            return result;
+        }
+    }
+    json!({"ok":false,"message":"登录状态可能已失效，请重新登录"})
 }
 
 #[cfg(test)]

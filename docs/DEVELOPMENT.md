@@ -4,7 +4,7 @@ Next 的发布身份与版本入口是 `release-config.json`。账号库与认�
 
 ## 环境与构建
 
-Node.js 22、Rust stable（至少 1.89）及对应平台的 Tauri 构建依赖。
+Node.js 22、Rust stable（至少 1.89）及对应平台的 Tauri 构建依赖。桌面构建还需要 Python 3.9+ 和 venv：构建脚本在 `target/` 下安装固定版本的 requests 与 PyInstaller，打包每日任务组件，应用运行时不需要另行安装 Python。macOS 可用 universal2 Python 交叉构建 Intel / Apple Silicon，其他平台需要匹配的目标架构。
 
 ```bash
 npm ci
@@ -15,7 +15,7 @@ cargo test -p wb-switch-core
 cargo test -p wb-switch-server
 ```
 
-桌面构建包含固定版本 Companion 前端与原生 runtime：
+桌面构建包含固定版本 Companion 前端、原生 runtime 与每日任务组件：
 
 ```bash
 npm run build:desktop
@@ -81,7 +81,7 @@ macOS DMG 由固定版本 dmgbuild 制作，支持无 Finder 的 CI。Windows �
 
 仓库变量 `PUBLISH_NPM` 必须显式设为 `true`，并提供有效 `NPM_TOKEN`，才会在 tag 构建中发布。当前为 false；桌面发布独立继续。平台包全部成功后才发布主包，RC 使用 npm dist-tag `next`，正式版使用 `latest`。
 
-本地可用 `npm pack --dry-run --json` 检查 npm 主包内容。安装脚本只从 Next 平台包复制二进制，不会回退到原作者的 npm 包。`WB_SWITCH_BINARY` 本地覆盖入口保留。
+本地可用 `npm pack --dry-run --json` 检查 npm 主包内容。安装脚本只从 Next 平台包复制 CLI 与每日任务组件，不会回退到原作者的 npm 包。单独下载 CLI 二进制时，还需将同平台的每日任务组件放在 CLI 同目录并命名为 `daily-runner`（Windows 为 `daily-runner.exe`）。`WB_SWITCH_BINARY` 本地覆盖入口保留。
 
 旧 npm 包与 Next 的兼容别名会占用相同全局命令路径。用户迁移时先正常卸载旧 npm 包再装 Next，账号库不需要移动或删除。
 

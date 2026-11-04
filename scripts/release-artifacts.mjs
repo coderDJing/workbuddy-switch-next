@@ -73,6 +73,9 @@ function collect(env = process.env) {
   const pkgBin = path.join(root, 'npm/platform', `${release.slug}-${platform}`, 'bin');
   fs.mkdirSync(pkgBin, { recursive: true });
   fs.copyFileSync(binary, path.join(pkgBin, `wb-switch-${platform}${suffix}`));
+  const daily = path.join(root, 'src-tauri/binaries', `daily-runner-${target}${suffix}`);
+  fs.copyFileSync(daily, path.join(destination, `${release.slug}-daily-runner-${platform}${suffix}`));
+  fs.copyFileSync(daily, path.join(pkgBin, `daily-runner${suffix}`));
   if (env.PUBLISH_APP === 'false') return;
   const os = env.UPDATE_OS, arch = env.UPDATE_ARCH;
   const variants = os === 'linux' ? ['appimage', 'deb'] : [''];

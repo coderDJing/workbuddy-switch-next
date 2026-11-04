@@ -924,6 +924,103 @@ pub async fn run_checkin_all(variant: Option<WbVariant>, respect_window: bool) -
     json!({"accounts": checkin_all_rows(accounts, &cfg).await})
 }
 
+/// Daily tasks perform writes, so an unknown variant must never default to CN.
+pub fn daily_variant(value: &str) -> Option<WbVariant> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "cn" => Some(WbVariant::Cn),
+        "ai" | "intl" | "global" => Some(WbVariant::Ai),
+        _ => None,
+    }
+}
+
+/// Account-page refresh runs the complete upstream Daily workflow while the
+/// existing tray and scheduled check-in entries retain their original behavior.
+pub async fn run_daily_all(variant: WbVariant) -> Value {
+    let Some(_guard) = RunFlagGuard::try_acquire(&CHECKIN_RUNNING) else {
+        return json!({"accounts": [], "status": "skipped", "reason": "already_running"});
+    };
+    let cfg = load_checkin_config();
+    let accounts: Vec<Value> = load_accounts()
+        .into_iter()
+        .filter(|acc| variant_of(acc) == variant)
+        .collect();
+    let outside_window = manual_window_skip_rows(&accounts, &cfg, true, now_ms()).is_some();
+    let mut rows = if variant == WbVariant::Cn && !outside_window {
+        checkin_all_rows(accounts.clone(), &cfg).await
+    } else {
+        accounts.iter().map(|account| {
+            let excluded = auto_checkin_excluded(account, &cfg);
+            json!({
+                "accountId": account.get("id"), "email": account_display_name(account),
+                "result": if excluded || outside_window {"skipped"} else {"daily"},
+                "reason": if excluded {Some("auto_checkin_disabled")} else if outside_window {Some("outside_checkin_window")} else {None},
+            })
+        }).collect()
+    };
+    for row in &mut rows {
+        if row.get("reason").and_then(Value::as_str) == Some("auto_checkin_disabled") {
+            continue;
+        }
+        let Some(mut account) = row
+            .get("accountId")
+            .and_then(Value::as_str)
+            .and_then(crate::modules::account::find_account)
+        else {
+            row["rewards"] = json!({"ok":false,"message":"账号已删除"});
+            continue;
+        };
+        // International preflight must happen before attempting a token refresh.
+        if variant == WbVariant::Cn {
+            account = ensure_fresh_token(account, &cfg).await;
+        }
+        if let Some(error) = crate::modules::refresh::refresh_failure(&account)
+            .map(str::to_string)
+            .or_else(|| envelope_token_error(&account))
+        {
+            row["rewards"] = json!({"ok":false,"message":error});
+            continue;
+        }
+        let mode = if variant == WbVariant::Cn {
+            "workbuddy-cn"
+        } else {
+            "workbuddy-global"
+        };
+        let uid = account
+            .get("uid")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        let token = account
+            .get("access_token")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        let mut result =
+            crate::modules::daily_runner::run(mode, token, uid.clone(), outside_window).await;
+        if variant == WbVariant::Ai
+            && result.get("authInvalid").and_then(Value::as_bool) == Some(true)
+            && account
+                .get("refresh_token")
+                .and_then(Value::as_str)
+                .is_some_and(|v| !v.is_empty())
+        {
+            account = refresh_after_unauthorized(account).await;
+            if let Some(error) = crate::modules::refresh::refresh_failure(&account) {
+                result = json!({"ok":false,"message":error});
+            } else {
+                let token = account
+                    .get("access_token")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                result = crate::modules::daily_runner::run(mode, token, uid, outside_window).await;
+            }
+        }
+        row["rewards"] = result;
+    }
+    json!({"accounts": rows})
+}
+
 /// 批量签到的逐账号结果行；被排除账号不 poll 操作，因此不会发起任何请求。
 async fn checkin_all_rows(accounts: Vec<Value>, cfg: &Value) -> Vec<Value> {
     let mut results: Vec<Value> = Vec::new();
@@ -948,6 +1045,14 @@ async fn checkin_all_rows(accounts: Vec<Value>, cfg: &Value) -> Vec<Value> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn daily_variant_rejects_unknown_or_missing_variant() {
+        assert_eq!(super::daily_variant("cn"), Some(super::WbVariant::Cn));
+        assert_eq!(super::daily_variant("global"), Some(super::WbVariant::Ai));
+        assert_eq!(super::daily_variant(""), None);
+        assert_eq!(super::daily_variant("unexpected"), None);
+    }
+
     #[test]
     fn failed_accounts_without_logs_do_not_starve_the_next_batch() {
         let accounts: Vec<_> = (0..9)

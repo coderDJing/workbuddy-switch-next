@@ -59,7 +59,7 @@ import { GITHUB_RELEASE_URL, GITHUB_REPOSITORY_URL, RC_DIAGNOSTICS_ENABLED, open
 import { useUpdateState } from "@/lib/use-update-state";
 import { changeCompanionEnabled, reloadCompanionEnabled, useCompanionEnabled } from "@/lib/use-companion-enabled";
 import { cn } from "@/lib/utils";
-import { accountVariant, variantSupportsCheckin, variantSupportsTravel, variantUsesIntlCodebuddyIde } from "@/lib/variant";
+import { accountVariant, variantSupportsTravel, variantUsesIntlCodebuddyIde } from "@/lib/variant";
 import { UpdateInstallDialog } from "@/components/update-install-dialog";
 import { DemoAction } from "@/components/demo-action";
 import { WebdavRestoreDialog } from "@/components/webdav-restore-dialog";
@@ -610,8 +610,8 @@ function AutoCheckinCard() {
     });
   }
 
-  /** 逐账号开关只列出支持签到的档位（国际版签到接口未开放）。 */
-  const checkinAccounts = accounts.filter((account) => variantSupportsCheckin(accountVariant(account)));
+  /** 国际版也参与刷新时的每日活跃任务。 */
+  const checkinAccounts = accounts;
   const excludedIds = new Set(cfg?.excluded_account_ids ?? []);
   const windowIssue = cfg ? checkinWindowIssue(cfg.checkin_start, cfg.checkin_end) : null;
 
@@ -720,12 +720,12 @@ function AutoCheckinCard() {
               {/* 逐账号开关：切换即落盘，与参数编辑共用同一条提交链。 */}
               <AccordionSettingsRow
                 value="excluded"
-                label="不参与自动签到的账号"
-                description="关闭后，后台轮次、刷新积分与全部立即签到都会跳过该账号；仍可在账号卡片进行单账号手动签到。"
+                label="参与签到和每日任务的账号"
+                description="关闭后跳过该账号的后台签到和刷新附带的每日任务；积分仍会刷新。国内版可在账号卡片手动签到。"
               >
                 <div className={INSET_PANEL}>
                   {checkinAccounts.length === 0 ? (
-                    <p className="py-2 text-xs text-muted-foreground">暂无可签到的账号</p>
+                    <p className="py-2 text-xs text-muted-foreground">暂无账号</p>
                   ) : (
                     checkinAccounts.map((account) => {
                       const name = displayName(account);
@@ -735,13 +735,13 @@ function AutoCheckinCard() {
                           className="flex min-w-0 items-center justify-between gap-3 border-b border-border/50 py-2.5 last:border-b-0"
                         >
                           <span className="min-w-0 flex-1 truncate text-xs leading-4" title={name}>
-                            {name}
+                            {name} · {accountVariant(account) === "ai" ? "国际版" : "国内版"}
                           </span>
                           <DemoAction>
                             <Switch
                               checked={!excludedIds.has(account.id)}
                               onCheckedChange={(allowed) => onAutoCheckinChange(account, allowed)}
-                              aria-label={`${name}参与自动签到`}
+                              aria-label={`${name}参与签到和每日任务`}
                             />
                           </DemoAction>
                         </div>

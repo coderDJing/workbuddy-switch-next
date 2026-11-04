@@ -87,7 +87,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - uses: actions/setup-python@v5
-        if: runner.os == 'macOS'
         with:
           python-version: '3.12'
       - name: macOS DMG tooling
@@ -99,6 +98,10 @@ jobs:
       - run: npm ci
       - run: npm run release:check
       - run: npm run build
+      - name: Prepare Daily task component
+        env:
+          AGENT_COMPANION_TARGET: ${{ matrix.target }}
+        run: node scripts/prepare-daily-runner.mjs
       - name: CLI binary
         run: cargo build -p wb-switch-server --release --locked --target ${{ matrix.target }}
       - name: Remove this target's stale bundles
@@ -110,6 +113,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           AGENT_COMPANION_TARGET: ${{ matrix.target }}
+          DAILY_RUNNER_PREPARED: '1'
         run: node scripts/build-release.mjs --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
       - name: macOS drag-to-Applications image
         if: runner.os == 'macOS' && vars.PUBLISH_APP != 'false'

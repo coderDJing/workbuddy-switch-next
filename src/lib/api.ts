@@ -138,6 +138,7 @@ const ROUTES: Record<string, Route> = {
   get_qoder_status: { method: "GET", path: "/api/qoder/status" },
   auto_capture_qoder_accounts: { method: "POST", path: "/api/qoder/auto-capture" },
   get_qoder_credits: { method: "POST", path: "/api/qoder/credits" },
+  claim_qoder_rewards: { method: "POST", path: "/api/qoder/rewards" },
   export_qoder_accounts: { method: "POST", path: "/api/qoder/export" },
   preview_qoder_backup: { method: "POST", path: "/api/qoder/backup/preview" },
   import_qoder_backup: { method: "POST", path: "/api/qoder/backup/import" },
@@ -200,6 +201,7 @@ const ROUTES: Record<string, Route> = {
   save_rate_limit_config: { method: "POST", path: "/api/rate-limits/config" },
   checkin: { method: "POST", path: "/api/checkin" },
   checkin_all: { method: "POST", path: "/api/checkin/all" },
+  run_daily_tasks: { method: "POST", path: "/api/daily/run" },
   get_auto_checkin_config: { method: "GET", path: "/api/checkin/config" },
   save_auto_checkin_config: { method: "POST", path: "/api/checkin/config" },
   get_checkin_logs: { method: "GET", path: "/api/checkin/logs" },
@@ -475,6 +477,10 @@ export function getQoderStatus(): Promise<QoderStatus> {
 
 export function getQoderCredits(bundleIds: string[], liveTarget?: QoderTarget): Promise<QoderCredit> {
   return call("get_qoder_credits", { bundleIds, liveTarget: liveTarget ?? null });
+}
+
+export function claimQoderRewards(bundleIds: string[], liveTarget?: QoderTarget): Promise<{ok: boolean; message: string}> {
+  return call("claim_qoder_rewards", { bundleIds, liveTarget: liveTarget ?? null });
 }
 
 export function startQoderLogin(target: QoderTarget): Promise<{loginId: string; verificationUri: string; expiresIn: number}> {
@@ -990,13 +996,17 @@ export function checkin(accountId: string): Promise<CheckinResult> {
  * 与改造前等价（改造前账号库里只有国内版账号）。
  */
 export function checkinAll(variant?: WbVariant, respectWindow?: boolean): Promise<{
-  accounts: { accountId: string; email: string; result: string; error?: string; inactive?: boolean; reason?: string }[];
+  accounts: { accountId: string; email: string; result: string; error?: string; inactive?: boolean; reason?: string; rewards?: {ok: boolean; message: string; remaining?: string[]; warnings?: string[]} }[];
   status?: string;
   reason?: string;
 }> {
   const args: Record<string, unknown> = variant ? { variant } : {};
   if (respectWindow === true) args.respectWindow = true;
   return call("checkin_all", args);
+}
+
+export function runDailyTasks(variant: WbVariant): ReturnType<typeof checkinAll> {
+  return call("run_daily_tasks", { variant });
 }
 
 export function getAutoCheckinConfig(): Promise<CheckinConfig> {

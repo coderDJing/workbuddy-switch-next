@@ -387,6 +387,15 @@ pub async fn get_qoder_credits(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+pub async fn claim_qoder_rewards(
+    bundle_ids: Vec<String>,
+    live_target: Option<String>,
+) -> Result<Value, String> {
+    let target = live_target.as_deref().map(parse_qoder_target).transpose()?;
+    Ok(qoder::credits::claim(&bundle_ids, target).await)
+}
+
+#[tauri::command(rename_all = "camelCase")]
 pub async fn export_qoder_accounts(bundle_ids: Vec<String>) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || qoder::backup::export(&bundle_ids))
         .await
@@ -1288,6 +1297,12 @@ pub async fn checkin(account_id: String) -> Result<Value, String> {
 pub async fn checkin_all(variant: Option<String>, respect_window: Option<bool>) -> Value {
     let variant = variant.as_deref().map(|raw| WbVariant::parse(Some(raw)));
     checkin::run_checkin_all(variant, respect_window.unwrap_or(false)).await
+}
+
+#[tauri::command]
+pub async fn run_daily_tasks(variant: String) -> Result<Value, String> {
+    let variant = checkin::daily_variant(&variant).ok_or("未知的 WorkBuddy 档位")?;
+    Ok(checkin::run_daily_all(variant).await)
 }
 
 /// GET /api/checkin/config —— 自动签到配置。

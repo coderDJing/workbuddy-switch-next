@@ -12,13 +12,17 @@ const bundle = path.join(root, 'target', target, 'release', 'bundle');
 if (os === 'macos') {
   const config = JSON.parse(fs.readFileSync(path.join(root, 'release-config.json'), 'utf8'));
   const packed = path.join(bundle, 'macos', `${config.productName}.app`, 'Contents', 'MacOS', 'workbuddy-switch-next');
-  const stat = fs.statSync(packed);
-  if (!stat.isFile() || !stat.size || !(stat.mode & 0o111)) throw new Error('macOS app CLI is missing or not executable');
+  const daily = path.join(path.dirname(packed), 'daily-runner');
+  for (const file of [packed, daily]) {
+    const stat = fs.statSync(file);
+    if (!stat.isFile() || !stat.size || !(stat.mode & 0o111)) throw new Error(`macOS app binary is missing or not executable: ${path.basename(file)}`);
+  }
 } else {
   const dir = path.join(bundle, 'deb');
   const packages = fs.readdirSync(dir).filter(name => name.endsWith('.deb'));
   if (packages.length !== 1) throw new Error(`Expected one deb package; found ${packages.length}`);
   const contents = execFileSync('dpkg-deb', ['--contents', path.join(dir, packages[0])], { encoding: 'utf8' });
   if (!hasExecutableCli(contents)) throw new Error('Deb package is missing an executable CLI at /usr/bin/workbuddy-switch-next');
+  if (!contents.split(/\r?\n/).some(line => /^-[rwxStTs-]{9}\s+.*\s(?:\.\/)?usr\/bin\/daily-runner$/.test(line.trimEnd()) && [line[3], line[6], line[9]].some(permission => /[xst]/.test(permission)))) throw new Error('Deb package is missing an executable Daily task component');
 }
 console.log(`${os} desktop package contains its CLI.`);

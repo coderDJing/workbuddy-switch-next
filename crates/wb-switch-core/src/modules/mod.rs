@@ -9,6 +9,7 @@ pub mod codebuddy_ide_session_sync;
 pub mod config;
 pub mod credit_usage;
 pub mod credits;
+pub mod daily_runner;
 pub mod error_log;
 pub mod export_import;
 pub mod jetbrains;

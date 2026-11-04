@@ -5,6 +5,7 @@ use std::io::{self, Write};
 use std::path::Path;
 
 const NAME: &str = "workbuddy-switch-next";
+const DAILY_NAME: &str = "daily-runner";
 const MARKER: &str = "workbuddy-switch-next managed cli v1\n";
 const LAUNCHER: &str = "#!/bin/sh\n# WorkBuddy Switch Next managed CLI\nexec \"$HOME/.local/share/workbuddy-switch-next/cli/workbuddy-switch-next\" \"$@\"\n";
 const START: &str = "# >>> WorkBuddy Switch Next CLI >>>";
@@ -37,6 +38,16 @@ fn install(home: &Path, source: &Path) -> io::Result<()> {
             "Bundled CLI missing",
         ));
     }
+    let daily_source = source
+        .parent()
+        .ok_or_else(|| io::Error::other("Bundled directory missing"))?
+        .join(DAILY_NAME);
+    if !daily_source.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "Bundled daily task component missing",
+        ));
+    }
     let bin = home.join(".local/bin");
     let launcher = bin.join(NAME);
     match fs::symlink_metadata(&launcher) {
@@ -62,20 +73,23 @@ fn install(home: &Path, source: &Path) -> io::Result<()> {
             ));
         }
     }
-    if fs::symlink_metadata(&binary).is_ok()
-        && fs::read_to_string(&marker).ok().as_deref() != Some(MARKER)
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "Unmanaged CLI file already exists",
-        ));
-    }
-    if let Ok(meta) = fs::symlink_metadata(&binary) {
-        if !meta.is_file() {
+    let daily_binary = data.join(DAILY_NAME);
+    for path in [&binary, &daily_binary] {
+        if fs::symlink_metadata(path).is_ok()
+            && fs::read_to_string(&marker).ok().as_deref() != Some(MARKER)
+        {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
-                "CLI file is not a regular file",
+                "Unmanaged CLI file already exists",
             ));
+        }
+        if let Ok(meta) = fs::symlink_metadata(path) {
+            if !meta.is_file() {
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "CLI file is not a regular file",
+                ));
+            }
         }
     }
     fs::write(&marker, MARKER)?;
@@ -95,6 +109,18 @@ fn install(home: &Path, source: &Path) -> io::Result<()> {
         let _ = fs::remove_file(&temp);
     }
     result?;
+    let daily_temp = temp.with_file_name(format!(
+        "{}.daily",
+        temp.file_name().unwrap_or_default().to_string_lossy()
+    ));
+    let daily_result = (|| {
+        fs::copy(&daily_source, &daily_temp)?;
+        fs::rename(&daily_temp, &daily_binary)
+    })();
+    if daily_result.is_err() {
+        let _ = fs::remove_file(&daily_temp);
+    }
+    daily_result?;
     fs::create_dir_all(&bin)?;
     if !launcher.exists() {
         let mut file = OpenOptions::new()
@@ -185,6 +211,7 @@ mod tests {
         };
         let source = dir.join("source");
         fs::write(&source, b"cli-v1").unwrap();
+        fs::write(dir.join(DAILY_NAME), b"daily-v1").unwrap();
         (Temp(dir), source)
     }
     #[test]
@@ -203,6 +230,7 @@ mod tests {
         fs::write(tmp.0.join(".profile"), "existing\n").unwrap();
         install(&tmp.0, &source).unwrap();
         fs::write(&source, b"cli-v2").unwrap();
+        fs::write(tmp.0.join(DAILY_NAME), b"daily-v2").unwrap();
         install(&tmp.0, &source).unwrap();
         let profile = fs::read_to_string(tmp.0.join(".profile")).unwrap();
         assert_eq!(profile.matches(START).count(), 1);
@@ -214,6 +242,14 @@ mod tests {
             )
             .unwrap(),
             b"cli-v2"
+        );
+        assert_eq!(
+            fs::read(
+                tmp.0
+                    .join(".local/share/workbuddy-switch-next/cli/daily-runner")
+            )
+            .unwrap(),
+            b"daily-v2"
         );
     }
     #[test]

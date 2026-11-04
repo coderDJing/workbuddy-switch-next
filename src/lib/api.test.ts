@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getCreditExpiry, getStatus, getTokenStatistics, webdavInfo, webdavRestore, webdavTestConnection } from "./api";
+import { claimQoderRewards, getCreditExpiry, getStatus, getTokenStatistics, runDailyTasks, webdavInfo, webdavRestore, webdavTestConnection } from "./api";
 
 /**
  * webui（浏览器）模式下的 HTTP 请求地址构造。
@@ -73,6 +73,18 @@ describe("webui httpCall URL 构造", () => {
 
     const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/status");
+  });
+
+  it("每日任务按档位和账号使用独立写入接口", async () => {
+    const fetchMock = stubFetch();
+    await runDailyTasks("ai");
+    await claimQoderRewards(["bundle-1"], "global_cli");
+    const [dailyUrl, dailyInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(dailyUrl).toBe("/api/daily/run");
+    expect(dailyInit.body).toBe(JSON.stringify({ variant: "ai" }));
+    const [qoderUrl, qoderInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect(qoderUrl).toBe("/api/qoder/rewards");
+    expect(qoderInit.body).toBe(JSON.stringify({ bundleIds: ["bundle-1"], liveTarget: "global_cli" }));
   });
 
   it("POST 请求同样走相对路径并序列化请求体", async () => {

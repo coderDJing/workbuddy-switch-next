@@ -1,6 +1,8 @@
 # Logs
 logs
 *.log
+__pycache__/
+*.pyc
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -15,6 +17,8 @@ public/companion/
 public/companion-demo/
 src-tauri/binaries/agent-studio-runtime-*
 src-tauri/binaries/workbuddy-switch-next-*
+src-tauri/binaries/daily-runner*
+npm/bin/daily-runner*
 *.local
 
 # Rust / Tauri 构建产物（workspace target）

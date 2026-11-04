@@ -70,7 +70,18 @@ jobs:
         run: cargo test -p wb-switch-server
 
       - name: npm launcher tests
-        run: node --test npm/tests/cli-launcher.test.cjs
+        run: node --test npm/tests/cli-launcher.test.cjs npm/tests/daily-install.test.cjs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Daily task adapter and upstream tests
+        run: |
+          python -m pip install requests==2.32.5
+          python -m unittest discover -s vendor/daily-runner -p 'test_*.py'
+          python -m unittest discover -s vendor/daily-runner/upstream/workbuddy/tests -p 'test_*.py'
+          python -m unittest discover -s vendor/daily-runner/upstream/qoder/tests -p 'test_*.py'
 
       - name: Desktop CLI registration tests
         run: node scripts/test-desktop-cli-install.mjs
@@ -134,6 +145,7 @@ jobs:
           mkdir -p src-tauri/binaries
           touch "src-tauri/binaries/agent-studio-runtime-$(rustc -vV | sed -n "s/^host: //p")"
           touch "src-tauri/binaries/workbuddy-switch-next-$(rustc -vV | sed -n "s/^host: //p")"
+          touch "src-tauri/binaries/daily-runner-$(rustc -vV | sed -n "s/^host: //p")"
 
       - name: Check formatting
         run: cargo fmt --check -p wb-switch-core -p wb-switch-server -p wb-switch-rust

@@ -299,6 +299,7 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
   const [authorizationRequired, setAuthorizationRequired] = useState<QoderTarget[]>([]);
   const autoInFlight = useRef<ReturnType<typeof api.autoCaptureQoderAccounts> | null>(null);
   const [creditVersion, setCreditVersion] = useState(0);
+  const [claimingRewards, setClaimingRewards] = useState(false);
   const [credits, setCredits] = useState<Record<string, QoderCredit>>({});
   const [creditLoading, setCreditLoading] = useState<Record<string, boolean>>({});
   const [sortKey, setSortKey] = useState<QoderSortKey>(() => {
@@ -407,6 +408,39 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
   const busy = busyKey !== null;
   const refreshingCredits = [...groups.map((group) => group.key), ...currentLogins.map((s) => `live:${s.target}`)].some((key) => creditLoading[key]);
 
+  async function refreshAndClaim() {
+    if (claimingRewards || refreshingCredits) return;
+    setClaimingRewards(true);
+    const progressToast = toast.loading("正在领取 Qoder 奖励…");
+    const outcomes: string[] = [];
+    let failed = 0;
+    try {
+      for (const group of groups) {
+        const active = targets.find((target) => {
+          const state = targetStatus(target);
+          return group.bundles.some((bundle) => bundle.id === state?.currentId || (bundle.identityKey && bundle.identityKey === state?.currentIdentityKey));
+        });
+        try {
+          const result = await api.claimQoderRewards(group.bundles.map((bundle) => bundle.id), active);
+          if (!result.ok) failed++;
+          outcomes.push(`${group.label}：${result.message}`);
+        } catch (error) { failed++; outcomes.push(`${group.label}：${api.asError(error)}`); }
+      }
+      for (const state of currentLogins) {
+        try {
+          const result = await api.claimQoderRewards([], state.target);
+          if (!result.ok) failed++;
+          outcomes.push(`${TARGET_LABELS[state.target]}：${result.message}`);
+        } catch (error) { failed++; outcomes.push(`${TARGET_LABELS[state.target]}：${api.asError(error)}`); }
+      }
+      (failed ? toast.warning : toast.success)("领奖处理完成", { description: outcomes.join("；"), duration: 10000 });
+    } finally {
+      toast.dismiss(progressToast);
+      setCreditVersion((value) => value + 1);
+      setClaimingRewards(false);
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1180px] px-6 py-8 sm:px-8 sm:py-9">
       <header className="mb-6">
@@ -473,7 +507,7 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
               <SelectContent>{QODER_SORT_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
             </Select>
             {onToggleCompact && <Button variant="ghost" size="icon" className={cn("size-9 rounded-lg", compact && "bg-accent text-accent-foreground")} onClick={onToggleCompact} aria-label={compact ? "切换为宽松模式" : "切换为紧凑模式"} title={compact ? "切换为宽松模式" : "切换为紧凑模式"}>{compact ? <Rows3 /> : <Columns3 />}</Button>}
-            <DemoAction><Button variant="ghost" size="icon" className="size-9 rounded-lg" disabled={refreshingCredits || accountCount === 0} onClick={() => setCreditVersion((value) => value + 1)} aria-label="刷新所有积分" title="刷新所有积分"><RefreshCw className={refreshingCredits ? "animate-spin" : undefined} /></Button></DemoAction>
+            <DemoAction><Button variant="ghost" size="icon" className="size-9 rounded-lg" disabled={refreshingCredits || claimingRewards || accountCount === 0} onClick={() => void refreshAndClaim()} aria-label="领取奖励并刷新所有积分" title="领取奖励并刷新所有积分"><RefreshCw className={refreshingCredits || claimingRewards ? "animate-spin" : undefined} /></Button></DemoAction>
           </div>
         </div>
         {(!autoReady || (!status && !loadError)) ? (

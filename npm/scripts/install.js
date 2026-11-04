@@ -42,6 +42,12 @@ function copyFrom(src) {
   fs.mkdirSync(binDir, { recursive: true });
   fs.copyFileSync(src, target);
   if (process.platform !== "win32") fs.chmodSync(target, 0o755);
+  const dailyName = process.platform === "win32" ? "daily-runner.exe" : "daily-runner";
+  const dailySource = path.join(path.dirname(src), dailyName);
+  if (fs.existsSync(dailySource)) {
+    fs.copyFileSync(dailySource, path.join(binDir, dailyName));
+    if (process.platform !== "win32") fs.chmodSync(path.join(binDir, dailyName), 0o755);
+  }
   const size = fs.statSync(target).size;
   if (size < 1 * 1024 * 1024) {
     fs.unlinkSync(target);

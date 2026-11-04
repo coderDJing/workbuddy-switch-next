@@ -238,8 +238,8 @@ export default function AccountsPage() {
   const checkinAvailable = variantSupportsCheckin(variant);
   /** 旅行 chip 与旅行状态轮询只在自动旅行开启后生效（配置未读到 = 未开启）。 */
   const autoTravelEnabled = travelAvailable && autoTravelConfig?.enabled === true;
-  /** 刷新按钮文案：国际版没有签到接口，只刷新积分。 */
-  const refreshCreditsLabel = checkinAvailable ? "刷新全部账号积分并签到（仅在签到时间段内签到；忽略已关闭自动签到的账号）" : "刷新全部账号积分";
+  /** 完整任务可能需要等待上游活动与对话执行。 */
+  const refreshCreditsLabel = "执行每日任务并刷新积分（可能消耗积分或能量；签到遵守时间段，任务遵守账号开关）";
   /** 关闭自动签到的账号 id（配置未读到/读取失败 = 空名单）。 */
   const excludedCheckinIds = useMemo(
     () => new Set(autoCheckinConfig?.excluded_account_ids ?? []),
@@ -632,14 +632,15 @@ export default function AccountsPage() {
   async function onRefreshCredits() {
     if (!visibleAccounts.length || refreshingCredits || checkinAllRunning) return;
     setCheckinAllRunning(true);
+    const progressToast = toast.loading("正在执行每日任务…", { description: "任务可能需要几分钟，完成后会刷新积分。" });
     const ids = visibleAccounts.map((account) => account.id);
     let summary = "";
     let notify = toast.success;
     let title = "积分到期情况已刷新";
     try {
-      if (checkinAvailable) {
+      {
         try {
-          const res = await api.checkinAll(variant, true);
+          const res = await api.runDailyTasks(variant);
           const entries = res.accounts ?? [];
           const success = entries.filter((e) => e.result === "success").length;
           const already = entries.filter((e) => e.result === "already").length;
@@ -648,21 +649,26 @@ export default function AccountsPage() {
           const skipped = entries.filter((e) => e.result === "skipped" && e.reason === "auto_checkin_disabled").length;
           const outsideWindow = entries.filter((e) => e.result === "skipped" && e.reason === "outside_checkin_window").length;
           const parts: string[] = [];
+          const rewardErrors = entries.filter((entry) => entry.rewards && !entry.rewards.ok).length;
+          for (const entry of entries) {
+            if (entry.rewards) parts.push(`${entry.email}：${entry.rewards.message}${entry.rewards.remaining?.length ? `（未完成：${entry.rewards.remaining.join("、")}）` : ""}${entry.rewards.warnings?.length ? `；${entry.rewards.warnings.join("；")}` : ""}`);
+          }
           if (success > 0) parts.push(`${success} 个签到成功`);
           if (already > 0) parts.push(`${already} 个已签到`);
           if (inactive > 0) parts.push(`${inactive} 个未开放签到`);
           if (failed > 0) parts.push(`${failed} 个失败`);
           if (skipped > 0) parts.push(`已忽略 ${skipped} 个关闭自动签到的账号`);
-          if (outsideWindow > 0) parts.push(`${outsideWindow} 个未到签到时间段`);
+          if (outsideWindow > 0) parts.push(`${outsideWindow} 个不在签到时间段，已跳过签到`);
           summary = res.status === "skipped" && res.reason === "already_running"
             ? "签到任务正在进行，本次仅刷新积分"
             : parts.length > 0 ? parts.join("，") : "无账号需要签到";
           const allFailed = entries.length > 0 && failed === entries.length;
-          const allSkippedOrInactive =
-            res.status === "skipped" ||
-            entries.length === 0 ||
-            (success === 0 && already === 0 && failed === 0);
-          if (allFailed) {
+          const allSkippedOrInactive = res.status === "skipped" || entries.length === 0 ||
+            (success === 0 && already === 0 && failed === 0 && !entries.some((entry) => entry.rewards));
+          if (rewardErrors > 0) {
+            notify = toast.warning;
+            title = "积分已刷新，部分每日任务未完成";
+          } else if (allFailed) {
             // 全部失败：没有成功、已签、未开放或忽略的账号。
             notify = toast.error;
             title = "积分已刷新，签到出现错误";
@@ -671,7 +677,7 @@ export default function AccountsPage() {
             notify = toast.info;
           }
           // 只重查实际处理过的账号状态；被跳过的账号本次未发请求，状态保持未知。
-          const next = await fetchTodayCheckinMap(entries.filter((e) => e.result !== "skipped").map((e) => e.accountId));
+          const next = checkinAvailable ? await fetchTodayCheckinMap(entries.filter((e) => e.result !== "skipped").map((e) => e.accountId)) : {};
           if (Object.keys(next).length > 0) {
             setCheckinMap((prev) => ({ ...prev, ...next }));
           }
@@ -683,8 +689,9 @@ export default function AccountsPage() {
       }
       await refreshCredits(ids);
       if (autoTravelEnabled) await loadTravelMap(ids);
-      notify(title, { description: summary || undefined });
+      notify(title, { description: summary || undefined, duration: 12000 });
     } finally {
+      toast.dismiss(progressToast);
       setCheckinAllRunning(false);
     }
   }

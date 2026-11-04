@@ -104,6 +104,7 @@ pub fn router() -> Router {
         .route("/api/qoder/status", get(api_qoder_status))
         .route("/api/qoder/auto-capture", post(api_qoder_auto_capture))
         .route("/api/qoder/credits", post(api_qoder_credits))
+        .route("/api/qoder/rewards", post(api_qoder_rewards))
         .route("/api/qoder/export", post(api_qoder_export))
         .route("/api/qoder/backup/preview", post(api_qoder_backup_preview))
         .route("/api/qoder/backup/import", post(api_qoder_backup_import))
@@ -210,6 +211,7 @@ pub fn router() -> Router {
         )
         .route("/api/checkin", post(api_checkin))
         .route("/api/checkin/all", post(api_checkin_all))
+        .route("/api/daily/run", post(api_daily_run))
         .route(
             "/api/checkin/config",
             get(api_checkin_config).post(api_save_checkin_config),
@@ -771,6 +773,28 @@ async fn api_qoder_credits(Json(body): Json<Value>) -> Response {
         None => None,
     };
     json_ok(qoder::credits::query(&ids, target).await)
+}
+
+async fn api_qoder_rewards(Json(body): Json<Value>) -> Response {
+    let ids: Vec<String> = body
+        .get("bundleIds")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let target = match body.get("liveTarget").and_then(Value::as_str) {
+        Some(value) => match qoder::QoderTarget::parse(value) {
+            Some(target) => Some(target),
+            None => return json_err("未知的 Qoder 目标".into(), StatusCode::BAD_REQUEST),
+        },
+        None => None,
+    };
+    json_ok(qoder::credits::claim(&ids, target).await)
 }
 
 async fn api_qoder_oauth_start(Json(body): Json<Value>) -> Response {
@@ -1676,6 +1700,17 @@ async fn api_checkin_all(body: Option<Json<Value>>) -> Response {
         .and_then(|value| value.as_bool())
         .unwrap_or(false);
     json_ok(checkin::run_checkin_all(variant, respect_window).await)
+}
+
+async fn api_daily_run(Json(body): Json<Value>) -> Response {
+    let Some(variant) = body
+        .get("variant")
+        .and_then(Value::as_str)
+        .and_then(checkin::daily_variant)
+    else {
+        return json_err("未知的 WorkBuddy 档位".into(), StatusCode::BAD_REQUEST);
+    };
+    json_ok(checkin::run_daily_all(variant).await)
 }
 
 async fn api_checkin_config() -> Response {
