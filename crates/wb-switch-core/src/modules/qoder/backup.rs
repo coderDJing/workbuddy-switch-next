@@ -200,11 +200,19 @@ fn export_with(root: &Path, roots: &QoderRoots, ids: &[String]) -> Result<Backup
     let mut entries: Vec<Entry> = Vec::new();
     let mut groups = HashMap::new();
     let mut selected = HashSet::new();
+    let mut metas = Vec::new();
     for id in ids {
-        if !selected.insert(id) {
-            continue;
+        if selected.insert(id) {
+            metas.push(store::load(root, id)?);
         }
-        let meta = store::load(root, id)?;
+    }
+    // Keep the newest snapshot for each identity/client, regardless of selection order.
+    metas.sort_by(|a, b| {
+        b.captured_at
+            .cmp(&a.captured_at)
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    for meta in metas {
         let saved = bundle_account(root, roots, &meta)?;
         let identity = account_identity(meta.target, &saved)?;
         if meta
@@ -214,8 +222,7 @@ fn export_with(root: &Path, roots: &QoderRoots, ids: &[String]) -> Result<Backup
         {
             return Err("Qoder 账号身份不一致，请重新添加".into());
         }
-        let account = live_account(roots, meta.target, &identity).unwrap_or(saved);
-        let index = *groups.entry(identity).or_insert_with(|| {
+        let index = *groups.entry(identity.clone()).or_insert_with(|| {
             entries.push(Entry {
                 label: meta.label.clone(),
                 credentials: Vec::new(),
@@ -227,8 +234,9 @@ fn export_with(root: &Path, roots: &QoderRoots, ids: &[String]) -> Result<Backup
             .iter()
             .any(|c| c.target == meta.target)
         {
-            return Err("选择中包含重复的 Qoder 客户端账号".into());
+            continue;
         }
+        let account = live_account(roots, meta.target, &identity).unwrap_or(saved);
         entries[index].credentials.push(Credential {
             target: meta.target,
             account,
@@ -456,6 +464,47 @@ mod tests {
             assert_eq!(result.refresh_token.as_deref(), Some("refresh"));
             assert!(result.expires_at.is_some());
         }
+    }
+    #[cfg(windows)]
+    #[test]
+    fn export_merges_repeated_client_snapshots_and_keeps_the_newest() {
+        let temp = std::env::temp_dir().join(format!("wb-qoder-dedup-{}", uuid::Uuid::new_v4()));
+        let root = temp.join("store");
+        let roots = roots(&temp);
+        let mut ids = Vec::new();
+        for (target, token, captured_at) in [
+            (QoderTarget::Cli, "old", 1),
+            (QoderTarget::Cli, "new", 3),
+            (QoderTarget::Desktop, "desktop", 2),
+        ] {
+            let credential = account("uid", token);
+            let identity = account_identity(target, &credential).unwrap();
+            let encrypted = super::super::vault::seal(&credential, "test-device").unwrap();
+            let mut meta = store::save_authorized(
+                &root,
+                target,
+                "Test",
+                &identity,
+                vec![(super::super::vault::FILE.into(), encrypted)],
+            )
+            .unwrap();
+            meta.captured_at = captured_at;
+            let dir = store::bundle_dir(&root, &meta.id).unwrap();
+            std::fs::write(dir.join("bundle.json"), serde_json::to_vec(&meta).unwrap()).unwrap();
+            ids.push(meta.id);
+        }
+        for order in [ids.clone(), ids.iter().rev().cloned().collect()] {
+            let backup = export_with(&root, &roots, &order).unwrap();
+            assert_eq!(backup.accounts.len(), 1);
+            assert_eq!(backup.accounts[0].credentials.len(), 2);
+            let cli = backup.accounts[0]
+                .credentials
+                .iter()
+                .find(|c| c.target == QoderTarget::Cli)
+                .unwrap();
+            assert_eq!(cli.account.access_token, "new");
+        }
+        std::fs::remove_dir_all(temp).unwrap();
     }
     #[cfg(windows)]
     #[tokio::test]
