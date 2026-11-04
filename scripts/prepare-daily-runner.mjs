@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import os from 'node:os';
+import { verifyMacArch } from './daily-macos-arch.mjs';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -36,7 +37,7 @@ const built = path.join(build, `daily-runner${suffix}`);
 const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-daily-build-check-'));
 try {
   if (target !== host && targetArch === 'arm64' && process.arch === 'x64') {
-    execFileSync('lipo', ['-verify_arch', 'arm64', built], { stdio: 'inherit' });
+    verifyMacArch(built, 'arm64');
     console.log('Verified arm64 binary; runtime self-check requires Apple Silicon.');
   } else {
     const check = spawnSync(built, [], { input: JSON.stringify({ mode: 'self-check', stateDir: path.join(stateDir, '每日任务') }) + '\n', encoding: 'utf8', timeout: 30000 });
