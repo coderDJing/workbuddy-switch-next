@@ -32,6 +32,104 @@ fn parsed(items: &[&str]) -> Options {
 }
 
 #[test]
+fn qoder_commands_are_explicit_region_scoped_and_default_to_json() {
+    for command in [
+        "accounts",
+        "status",
+        "inspect",
+        "credits",
+        "token-stats",
+        "credit-stats",
+        "automation",
+    ] {
+        for target in ["qoder-cli", "qoder-desktop"] {
+            let input = args(&[command, "--target", target, "--variant", "ai"]);
+            let o = parse(&input).unwrap_or_else(|e| panic!("{command}: {}", e.message));
+            assert!(o.json);
+            assert_eq!(o.variant, Some(WbVariant::Ai));
+            assert!(o.target.is_qoder());
+            assert!(Context::from_args(&input).json_output(&input));
+        }
+    }
+    let o = parsed(&[
+        "automation",
+        "set",
+        "--target=qoder-cli",
+        "--variant=cn",
+        "--settings-file",
+        "settings.json",
+    ]);
+    assert_eq!(o.action, "set");
+    assert_eq!(o.settings_file.as_deref(), Some("settings.json"));
+    assert!(
+        parsed(&[
+            "credit-stats",
+            "--target=qoder-cli",
+            "--refresh",
+            "--timeout=2",
+            "--concurrency=2"
+        ])
+        .refresh
+    );
+    assert!(!parsed(&["switch", "qoder-cn:id", "--target=qoder-cli"]).close_running);
+    assert!(
+        parsed(&[
+            "switch",
+            "qoder-ai:id",
+            "--target=qoder-desktop",
+            "--close-running",
+            "--relaunch"
+        ])
+        .relaunch
+    );
+    assert!(parsed(&["rewards", "--target=qoder-cli", "--all"]).json);
+}
+
+#[test]
+fn qoder_options_never_expand_mutations_or_silently_ignore_filters() {
+    for input in [
+        vec!["rewards", "--target=qoder-cli"],
+        vec!["rewards", "a", "--all", "--target=qoder-cli"],
+        vec![
+            "automation",
+            "set",
+            "--target=qoder-cli",
+            "--settings-file=x",
+        ],
+        vec![
+            "automation",
+            "run",
+            "--target=qoder-cli",
+            "--settings-file=x",
+        ],
+        vec!["automation", "set", "--target=qoder-cli", "--variant=cn"],
+        vec!["switch", "a", "--target=qoder-cli", "--relaunch"],
+        vec!["switch", "a", "--target=qoder-desktop", "--relaunch"],
+        vec!["credits", "--target=qoder-cli", "--close-running"],
+        vec!["inspect", "--target=qoder-cli", "--model=unverified"],
+        vec!["credit-stats", "--target=qoder-cli", "--timeout=5"],
+        vec!["token-stats"],
+        vec!["rewards", "--all"],
+        vec!["automation", "run"],
+        vec!["switch", "a", "--close-running"],
+    ] {
+        assert!(parse(&args(&input)).is_err(), "{input:?}");
+    }
+    let input = args(&[
+        "--settings-file",
+        "file.json",
+        "automation",
+        "set",
+        "--target=qoder-cli",
+    ]);
+    let failure = parse(&input).err().unwrap();
+    let output = Context::from_args(&input).failure(&failure, 0);
+    assert_eq!(output["command"], "automation");
+    assert_eq!(output["target"], "qoder-cli");
+    assert_eq!(output["exitCode"], 2);
+}
+
+#[test]
 fn summary_is_opt_in_and_only_supported_for_inspect_and_credits() {
     for command in ["inspect", "credits"] {
         assert!(!parsed(&[command]).summary);

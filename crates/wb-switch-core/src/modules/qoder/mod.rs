@@ -1,11 +1,14 @@
 //! Qoder 国内版和国际版桌面端与 CLI 的账号切换。
 //!
 //! Qoder 账号与 WorkBuddy / CodeBuddy 账号库互不相通：这里存的是「账号包」
-//! （整组加密凭据文件的副本），不解密、不入 `accounts.json`、不参与 WebDAV 同步。
+//! （整组加密凭据文件的副本），不入 `accounts.json`；可通过独立加密 WebDAV 文件同步。
 //! 凭据布局与切换行为参考 NextAgentX/qoder-trae-workbuddy-switch 和 JIUSHIQINGSHAN/qoder-switch。
 mod authorized;
 mod auto;
+pub mod automation;
 pub mod backup;
+pub mod companion;
+pub mod credit_stats;
 pub mod credits;
 pub mod oauth;
 pub mod paths;
@@ -96,6 +99,11 @@ pub fn status() -> Value {
         "globalCli": target_status(&roots, QoderTarget::GlobalCli),
         "bundles": store::list(&store::default_store(), None),
     })
+}
+
+/// One client only, for CLI callers that must not inspect unrelated clients.
+pub fn client_status(target: QoderTarget) -> Value {
+    target_status(&QoderRoots::real(), target)
 }
 
 pub fn capture(target: QoderTarget, label: Option<&str>) -> Result<Value, String> {

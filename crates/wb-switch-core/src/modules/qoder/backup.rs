@@ -253,6 +253,43 @@ pub fn export(ids: &[String]) -> Result<Value, String> {
     let backup = export_with(&store::default_store(), &QoderRoots::real(), ids)?;
     serde_json::to_value(backup).map_err(|_| "无法生成 Qoder 备份".into())
 }
+
+/// Union distinct identities/clients only. Never guess which rotating token is newer.
+pub fn merge_cloud(local: &Value, remote: &Value) -> Result<Value, String> {
+    let mut merged = parse(&local.to_string())?;
+    let incoming = parse(&remote.to_string())?;
+    for entry in incoming.accounts {
+        let key = account_identity(entry.credentials[0].target, &entry.credentials[0].account)?;
+        let existing = merged.accounts.iter_mut().find(|e| {
+            account_identity(e.credentials[0].target, &e.credentials[0].account)
+                .ok()
+                .as_ref()
+                == Some(&key)
+        });
+        if let Some(existing) = existing {
+            for credential in entry.credentials {
+                if let Some(old) = existing
+                    .credentials
+                    .iter()
+                    .find(|c| c.target == credential.target)
+                {
+                    if serde_json::to_value(&old.account).ok()
+                        != serde_json::to_value(&credential.account).ok()
+                    {
+                        return Err("同一 Qoder 账号的本地与云端授权不同，已停止同步；请确认所需版本后使用备份覆盖或导入功能".into());
+                    }
+                } else {
+                    existing.credentials.push(credential);
+                }
+            }
+        } else {
+            merged.accounts.push(entry);
+        }
+    }
+    let value = serde_json::to_value(merged).map_err(|_| "无法合并 Qoder 备份")?;
+    parse(&value.to_string())?;
+    Ok(value)
+}
 pub fn export_to_path(ids: &[String], path: &str) -> Result<Value, String> {
     let p = Path::new(path);
     if !p.is_absolute()
@@ -413,6 +450,51 @@ fn import_with_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cloud_union_preserves_regions_and_refuses_ambiguous_tokens() {
+        let make = |target, uid, token| {
+            serde_json::to_value(Backup {
+                format: "wb-switch-qoder".into(),
+                version: 1,
+                accounts: vec![Entry {
+                    label: "Synthetic".into(),
+                    credentials: vec![Credential {
+                        target,
+                        account: account(uid, token),
+                    }],
+                }],
+            })
+            .unwrap()
+        };
+        let local = make(QoderTarget::Cli, "a", "secret-a");
+        assert_eq!(
+            merge_cloud(&local, &local).unwrap()["accounts"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        let second = make(QoderTarget::GlobalCli, "a", "secret-global");
+        assert_eq!(
+            merge_cloud(&local, &second).unwrap()["accounts"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        let desktop = make(QoderTarget::Desktop, "a", "desktop-secret");
+        assert_eq!(
+            merge_cloud(&local, &desktop).unwrap()["accounts"][0]["credentials"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        let conflict = make(QoderTarget::Cli, "a", "changed-secret");
+        let error = merge_cloud(&local, &conflict).unwrap_err();
+        assert!(!error.contains("secret"));
+        assert!(error.contains("授权不同"));
+    }
     fn account(uid: &str, token: &str) -> AuthorizedAccount {
         AuthorizedAccount {
             access_token: token.into(),

@@ -830,6 +830,112 @@ pub async fn backup_now(passphrase: &str) -> Result<Value, String> {
     Ok(json!({ "ok": true, "count": count, "updatedAt": config::now_ms() }))
 }
 
+fn qoder_target() -> Result<WebdavTarget, String> {
+    let mut target = resolve_target(&load_webdav_config())?;
+    target.file_url = format!(
+        "{}qoder-backup.wbs",
+        target
+            .file_url
+            .strip_suffix(REMOTE_FILE_NAME)
+            .ok_or("Qoder 云端路径无效")?
+    );
+    Ok(target)
+}
+fn qoder_local() -> Result<Option<Value>, String> {
+    use crate::modules::qoder;
+    let ids: Vec<_> = qoder::store::list(&qoder::store::default_store(), None)
+        .into_iter()
+        .map(|b| b.id)
+        .collect();
+    if ids.is_empty() {
+        return Ok(None);
+    }
+    qoder::backup::export(&ids).map(Some)
+}
+fn qoder_payload(payload: Value) -> Result<Value, String> {
+    if payload["format"] != "wb-switch-qoder" {
+        return Err("云端文件不是 Qoder 账号备份".into());
+    }
+    crate::modules::qoder::backup::preview(&payload.to_string())?;
+    Ok(payload)
+}
+/// Shares the encrypted envelope and WebDAV settings, with a separate remote object.
+pub async fn qoder_backup(passphrase: &str) -> Result<Value, String> {
+    let target = qoder_target()?;
+    let local = qoder_local()?.ok_or("没有可备份的 Qoder 账号")?;
+    let count = local["accounts"].as_array().map_or(0, Vec::len);
+    let envelope = encrypt_envelope_async(local, passphrase.into(), config::now_ms()).await?;
+    let remote = download_backup(&target).await?;
+    let etag = remote.as_ref().map(strong_etag).transpose()?;
+    upload_backup(&target, envelope, etag.as_deref()).await?;
+    Ok(json!({"ok":true,"count":count}))
+}
+pub async fn qoder_preview(passphrase: &str) -> Result<Value, String> {
+    let target = qoder_target()?;
+    let response = download_backup(&target)
+        .await?
+        .ok_or("云端还没有 Qoder 备份")?;
+    let snapshot_id = format!("{:x}", Sha256::digest(&response.body));
+    let (header, payload) = decrypt_envelope_async(response.body, passphrase.into()).await?;
+    let payload = qoder_payload(payload)?;
+    let mut preview = crate::modules::qoder::backup::preview(&payload.to_string())?;
+    preview["snapshotId"] = json!(snapshot_id);
+    preview["updatedAt"] = json!(header.updated_at);
+    Ok(preview)
+}
+/// Restore deliberately adds missing clients only, leaving active and saved logins intact.
+pub async fn qoder_restore(
+    passphrase: &str,
+    indexes: &[usize],
+    snapshot_id: &str,
+) -> Result<Value, String> {
+    let target = qoder_target()?;
+    let response = download_backup(&target)
+        .await?
+        .ok_or("云端还没有 Qoder 备份")?;
+    if snapshot_id != format!("{:x}", Sha256::digest(&response.body)) {
+        return Err("云端 Qoder 备份已变化，请重新预览；本地未修改".into());
+    }
+    let (_, payload) = decrypt_envelope_async(response.body, passphrase.into()).await?;
+    let payload = qoder_payload(payload)?;
+    crate::modules::qoder::backup::import_missing(&payload.to_string(), indexes)
+}
+pub async fn qoder_sync(passphrase: &str) -> Result<Value, String> {
+    use crate::modules::qoder;
+    let _lock = crate::modules::state_lock::StateLock::try_at(
+        &qoder::store::default_store().join("cloud.lock"),
+    )
+    .map_err(|_| "Qoder 云同步正在执行")?;
+    let target = qoder_target()?;
+    let response = download_backup(&target).await?;
+    let (etag, remote) = if let Some(response) = response {
+        let etag = strong_etag(&response)?;
+        let (_, payload) = decrypt_envelope_async(response.body, passphrase.into()).await?;
+        (Some(etag), Some(qoder_payload(payload)?))
+    } else {
+        (None, None)
+    };
+    let before = qoder_local()?;
+    let merged = match (&before, &remote) {
+        (Some(local), Some(remote)) => qoder::backup::merge_cloud(local, remote)?,
+        (Some(local), None) => local.clone(),
+        (None, Some(remote)) => remote.clone(),
+        _ => return Err("没有可同步的 Qoder 账号".into()),
+    };
+    let count = merged["accounts"].as_array().map_or(0, Vec::len);
+    let envelope =
+        encrypt_envelope_async(merged.clone(), passphrase.into(), config::now_ms()).await?;
+    upload_backup(&target, envelope, etag.as_deref()).await?;
+    if qoder_local()? != before {
+        return Err("云端已更新，本地 Qoder 账号在同步期间变化；未导入，请重新同步".into());
+    }
+    let mut result =
+        qoder::backup::import_missing(&merged.to_string(), &(0..count).collect::<Vec<_>>())?;
+    result["count"] = json!(count);
+    result["ok"] = json!(true);
+    Ok(result)
+}
+
 /// 拉取并解密远端备份，返回脱敏预览（不含 token）与远端信息。
 pub async fn restore_preview(passphrase: &str) -> Result<Value, String> {
     let target = resolve_target(&load_webdav_config())?;

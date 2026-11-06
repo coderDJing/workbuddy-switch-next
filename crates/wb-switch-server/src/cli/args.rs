@@ -15,6 +15,10 @@ Commands:
   switch ACCOUNT_ID             Switch CodeBuddy CLI; closes running CLI processes
   credits [ACCOUNT_ID | --all]   Query credit balances (default: all accounts)
   limits [ACCOUNT_ID]            Read observed model limits and recovery times
+  token-stats                   Qoder local Token usage (unknown counters stay unavailable)
+  credit-stats                  Qoder local credits and saved quota snapshots; --refresh queries selected region
+  rewards ACCOUNT_ID|--all      Claim Qoder daily rewards (explicit selection required)
+  automation [get|set|run]       Qoder automation settings/history; run only enabled, due tasks
   version                       Show version
 
 One-shot options:
@@ -23,8 +27,12 @@ One-shot options:
   --ascii-json                  JSON with Unicode escapes for legacy pipes (implies --json)
   --summary                     Compact inspect/credits output; keeps raw balances and 2-decimal display strings
   --variant cn|ai|all            Filter accounts (default: all)
-  --target codebuddy-cli         Client target (default: codebuddy-cli)
-  --dry-run                     Preview switch target without writing or closing CLI
+  --target TARGET                codebuddy-cli (default), qoder-cli, qoder-desktop
+  --dry-run                     Preview switch target without writing or closing clients
+  --close-running               Qoder only: explicitly allow closing the target client
+  --relaunch                    Qoder desktop only: reopen if it was running; requires --close-running
+  --settings-file PATH          automation set: JSON patch for --variant cn|ai; unknown fields rejected
+  --refresh                     credit-stats: query selected region before reading snapshots
   --timeout SECONDS             Credit query timeout per account (default: 30)
   --concurrency N               Credit queries in flight (default: 4, maximum: 16)
   --model MODEL                 Filter observed limits by exact model name
@@ -42,6 +50,11 @@ Use inspect --summary for a compact AI overview without full account/resource de
 Credit *Display strings are rounded to 2 decimals for presentation; numeric fields keep original precision.
 Progress goes to stderr; in JSON mode, progress is JSON Lines and stdout is one final object.
 Streams use UTF-8 without BOM; --ascii-json escapes non-ASCII characters losslessly.
+Qoder targets use an independent account store and stable IDs from accounts.
+Qoder status defaults to both regions; --variant cn|ai selects one.
+Qoder switching refuses running clients unless --close-running is given.
+Qoder limits returns UNSUPPORTED_CAPABILITY; inspect reports availabilityKnown=false.
+Automation run does not start a daemon; scheduling requires the desktop app or serve.
 No observed limit does not prove a model is available.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +67,10 @@ pub enum Command {
     Switch,
     Credits,
     Limits,
+    TokenStats,
+    CreditStats,
+    Rewards,
+    Automation,
     Version,
     Help,
 }
@@ -68,6 +85,10 @@ impl Command {
             Self::Switch => "switch",
             Self::Credits => "credits",
             Self::Limits => "limits",
+            Self::TokenStats => "token-stats",
+            Self::CreditStats => "credit-stats",
+            Self::Rewards => "rewards",
+            Self::Automation => "automation",
             Self::Version => "version",
             Self::Help => "help",
         }
@@ -77,7 +98,15 @@ impl Command {
 pub(super) fn json_by_default(command: &str, explicit_target: bool) -> bool {
     matches!(
         command,
-        "accounts" | "inspect" | "switch" | "credits" | "limits"
+        "accounts"
+            | "inspect"
+            | "switch"
+            | "credits"
+            | "limits"
+            | "token-stats"
+            | "credit-stats"
+            | "rewards"
+            | "automation"
     ) || (command == "status" && explicit_target)
 }
 
@@ -98,6 +127,11 @@ pub struct Options {
     pub no_open: bool,
     pub wait: u64,
     pub quiet: bool,
+    pub action: String,
+    pub settings_file: Option<String>,
+    pub refresh: bool,
+    pub close_running: bool,
+    pub relaunch: bool,
 }
 pub fn parse(args: &[String]) -> Result<Options, Failure> {
     let mut options = Options {
@@ -116,6 +150,11 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
         no_open: false,
         wait: 30,
         quiet: false,
+        action: "get".into(),
+        settings_file: None,
+        refresh: false,
+        close_running: false,
+        relaunch: false,
     };
     let mut positional = Vec::new();
     let mut flags = BTreeMap::new();
@@ -148,6 +187,7 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
                 | "--model"
                 | "--port"
                 | "--wait"
+                | "--settings-file"
         );
         if !takes_value
             && !matches!(
@@ -162,6 +202,9 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
                     | "--version"
                     | "--quiet"
                     | "--summary"
+                    | "--refresh"
+                    | "--close-running"
+                    | "--relaunch"
             )
         {
             return Err(Failure::usage(format!("Unknown option: {key}")));
@@ -206,6 +249,10 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
         "switch" => Command::Switch,
         "credits" => Command::Credits,
         "limits" => Command::Limits,
+        "token-stats" => Command::TokenStats,
+        "credit-stats" => Command::CreditStats,
+        "rewards" => Command::Rewards,
+        "automation" => Command::Automation,
         "version" => Command::Version,
         "help" => Command::Help,
         _ => {
@@ -214,6 +261,9 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
             )))
         }
     };
+    if let Some(target) = flags.get("--target") {
+        options.target = Target::parse(target).map_err(Failure::usage)?;
+    }
     if flags.contains_key("--help") || options.command == Command::Help {
         options.command = Command::Help;
         return Ok(options);
@@ -236,15 +286,22 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
     for key in flags.keys() {
         let allowed = match key.as_str() {
             "--json" | "--ascii-json" | "--text" => options.command != Command::Serve,
-            "--variant" => matches!(
-                options.command,
-                Command::Accounts
-                    | Command::Inspect
-                    | Command::LegacyStatus
-                    | Command::Switch
-                    | Command::Credits
-                    | Command::Limits
-            ),
+            "--variant" => {
+                (options.target.is_qoder() && options.command == Command::Status)
+                    || matches!(
+                        options.command,
+                        Command::Accounts
+                            | Command::Inspect
+                            | Command::LegacyStatus
+                            | Command::Switch
+                            | Command::Credits
+                            | Command::Limits
+                            | Command::TokenStats
+                            | Command::CreditStats
+                            | Command::Rewards
+                            | Command::Automation
+                    )
+            }
             "--target" => matches!(
                 options.command,
                 Command::Status
@@ -253,20 +310,49 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
                     | Command::Switch
                     | Command::Credits
                     | Command::Limits
+                    | Command::TokenStats
+                    | Command::CreditStats
+                    | Command::Rewards
+                    | Command::Automation
             ),
             "--dry-run" => options.command == Command::Switch,
-            "--all" | "--timeout" | "--concurrency" => {
+            "--close-running" | "--relaunch" => {
+                options.command == Command::Switch && options.target.is_qoder()
+            }
+            "--settings-file" => options.command == Command::Automation,
+            "--refresh" => options.command == Command::CreditStats,
+            "--all" => matches!(
+                options.command,
+                Command::Credits | Command::Inspect | Command::Rewards
+            ),
+            "--timeout" | "--concurrency" => {
                 matches!(options.command, Command::Credits | Command::Inspect)
+                    || (options.command == Command::CreditStats && flags.contains_key("--refresh"))
             }
             "--model" => matches!(options.command, Command::Limits | Command::Inspect),
             "--summary" => matches!(options.command, Command::Inspect | Command::Credits),
-            "--wait" | "--quiet" => matches!(
+            "--wait" => matches!(
                 options.command,
                 Command::Accounts
                     | Command::Status
                     | Command::Switch
                     | Command::Credits
                     | Command::Limits
+                    | Command::Inspect
+                    | Command::Rewards
+                    | Command::CreditStats
+            ),
+            "--quiet" => matches!(
+                options.command,
+                Command::Accounts
+                    | Command::Status
+                    | Command::Switch
+                    | Command::Credits
+                    | Command::Limits
+                    | Command::TokenStats
+                    | Command::CreditStats
+                    | Command::Rewards
+                    | Command::Automation
                     | Command::Inspect
             ),
             "--port" | "--no-open" => options.command == Command::Serve,
@@ -292,9 +378,6 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
     } else if options.command == Command::LegacyStatus {
         options.variant = Some(WbVariant::Cn);
     }
-    if let Some(target) = flags.get("--target") {
-        options.target = Target::parse(target).map_err(Failure::usage)?;
-    }
     if let Some(value) = flags.get("--timeout") {
         options.timeout = positive_number(value, "--timeout", 3600)?;
     }
@@ -316,15 +399,58 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
             .filter(|v| *v <= 3600)
             .ok_or_else(|| Failure::usage("--wait must be an integer between 0 and 3600"))?;
     }
+    options.settings_file = flags.get("--settings-file").cloned();
+    options.refresh = flags.contains_key("--refresh");
+    options.close_running = flags.contains_key("--close-running");
+    options.relaunch = flags.contains_key("--relaunch");
     let mut rest = positional.into_iter().skip(1).collect::<Vec<_>>();
     if options.command == Command::Accounts && rest.first().is_some_and(|v| v == "list") {
         rest.remove(0);
+    }
+    if options.command == Command::Automation {
+        if rest.len() > 1 {
+            return Err(Failure::usage("automation accepts get, set, or run"));
+        }
+        options.action = rest.pop().unwrap_or_else(|| "get".into());
+        if !matches!(options.action.as_str(), "get" | "set" | "run")
+            || (options.action == "set") != options.settings_file.is_some()
+        {
+            return Err(Failure::usage(
+                "Use automation get|run, or automation set --variant cn|ai --settings-file PATH",
+            ));
+        }
+        if options.action == "set" && options.variant.is_none() {
+            return Err(Failure::usage("automation set requires --variant cn or ai"));
+        }
+    }
+    if matches!(
+        options.command,
+        Command::TokenStats | Command::CreditStats | Command::Rewards | Command::Automation
+    ) && !options.target.is_qoder()
+    {
+        return Err(Failure::usage(
+            "This command requires --target qoder-cli or qoder-desktop",
+        ));
+    }
+    if options.relaunch && (options.target != Target::QoderDesktop || !options.close_running) {
+        return Err(Failure::usage(
+            "--relaunch requires --target qoder-desktop and --close-running",
+        ));
+    }
+    if options.target.is_qoder() && flags.contains_key("--model") {
+        return Err(Failure::usage(
+            "Qoder model availability is unknown; --model is not supported",
+        ));
     }
     match options.command {
         Command::Switch if rest.len() != 1 => {
             return Err(Failure::usage("switch requires exactly one ACCOUNT_ID"))
         }
-        Command::Switch | Command::Credits | Command::Limits | Command::Inspect
+        Command::Switch
+        | Command::Credits
+        | Command::Limits
+        | Command::Inspect
+        | Command::Rewards
             if rest.len() <= 1 =>
         {
             options.account_id = rest.pop()
@@ -334,6 +460,14 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
     }
     if flags.contains_key("--all") && options.account_id.is_some() {
         return Err(Failure::usage("--all cannot be combined with ACCOUNT_ID"));
+    }
+    if options.command == Command::Rewards
+        && options.account_id.is_none()
+        && !flags.contains_key("--all")
+    {
+        return Err(Failure::usage(
+            "rewards requires ACCOUNT_ID or explicit --all",
+        ));
     }
     Ok(options)
 }

@@ -360,6 +360,50 @@ fn parse_qoder_target(raw: &str) -> Result<qoder::QoderTarget, String> {
     qoder::QoderTarget::parse(raw).ok_or_else(|| format!("未知的 Qoder 目标: {raw}"))
 }
 
+#[tauri::command]
+pub fn get_qoder_automation() -> Result<Value, String> {
+    qoder::automation::status()
+}
+#[tauri::command]
+pub fn save_qoder_automation(settings: Value) -> Result<qoder::automation::Settings, String> {
+    qoder::automation::save(settings)
+}
+#[tauri::command]
+pub async fn run_qoder_automation() -> Result<Value, String> {
+    qoder::automation::cycle().await
+}
+
+#[tauri::command]
+pub fn get_qoder_companion(global: bool) -> Result<Value, String> {
+    qoder::companion::status(global)
+}
+#[tauri::command]
+pub fn set_qoder_companion(global: bool, enabled: bool) -> Result<Value, String> {
+    qoder::companion::configure(global, enabled)
+}
+#[tauri::command]
+pub async fn qoder_cloud(
+    action: String,
+    passphrase: String,
+    indexes: Option<Vec<usize>>,
+    snapshot_id: Option<String>,
+) -> Result<Value, String> {
+    match action.as_str() {
+        "backup" => webdav_sync::qoder_backup(&passphrase).await,
+        "preview" => webdav_sync::qoder_preview(&passphrase).await,
+        "restore" => {
+            webdav_sync::qoder_restore(
+                &passphrase,
+                &indexes.unwrap_or_default(),
+                snapshot_id.as_deref().unwrap_or(""),
+            )
+            .await
+        }
+        "sync" => webdav_sync::qoder_sync(&passphrase).await,
+        _ => Err("未知的 Qoder 云端操作".into()),
+    }
+}
+
 /// GET /api/qoder/status —— Qoder CN 桌面端 / CLI 现场状态与账号包列表。
 ///
 /// async + spawn_blocking：进程探测会跑 tasklist / ps 子进程。
@@ -1228,6 +1272,18 @@ pub async fn get_token_statistics(days: Option<i64>) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || token_stats::get_statistics(days))
         .await
         .map_err(|error| format!("扫描 Token 统计失败: {error}"))
+}
+
+#[tauri::command]
+pub async fn get_qoder_statistics() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(token_stats::get_qoder_statistics)
+        .await
+        .map_err(|_| "扫描 Qoder 用量失败".to_string())
+}
+
+#[tauri::command]
+pub async fn get_qoder_credit_statistics(refresh: Option<bool>) -> Value {
+    qoder::credit_stats::get_statistics(refresh.unwrap_or(false)).await
 }
 
 /// GET /api/rate-limits —— 模型限额台账（全部账号当前受限的模型与官方恢复时刻）。

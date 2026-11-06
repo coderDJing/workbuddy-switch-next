@@ -81,6 +81,13 @@ pub fn print_result(value: &Value, json_output: bool, ascii_json: bool) {
         println!("{}", encode_json(value, ascii_json));
         return;
     }
+    if value["target"]
+        .as_str()
+        .is_some_and(|s| s.starts_with("qoder-"))
+    {
+        println!("{}", serde_json::to_string_pretty(value).unwrap());
+        return;
+    }
     match value["command"].as_str().unwrap_or_default() {
         "help" => println!("{}", super::HELP),
         "status" => {

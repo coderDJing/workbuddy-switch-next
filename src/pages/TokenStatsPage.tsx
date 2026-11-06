@@ -37,7 +37,8 @@ import {
 import { AccountFilterMenu } from "@/components/account-filter-menu";
 import { buildAccountTokenTrend, tokenAccountKey, tokenTotal, type AccountTokenSeries, type TokenTrendPoint } from "@/lib/token-account-stats";
 import { DemoAction } from "@/components/demo-action";
-import { CodeBuddyCnIdeMark, CodeBuddyMark, WorkBuddyAiMark, WorkBuddyMark } from "@/components/product-marks";
+import { CodeBuddyCnIdeMark, CodeBuddyMark, WorkBuddyAiMark, WorkBuddyMark, QoderMark } from "@/components/product-marks";
+import { useQoderView } from "@/stores/qoder-view";
 import {
   Dialog,
   DialogContent,
@@ -82,7 +83,9 @@ function isSourceKey(value: unknown): value is SourceKey {
     value === "workbuddy" ||
     value === "workbuddy-ai" ||
     value === "codebuddy-cli" ||
-    value === "codebuddy-ide"
+    value === "codebuddy-ide" ||
+    value === "qoder" ||
+    value === "qoder-ai"
   );
 }
 
@@ -1319,8 +1322,10 @@ function RequestUsageCell({ row }: { row: TokenStatsRequestRow }) {
             depth={1}
           />
           <UsageDetailLine label="输出" value={row.output} color="var(--data-series-violet)" />
-          <UsageDetailLine label="思考过程" value={thinking} depth={1} />
-          <UsageDetailLine label="回复内容" value={reply} depth={1} />
+          {row.thinking === null ? <div className="pl-3 text-muted-foreground">未提供思考 / 回复细分</div> : <>
+            <UsageDetailLine label="思考过程" value={thinking} depth={1} />
+            <UsageDetailLine label="回复内容" value={reply} depth={1} />
+          </>}
           <UsageDetailLine
             label="缓存写入"
             value={row.cacheWrite}
@@ -1478,7 +1483,7 @@ function RequestDetailDialog({
         <DialogHeader>
           <DialogTitle>请求明细</DialogTitle>
           <DialogDescription>
-            每次模型调用一行，按时间倒序展示本地 CodeBuddy CLI 日志记录。
+            每次模型调用一行，按时间倒序展示本地用量记录。
           </DialogDescription>
         </DialogHeader>
         {rows.length === 0 ? (
@@ -1500,7 +1505,9 @@ function Dashboard({ source }: { source: TokenStatsSource }) {
     return (
       <div className="rounded-xl border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
         <div>
-          {source.filesScanned > 0
+          {(source.unavailableTokenRecords ?? 0) > 0
+            ? `已发现 ${exact.format(source.unavailableTokenRecords!)} 条用量记录，但客户端未提供有效 Token 数量。`
+            : source.filesScanned > 0
             ? `已扫描 ${exact.format(source.filesScanned)} 个会话文件，但没有可用的 usage。`
             : "尚未发现该来源的本地会话日志。"}
         </div>
@@ -1521,6 +1528,11 @@ function Dashboard({ source }: { source: TokenStatsSource }) {
 
   return (
     <div className="min-w-0 space-y-12">
+      {(source.unavailableTokenRecords ?? 0) > 0 && (
+        <Alert><CircleAlert /><AlertTitle>Token 数据仅覆盖部分请求</AlertTitle><AlertDescription>
+          {exact.format(source.unavailableTokenRecords!)} 条请求缺少有效 Token 数量，未计入下方统计；积分仍可在积分统计页查看。
+        </AlertDescription></Alert>
+      )}
       <Overview source={source} />
       <TrendChart source={source} />
       <AccountTrendChart key={source.source} source={source} />
@@ -1649,9 +1661,14 @@ function TokenStatsLoadingSkeleton() {
   );
 }
 
-export default function TokenStatsPage() {
+export default function TokenStatsPage({ platform = "codebuddy" }: { platform?: "codebuddy" | "qoder" }) {
+  const qoder = platform === "qoder";
+  const variant = useQoderView((s) => s.variant);
+  const setVariant = useQoderView((s) => s.setVariant);
   const [stats, setStats] = useState<TokenStatistics | null>(null);
-  const [active, setActive] = useState<SourceKey>(readPreferredTokenSource);
+  const [preferred, setPreferred] = useState<SourceKey>(readPreferredTokenSource);
+  const active: SourceKey = qoder ? (variant === "ai" ? "qoder-ai" : "qoder") : preferred;
+  const setActive = (value: SourceKey) => qoder ? setVariant(value === "qoder-ai" ? "ai" : "cn") : setPreferred(value);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
@@ -1661,8 +1678,7 @@ export default function TokenStatsPage() {
     let disposed = false;
     setLoading(true);
     setError(null);
-    api
-      .getTokenStatistics()
+    (qoder ? api.getQoderStatistics() : api.getTokenStatistics())
       .then((result) => {
         if (!disposed) setStats(result);
       })
@@ -1675,10 +1691,10 @@ export default function TokenStatsPage() {
     return () => {
       disposed = true;
     };
-  }, [reload]);
+  }, [reload, qoder]);
 
   useEffect(() => {
-    if (!stats || stats.sources.length === 0) return;
+    if (qoder || !stats || stats.sources.length === 0) return;
     const available = stats.sources.map((item) => item.source);
     const next = available.includes(active)
       ? active
@@ -1686,9 +1702,9 @@ export default function TokenStatsPage() {
         ? "workbuddy"
         : available[0];
     if (!next) return;
-    if (next !== active) setActive(next);
+    if (next !== active) setPreferred(next);
     persistPreferredTokenSource(next);
-  }, [active, stats]);
+  }, [active, stats, qoder]);
 
   const source = stats?.sources.find((item) => item.source === active);
 
@@ -1711,7 +1727,7 @@ export default function TokenStatsPage() {
           )}
         </div>
         <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
-          {active === "codebuddy-cli" && (
+          {(active === "codebuddy-cli" || (qoder && (source?.requests?.length ?? 0) > 0)) && (
             <Button
               className="shrink-0"
               variant="outline"
@@ -1751,6 +1767,10 @@ export default function TokenStatsPage() {
           }}
         >
           <TabsList className="h-auto max-w-full flex-wrap" aria-label="Token 数据来源">
+            {qoder ? <>
+              <TabsTrigger value="qoder" className="gap-2"><QoderMark size={16} />国内版</TabsTrigger>
+              <TabsTrigger value="qoder-ai" className="gap-2"><QoderMark size={16} global />国际版</TabsTrigger>
+            </> : <>
             <TabsTrigger
               className="max-w-full gap-2 whitespace-normal"
               value="workbuddy"
@@ -1783,6 +1803,7 @@ export default function TokenStatsPage() {
               <CodeBuddyCnIdeMark size={16} />
               CodeBuddy IDE / VS Code
             </TabsTrigger>
+            </>}
           </TabsList>
         </Tabs>
       )}
@@ -1799,6 +1820,8 @@ export default function TokenStatsPage() {
           </AlertDescription>
         </Alert>
       )}
+
+      {qoder && <p className="mb-6 text-sm leading-6 text-muted-foreground">统计本机 Qoder 桌面端与 CLI 共用的会话记录，国内版和国际版独立统计。全零占位或缺失的 Token 不计入总量，也不会按积分换算；历史记录未提供账号标识时显示为未归属。</p>}
 
       {loading && !stats ? <TokenStatsLoadingSkeleton /> : source ? (
         <Dashboard source={source} />

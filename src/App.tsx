@@ -11,7 +11,9 @@ import SessionsPage from "@/pages/SessionsPage";
 import CreditStatsPage from "@/pages/CreditStatsPage";
 import TokenStatsPage from "@/pages/TokenStatsPage";
 import SettingsPage, { CodebuddySettingsPage } from "@/pages/SettingsPage";
+import QoderSettingsPage from "@/pages/QoderSettingsPage";
 import QoderPage from "@/pages/QoderPage";
+import QoderCreditStatsPage from "@/pages/QoderCreditStatsPage";
 import { StatusDot } from "@/components/product-marks";
 import { CompanionDemoDialog } from "@/components/companion-demo-dialog";
 import { UpdateInstallDialog } from "@/components/update-install-dialog";
@@ -187,7 +189,7 @@ function UpdateCenter({ running }: { running: boolean | undefined }) {
 
   return (
     <>
-      <section className="mt-auto border-t border-sidebar-border px-2 pt-3 text-xs">
+      <section className="mt-auto border-t border-sidebar-border pt-3 text-xs md:px-2">
         <div className="flex items-center gap-2 text-[13px] text-sidebar-foreground">
           {showCompanion ? <CompanionFooter /> : showCompanionDemo ? <CompanionDemoFooter /> : (
             <>
@@ -195,7 +197,7 @@ function UpdateCenter({ running }: { running: boolean | undefined }) {
               <span className="min-w-0 flex-1 truncate">WorkBuddy</span>
             </>
           )}
-          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <div className="ml-auto hidden shrink-0 items-center gap-1.5 md:flex">
             <span className="text-sidebar-foreground/50">v{version || "?"}</span>
             {hasUpdate && (
               <Tooltip>
@@ -291,7 +293,7 @@ const PLATFORM_PAGES: Record<PlatformId, Partial<Record<PlatformPageKey, ReactNo
     "credit-stats": <CreditStatsPage />,
     settings: <CodebuddySettingsPage />,
   },
-  qoder: { accounts: <QoderPage /> },
+  qoder: { accounts: <QoderPage />, "token-stats": <TokenStatsPage key="qoder" platform="qoder" />, "credit-stats": <QoderCreditStatsPage />, settings: <QoderSettingsPage /> },
 };
 
 /** 进入应用时落到上次所在的平台（已关闭则取第一个启用的平台）。 */
@@ -315,7 +317,7 @@ function PlatformRoute() {
   useEffect(() => {
     if (def && element) rememberPlatform(def.id);
   }, [def, element]);
-  // 平台有效但没有该页面（`/p/qoder`、`/p/qoder/settings`）：进该平台首页，而不是跳到别的平台。
+  // 平台有效但没有该页面时，进该平台首页。
   if (def && !element) return <Navigate to={platformPath(def.id)} replace />;
   if (!def) return <HomeRedirect />;
   return <>{element}</>;

@@ -11,6 +11,10 @@ use super::paths::{QoderRoots, QoderTarget};
 
 pub trait QoderProcessOps {
     fn running_pids(&self, target: QoderTarget) -> Vec<u32>;
+    /// Automatic operations must distinguish an unavailable process probe from idle.
+    fn confirmed_idle(&self, target: QoderTarget) -> bool {
+        self.running_pids(target).is_empty()
+    }
     /// 运行中实例的可执行文件路径（重开时优先用它，而不是猜安装位置）。
     fn running_exe(&self, target: QoderTarget) -> Option<PathBuf>;
     fn close(&self, target: QoderTarget, timeout: Duration) -> Result<(), String>;
@@ -85,6 +89,39 @@ fn linux_pids(target: QoderTarget) -> Vec<u32> {
 }
 
 impl QoderProcessOps for RealProcessOps {
+    fn confirmed_idle(&self, target: QoderTarget) -> bool {
+        #[cfg(windows)]
+        {
+            let Some(out) = run_cmd_timeout("tasklist", &["/FO", "CSV", "/NH"], 5) else {
+                return false;
+            };
+            if !out.status.success() {
+                return false;
+            }
+            let rows = process::parse_tasklist_csv(&String::from_utf8_lossy(&out.stdout));
+            !rows.is_empty()
+                && rows.iter().all(|r| {
+                    !process_images(target)
+                        .iter()
+                        .any(|name| r.name.eq_ignore_ascii_case(name))
+                })
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let Some(out) = run_cmd_timeout("pgrep", &["-f", &macos_patterns(target).join("|")], 5)
+            else {
+                return false;
+            };
+            out.status.code() == Some(1)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            process_images(target).iter().all(|image| {
+                run_cmd_timeout("pgrep", &["-x", image], 5)
+                    .is_some_and(|out| out.status.code() == Some(1))
+            })
+        }
+    }
     fn running_pids(&self, target: QoderTarget) -> Vec<u32> {
         #[cfg(target_os = "windows")]
         {

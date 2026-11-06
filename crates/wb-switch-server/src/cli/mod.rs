@@ -6,6 +6,7 @@ mod credits;
 mod execute;
 mod output;
 mod protocol;
+mod qoder;
 mod summary;
 mod target;
 #[cfg(test)]

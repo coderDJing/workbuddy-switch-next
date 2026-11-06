@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { claimQoderRewards, getCreditExpiry, getStatus, getTokenStatistics, runDailyTasks, webdavInfo, webdavRestore, webdavTestConnection } from "./api";
+import { claimQoderRewards, getQoderStatistics, getQoderCreditStatistics, getCreditExpiry, getStatus, getTokenStatistics, runDailyTasks, webdavInfo, webdavRestore, webdavTestConnection } from "./api";
 
 /**
  * webui（浏览器）模式下的 HTTP 请求地址构造。
@@ -38,6 +38,29 @@ function stubFetch(impl?: (url: string, init?: RequestInit) => Promise<Response>
 }
 
 describe("webui httpCall URL 构造", () => {
+  it("Qoder 自动任务和云恢复在两种通道传递相同的配置与快照", async () => {
+    const api = await import("./api");
+    const fetch = stubFetch();
+    await api.getQoderAutomation();
+    await api.qoderCloud("restore", "test-only-password", [1], "snapshot");
+    expect(fetch.mock.calls[0][0]).toBe("/api/qoder/automation");
+    expect(fetch.mock.calls[1][0]).toBe("/api/qoder/cloud");
+    expect(JSON.parse(fetch.mock.calls[1][1]!.body as string)).toEqual({ action: "restore", passphrase: "test-only-password", indexes: [1], snapshotId: "snapshot" });
+    const invoke = vi.fn(async () => ({}));
+    vi.stubGlobal("window", { __TAURI_INTERNALS__: { invoke } });
+    await api.qoderCloud("restore", "test-only-password", [1], "snapshot");
+    expect(invoke).toHaveBeenCalledWith("qoder_cloud", { action: "restore", passphrase: "test-only-password", indexes: [1], snapshotId: "snapshot" }, undefined);
+  });
+  it("Qoder 统计的 HTTP 和 Tauri 通道独立，刷新才查询账号额度", async () => {
+    const fetch = stubFetch();
+    await getQoderStatistics(); await getQoderCreditStatistics(); await getQoderCreditStatistics(true);
+    expect(fetch.mock.calls.map((call) => call[0])).toEqual(["/api/qoder/stats", "/api/qoder/credits/stats?refresh=false", "/api/qoder/credits/stats?refresh=true"]);
+    const invoke = vi.fn(async () => ({}));
+    vi.stubGlobal("window", { __TAURI_INTERNALS__: { invoke } });
+    await getQoderStatistics(); await getQoderCreditStatistics(true);
+    expect(invoke).toHaveBeenCalledWith("get_qoder_statistics", {}, undefined);
+    expect(invoke).toHaveBeenCalledWith("get_qoder_credit_statistics", { refresh: true }, undefined);
+  });
   it("Token 账号数据通过原有 HTTP 和 Tauri 通道透传，兼容旧响应", async () => {
     const payload = { generatedAt: 1, sources: [{ source: "workbuddy", accounts: [{ accountId: null, accountName: "未归属" }] }] };
     const fetchMock = stubFetch(async () => new Response(JSON.stringify(payload), { status: 200 }));

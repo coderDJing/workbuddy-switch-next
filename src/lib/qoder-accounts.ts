@@ -22,11 +22,20 @@ export function groupQoderAccounts(bundles: QoderBundle[]): QoderAccountGroup[] 
   return [...groups.values()];
 }
 
-export type QoderSortKey = "lastUsed" | "remaining" | "createdAt" | "name";
+export type QoderSortKey = "lastUsed" | "remaining" | "expiry" | "createdAt" | "name";
+
+export function qoderExpiry(credit: QoderCredit | undefined, now = Date.now()): number | null {
+  if (!credit?.ok) return null;
+  const dates = [credit.plan && credit.plan.remaining > 0 ? credit.planExpiresAt : null,
+    ...(credit.dedicated ?? []).filter(p => p.remaining > 0).map(p => p.expiresAt)]
+    .filter((t): t is number => typeof t === "number" && Number.isFinite(t) && t > now);
+  return dates.length ? Math.min(...dates) : null;
+}
 
 export const QODER_SORT_OPTIONS: { value: QoderSortKey; label: string }[] = [
   { value: "lastUsed", label: "最后使用时间" },
   { value: "remaining", label: "剩余积分（多→少）" },
+  { value: "expiry", label: "积分到期（近→远）" },
   { value: "createdAt", label: "添加时间（新→旧）" },
   { value: "name", label: "名称 A→Z" },
 ];
@@ -34,6 +43,7 @@ export const QODER_SORT_OPTIONS: { value: QoderSortKey; label: string }[] = [
 /** Unknown balances and unused accounts remain after accounts with known values. */
 export function orderQoderAccounts(groups: QoderAccountGroup[], sort: QoderSortKey, credits: Record<string, QoderCredit>): QoderAccountGroup[] {
   const value = (group: QoderAccountGroup): number | null => {
+    if (sort === "expiry") return qoderExpiry(credits[group.key]);
     if (sort === "remaining") {
       const credit = credits[group.key];
       return credit?.ok && Number.isFinite(credit.remaining) ? credit.remaining : null;
@@ -47,6 +57,6 @@ export function orderQoderAccounts(groups: QoderAccountGroup[], sort: QoderSortK
     if (left === right) return a.index - b.index;
     if (left === null) return 1;
     if (right === null) return -1;
-    return right - left || a.index - b.index;
+    return (sort === "expiry" ? left - right : right - left) || a.index - b.index;
   }).map(({ group }) => group);
 }

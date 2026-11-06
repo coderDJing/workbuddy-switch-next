@@ -19,6 +19,9 @@ use std::path::{Path, PathBuf};
 use crate::modules::variant::WbVariant;
 use crate::modules::{account, limits};
 
+mod qoder;
+pub use qoder::get_statistics as get_qoder_statistics;
+
 /// 明细中最多返回的请求条数（响应窗口）。
 const REQUEST_WINDOW: usize = 500;
 /// 扫描期间明细缓存的内存硬上限；达到该值后立即裁剪到 `REQUEST_WINDOW`，

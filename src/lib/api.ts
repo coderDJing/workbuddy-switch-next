@@ -77,7 +77,8 @@ import { UpdateCheckTimeoutError, waitForUpdateCheck } from "./update-check";
 const DEMO_READ_COMMANDS = new Set([
   "get_status", "get_accounts", "get_codebuddy_cli_status", "get_codebuddy_cn_ide_status", "get_codebuddy_ide_status", "get_vscode_ext_status", "get_jetbrains_status", "get_qoder_status", "get_qoder_credits", "list_vscode_sessions", "list_codebuddy_ide_sessions", "list_codebuddy_intl_ide_sessions", "vscode_session_links_preview", "codebuddy_ide_session_links_preview", "codebuddy_intl_ide_session_links_preview", "list_account_sessions", "session_links_preview_cross", "list_session_groups", "get_session_group", "preview_session_group_pair", "get_checkin_status",
   "get_credit_expiry", "get_credit_statistics", "get_auto_checkin_config",
-  "get_token_statistics",
+  "get_token_statistics", "get_qoder_statistics", "get_qoder_credit_statistics",
+  "get_qoder_automation", "get_qoder_companion",
   "get_checkin_logs", "get_auto_rotate_config", "rotate_status", "get_rotate_logs",
   "get_github_config", "check_update", "get_launch_at_login_enabled", "switch_progress",
   "get_travel_status", "get_auto_travel_config", "get_rate_limits",
@@ -139,8 +140,16 @@ const ROUTES: Record<string, Route> = {
   switch_jetbrains_account: { method: "POST", path: "/api/jetbrains/switch" },
   detect_jetbrains_account: { method: "POST", path: "/api/jetbrains/detect" },
   get_qoder_status: { method: "GET", path: "/api/qoder/status" },
+  get_qoder_automation: { method: "GET", path: "/api/qoder/automation" },
+  save_qoder_automation: { method: "POST", path: "/api/qoder/automation" },
+  run_qoder_automation: { method: "POST", path: "/api/qoder/automation/run" },
+  get_qoder_companion: { method: "POST", path: "/api/qoder/companion" },
+  set_qoder_companion: { method: "POST", path: "/api/qoder/companion" },
+  qoder_cloud: { method: "POST", path: "/api/qoder/cloud" },
   auto_capture_qoder_accounts: { method: "POST", path: "/api/qoder/auto-capture" },
   get_qoder_credits: { method: "POST", path: "/api/qoder/credits" },
+  get_qoder_statistics: { method: "GET", path: "/api/qoder/stats" },
+  get_qoder_credit_statistics: { method: "GET", path: "/api/qoder/credits/stats" },
   claim_qoder_rewards: { method: "POST", path: "/api/qoder/rewards" },
   export_qoder_accounts: { method: "POST", path: "/api/qoder/export" },
   preview_qoder_backup: { method: "POST", path: "/api/qoder/backup/preview" },
@@ -293,7 +302,7 @@ async function httpCall<T>(cmd: string, args?: Record<string, unknown>): Promise
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (demoModeEnabled) {
-    if (cmd === "get_credit_statistics" && args?.refresh === true) {
+    if ((cmd === "get_credit_statistics" || cmd === "get_qoder_credit_statistics") && args?.refresh === true) {
       throw new Error(DEMO_UNAVAILABLE_MESSAGE);
     }
     if (!DEMO_READ_COMMANDS.has(cmd)) throw new Error(DEMO_UNAVAILABLE_MESSAGE);
@@ -478,6 +487,55 @@ export function getQoderStatus(): Promise<QoderStatus> {
   return call("get_qoder_status");
 }
 
+export interface QoderRegionSettings {
+  dailyEnabled: boolean; dailyTime: string; alertsEnabled: boolean; expiryDays: number;
+  lowBalance: number; rotateEnabled: boolean; rotateBelow: number; cooldownMinutes: number;
+}
+export type QoderSettings = Record<"cn" | "ai", QoderRegionSettings>;
+export interface QoderAutomationStatus {
+  settings: QoderSettings;
+  logs: { at: number; region: "cn" | "ai"; action: string; outcome: string }[];
+}
+export function getQoderAutomation(): Promise<QoderAutomationStatus> { return call("get_qoder_automation"); }
+export function saveQoderAutomation(settings: QoderSettings): Promise<QoderSettings> { return call("save_qoder_automation", { settings }); }
+export function runQoderAutomation(): Promise<{ ok?: boolean; skipped?: boolean }> { return call("run_qoder_automation"); }
+
+export interface QoderCompanionStatus { installed: boolean; template: { id: string } & Record<string, unknown> }
+export function getQoderCompanion(global: boolean): Promise<QoderCompanionStatus> { return call("get_qoder_companion", { global }); }
+export async function setQoderCompanion(global: boolean, enabled: boolean): Promise<QoderCompanionStatus> {
+  if (demoModeEnabled) throw new Error(DEMO_UNAVAILABLE_MESSAGE);
+  if (!enabled) {
+    const status = await call<QoderCompanionStatus>("set_qoder_companion", { global, enabled });
+    if (isDesktop()) {
+      // Removing hooks must still work when the collector is offline.
+      await invoke("plugin:agent-studio|collector_request", { command: "custom_integrations_set", payload: { action: "disable", id: status.template.id } }).catch(() => {});
+    }
+    return status;
+  }
+  if (!isDesktop()) throw new Error("请在桌面版接入 Qoder 会话悬浮窗");
+  await setCompanionEnabled(true);
+  const status = await getQoderCompanion(global);
+  const request = <T>(command: string, payload: Record<string, unknown> = {}) => invoke<T>("plugin:agent-studio|collector_request", { command, payload });
+  let registry: { templates: { id: string; enabled: boolean }[] } | undefined;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try { registry = await request("custom_integrations_get"); break; }
+    catch { await new Promise(resolve => setTimeout(resolve, 300)); }
+  }
+  if (!registry) throw new Error("悬浮窗服务尚未启动，请稍后重试");
+  const existing = registry.templates.find(t => t.id === status.template.id);
+  if (!existing) await request("custom_integrations_set", { action: "import", template: status.template });
+  else if (!existing.enabled) await request("custom_integrations_set", { action: "enable", id: status.template.id });
+  return call("set_qoder_companion", { global, enabled });
+}
+export interface QoderCloudResult {
+  ok?: boolean; count?: number; imported?: number; skipped?: number; warnings?: string[];
+  snapshotId?: string; updatedAt?: number;
+  accounts?: { index: number; label: string; global: boolean; targets: QoderTarget[] }[];
+}
+export function qoderCloud(action: "backup" | "sync" | "preview" | "restore", passphrase: string, indexes?: number[], snapshotId?: string): Promise<QoderCloudResult> {
+  return call("qoder_cloud", { action, passphrase, indexes, snapshotId });
+}
+
 export function exportAllAccounts(path?: string): Promise<unknown> {
   return call("export_all_accounts", { path: path ?? null });
 }
@@ -490,6 +548,14 @@ export function importAllAccounts(fileText: string): Promise<{workbuddy: {import
 
 export function getQoderCredits(bundleIds: string[], liveTarget?: QoderTarget): Promise<QoderCredit> {
   return call("get_qoder_credits", { bundleIds, liveTarget: liveTarget ?? null });
+}
+
+export function getQoderStatistics(): Promise<import("./types").QoderStatistics> {
+  return call("get_qoder_statistics");
+}
+
+export function getQoderCreditStatistics(refresh = false): Promise<import("./types").QoderCreditStatistics> {
+  return call("get_qoder_credit_statistics", { refresh });
 }
 
 export function claimQoderRewards(bundleIds: string[], liveTarget?: QoderTarget): Promise<{ok: boolean; message: string}> {

@@ -392,9 +392,22 @@ pub(super) async fn query_with(
                 Ok(response) => {
                     if let Ok(data) = response.json::<Value>().await {
                         if let Some((remaining, total, used)) = quota(&data) {
-                            return json!({"ok":true,"remaining":remaining,"total":total,"used":used,
+                            let mut result = json!({"ok":true,"remaining":remaining,"total":total,"used":used,
                                 "planExpiresAt":plan_expiry(&data), "plan":quota_part(&data,"userQuota"),
                                 "addOn":quota_part(&data,"addOnQuota"), "dedicated":dedicated_parts(&data)});
+                            if super::credit_stats::record(
+                                root,
+                                &authorized::identity_key(candidate.target, &candidate.uid),
+                                candidate.target.is_global(),
+                                ids,
+                                &result,
+                            )
+                            .is_err()
+                            {
+                                result["statisticsWarning"] =
+                                    json!("积分已查询，但本地统计快照保存失败");
+                            }
+                            return result;
                         }
                     }
                     invalid_response = true;

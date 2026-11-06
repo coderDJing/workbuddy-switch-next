@@ -24,6 +24,12 @@ use wb_switch_core::modules::{
 /// 限额 hook 信号每秒轮询一次、启动时后台默认接入。
 fn spawn_background_loops() {
     tokio::spawn(async move {
+        loop {
+            let _ = wb_switch_core::modules::qoder::automation::cycle().await;
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        }
+    });
+    tokio::spawn(async move {
         if let Err(error) = config::compact_checkin_logs() {
             eprintln!("[签到] 历史日志整理失败: {error}");
         }
@@ -116,6 +122,12 @@ fn print_status(variant: WbVariant) {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    if std::env::args().nth(1).as_deref() == Some("qoder-companion-hook") {
+        wb_switch_core::modules::qoder::companion::run_hook(
+            std::env::args().nth(2).as_deref() == Some("ai"),
+        );
+        return ExitCode::SUCCESS;
+    }
     let started = std::time::Instant::now();
     let args: Vec<String> = std::env::args().skip(1).collect();
     #[cfg(windows)]

@@ -62,6 +62,26 @@ pub(crate) fn notify_codebuddy_cli_updated(app: &tauri::AppHandle) {
 /// 签到时间段时固定 30 分钟）；自动轮换每 30 秒检查；每天一次保活；
 /// 限额 hook 信号每秒轮询一次（入账即通知前端）；限额 hook 启动时后台默认接入。
 fn spawn_background_loops(app: tauri::AppHandle) {
+    let qoder_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            if let Ok(result) = modules::qoder::automation::cycle().await {
+                #[cfg(desktop)]
+                for title in result["notices"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(serde_json::Value::as_str)
+                {
+                    tray::notify_rotate_deferred(
+                        &qoder_app,
+                        &serde_json::json!({"title":title,"body":"请前往 Qoder 账号管理查看详情"}),
+                    );
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+    });
     let credit_cache_app = app.clone();
     modules::credits::spawn_credit_cache_watcher(move |cache| {
         let _ = credit_cache_app.emit("credit-query-cache-updated", cache);
@@ -259,8 +279,16 @@ pub fn run() {
             commands::switch_jetbrains_account,
             commands::detect_jetbrains_account,
             commands::get_qoder_status,
+            commands::get_qoder_automation,
+            commands::save_qoder_automation,
+            commands::run_qoder_automation,
+            commands::get_qoder_companion,
+            commands::set_qoder_companion,
+            commands::qoder_cloud,
             commands::auto_capture_qoder_accounts,
             commands::get_qoder_credits,
+            commands::get_qoder_statistics,
+            commands::get_qoder_credit_statistics,
             commands::claim_qoder_rewards,
             commands::export_qoder_accounts,
             commands::export_qoder_accounts_to_path,

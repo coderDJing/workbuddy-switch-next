@@ -53,28 +53,42 @@ fn invoke(program: &Path, request: Value) -> Value {
         Ok(input) => input,
         Err(_) => return json!({"ok":false,"message":"无法准备每日任务"}),
     };
-    if child.stdin.take().is_none_or(|mut stdin| {
-        stdin
-            .write_all(&input)
-            .and_then(|_| stdin.write_all(b"\n"))
-            .is_err()
-    }) {
+    let stdin = child.stdin.take();
+    let stdout = child.stdout.take();
+    let (send, receive) = std::sync::mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let mut output = Vec::new();
+        let written =
+            stdin.is_some_and(|mut s| s.write_all(&input).and_then(|_| s.write_all(b"\n")).is_ok());
+        let read = stdout.is_some_and(|s| s.take(65537).read_to_end(&mut output).is_ok());
+        let _ = send.send((written && read, output));
+    });
+    let started = std::time::Instant::now();
+    let limit = std::time::Duration::from_secs(120);
+    let Ok((read_ok, output)) = receive.recv_timeout(limit) else {
         let _ = child.kill();
         let _ = child.wait();
-        return json!({"ok":false,"message":"无法向每日任务组件发送账号"});
-    }
-    let mut output = Vec::new();
-    let read_ok = child
-        .stdout
-        .take()
-        .is_some_and(|stdout| stdout.take(65537).read_to_end(&mut output).is_ok());
+        return json!({"ok":false,"message":"每日任务执行超时，请稍后重试"});
+    };
     if !read_ok || output.len() > 65536 {
         let _ = child.kill();
         let _ = child.wait();
         return json!({"ok":false,"message":"每日任务组件返回过多数据"});
     }
-    let status = child.wait();
-    if !status.is_ok_and(|status| status.success()) {
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) if started.elapsed() < limit => {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
+    if !status.is_some_and(|status| status.success()) {
         return json!({"ok":false,"message":"每日任务组件异常退出"});
     }
     let result: Value = serde_json::from_slice(&output).unwrap_or(Value::Null);

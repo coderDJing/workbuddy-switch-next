@@ -49,7 +49,12 @@ export const PLATFORMS: PlatformDef[] = [
     id: "qoder",
     label: "Qoder",
     tools: ["qoder"],
-    pages: [ACCOUNTS],
+    pages: [
+      ACCOUNTS,
+      { key: "token-stats", label: "Token 统计", icon: MessagesSquare },
+      { key: "credit-stats", label: "积分统计", icon: Sparkles },
+      { key: "settings", label: "平台设置", icon: SlidersHorizontal },
+    ],
   },
 ];
 

@@ -42,7 +42,8 @@ pub(super) fn response(command: &str, target: Target) -> Value {
 
 fn scope(command: &str) -> Option<&'static str> {
     match command {
-        "accounts" | "credits" => Some("account"),
+        "accounts" | "credits" | "rewards" => Some("account"),
+        "token-stats" | "credit-stats" | "automation" => Some("platform"),
         "status" | "switch" | "limits" => Some("client"),
         "inspect" => Some("mixed"),
         _ => None,
@@ -58,6 +59,7 @@ pub(super) fn error(code: &str, message: &str) -> Value {
         | "AMBIGUOUS_ACCOUNT"
         | "ACCOUNT_STORE_INVALID"
         | "AUTH_RELOGIN_REQUIRED" => Some(false),
+        "UNSUPPORTED_CAPABILITY" | "CLIENT_NOT_PREPARED" | "CLIENT_RUNNING" => Some(false),
         _ => None,
     };
     let hint = match code {
@@ -136,7 +138,13 @@ impl Context {
                 i += 1;
             } else if matches!(
                 arg.as_str(),
-                "--variant" | "--timeout" | "--concurrency" | "--model" | "--port" | "--wait"
+                "--variant"
+                    | "--timeout"
+                    | "--concurrency"
+                    | "--model"
+                    | "--port"
+                    | "--wait"
+                    | "--settings-file"
             ) {
                 i += 1;
             } else if arg == "--" {
@@ -157,7 +165,15 @@ impl Context {
         });
         if matches!(
             command.as_str(),
-            "accounts" | "credits" | "inspect" | "switch" | "limits"
+            "accounts"
+                | "credits"
+                | "inspect"
+                | "switch"
+                | "limits"
+                | "token-stats"
+                | "credit-stats"
+                | "rewards"
+                | "automation"
         ) {
             target = target.or_else(|| Some(Target::default().as_str().into()));
         }

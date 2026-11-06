@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { QoderBundle, QoderTarget } from "./types";
-import { groupQoderAccounts, orderQoderAccounts } from "./qoder-accounts";
+import { groupQoderAccounts, orderQoderAccounts, qoderExpiry } from "./qoder-accounts";
 
 function bundle(id: string, target: QoderTarget, identityKey?: string, capturedAt = 1): QoderBundle {
   return { id, target, label: "same label", identityKey, capturedAt, files: [] };
 }
 
 describe("Qoder account groups", () => {
+  it("prioritizes explicit unexpired positive buckets and puts unknown expiry last", () => {
+    const now = Date.now();
+    const credit = { ok: true as const, total: 100, remaining: 50, used: 50, plan: { total: 10, remaining: 0, used: 10 }, planExpiresAt: now + 1000, dedicated: [{ total: 50, remaining: 20, used: 30, expiresAt: now + 5000 }] };
+    expect(qoderExpiry(credit, now)).toBe(now + 5000);
+    expect(qoderExpiry({ ...credit, dedicated: [{ ...credit.dedicated[0], expiresAt: now - 1 }] }, now)).toBeNull();
+    const groups = groupQoderAccounts([bundle("unknown", "cli"), bundle("later", "cli"), bundle("soon", "cli")]);
+    expect(orderQoderAccounts(groups, "expiry", { "bundle:soon": credit, "bundle:later": { ...credit, dedicated: [{ ...credit.dedicated[0], expiresAt: now + 10000 }] } }).map(g => g.key)).toEqual(["bundle:soon", "bundle:later", "bundle:unknown"]);
+  });
   it("shows one account with separate desktop and CLI targets", () => {
     const groups = groupQoderAccounts([bundle("a", "desktop", "user-1"), bundle("b", "cli", "user-1")]);
     expect(groups).toHaveLength(1);

@@ -28,7 +28,7 @@ import type { QoderBundle, QoderCredit, QoderTarget, QoderTargetStatus } from "@
 import { cn } from "@/lib/utils";
 import { avatarTone } from "@/lib/avatar-tone";
 import { normalizeVariant, variantLabel } from "@/lib/variant";
-import { groupQoderAccounts, orderQoderAccounts, QODER_SORT_OPTIONS, type QoderAccountGroup, type QoderSortKey } from "@/lib/qoder-accounts";
+import { groupQoderAccounts, orderQoderAccounts, qoderExpiry, QODER_SORT_OPTIONS, type QoderAccountGroup, type QoderSortKey } from "@/lib/qoder-accounts";
 import { qoderTargets, useQoderView } from "@/stores/qoder-view";
 import { useQoderStatus } from "@/stores/qoder-status";
 
@@ -81,7 +81,9 @@ function QoderCreditPanel({ bundleIds, liveTarget, compact, creditId, refreshVer
   if (loading && !credit) return <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />积分查询中…</div>;
   if (!credit?.ok) return <div className="py-3 text-sm text-destructive">{credit?.error ?? "等待积分数据…"}</div>;
   const ratio = credit.total > 0 ? Math.min(100, Math.max(0, credit.remaining / credit.total * 100)) : 0;
+  const expires = qoderExpiry(credit);
   return <div className="min-w-0">
+    {expires && expires - Date.now() <= 7 * 86400000 ? <div className="mb-3 rounded-lg bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-300">有积分将在 {Math.max(1, Math.ceil((expires - Date.now()) / 86400000))} 天内到期，建议优先使用</div> : null}
     <div className="flex items-baseline gap-x-3 gap-y-1">
       <span className="flex items-center gap-1.5"><Sparkles className="size-4 shrink-0 stroke-[1.75] text-muted-foreground" aria-hidden="true" /><strong className={cn("font-semibold leading-none tabular-nums tracking-[-0.025em] text-foreground", compact ? "text-[20px]" : "text-[22px]")} style={{ fontFamily: '"Bricolage Grotesque Variable", "SF Pro Display", ui-sans-serif, sans-serif' }}>{format(credit.remaining)}</strong></span>
       <span className={cn("text-muted-foreground", compact ? "text-[11px]" : "text-xs")}>剩余积分</span>
@@ -442,10 +444,11 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1180px] px-6 py-8 sm:px-8 sm:py-9">
+    <div className="mx-auto w-full max-w-[1180px] px-4 py-6 sm:px-8 sm:py-9">
       <header className="mb-6">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
+            <p className="mb-2 text-[11px] font-semibold tracking-[0.16em] text-primary">QODER / WORKSPACE</p>
             <h1 className="text-[28px] font-semibold tracking-tight">账号管理</h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               管理国内版和国际版的桌面端及 CLI 账号，各端独立切换。

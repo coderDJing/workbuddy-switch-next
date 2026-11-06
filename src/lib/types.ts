@@ -779,11 +779,43 @@ export interface TokenStatsAccount {
   daily: TokenStatsGroup[];
   dailyByModel: Record<string, TokenStatsGroup[]>;
 }
-/** 一次模型调用的明细行；`total = input + output + cacheWrite`，`uncachedInput = max(0, input - cacheRead)`，`thinking` 是 `output` 中思考过程的 token 数（回复内容 = max(0, output - thinking)），均与聚合口径一致。 */
-export interface TokenStatsRequestRow { timestamp: number; model: string; project: string; sessionId: string; title?: string | null; input: number; output: number; cacheRead: number; cacheWrite: number; uncachedInput: number; thinking: number; total: number; }
+/** 一次模型调用的明细行；`total = input + output + cacheWrite`，`uncachedInput = max(0, input - cacheRead)`，`thinking` 为 null 时未提供输出细分，否则是 `output` 中思考过程的 token 数（回复内容 = max(0, output - thinking)），均与聚合口径一致。 */
+export interface TokenStatsRequestRow { timestamp: number; model: string; project: string; sessionId: string; title?: string | null; input: number; output: number; cacheRead: number; cacheWrite: number; uncachedInput: number; thinking: number | null; total: number; }
 /** `workbuddy-ai` 为国际版本地数据源，与国内版分开统计，数据源缺失时为空集。 */
-export interface TokenStatsSource { /** Absent on older backends. */ accounts?: TokenStatsAccount[]; source: "workbuddy" | "workbuddy-ai" | "codebuddy-cli" | "codebuddy-ide"; summary: TokenStatsTotals; models: TokenStatsGroup[]; projects: TokenStatsGroup[]; sessions: TokenStatsGroup[]; daily: TokenStatsGroup[]; /** Optional model-specific daily series for trend filtering. */ dailyByModel?: Record<string, TokenStatsGroup[]>; /** 仅 CodeBuddy CLI 来源返回的最近请求明细；旧后端或缺失时按空数组处理。 */ requests?: TokenStatsRequestRow[]; hours: TokenStatsGroup[]; filesScanned: number; parseErrors: number; coverageStartAt?: number | null; coverageEndAt?: number | null; }
+export interface TokenStatsSource { /** Absent on older backends. */ accounts?: TokenStatsAccount[]; source: "workbuddy" | "workbuddy-ai" | "codebuddy-cli" | "codebuddy-ide" | "qoder" | "qoder-ai"; /** Requests whose token fields are missing or placeholders. */ unavailableTokenRecords?: number; summary: TokenStatsTotals; models: TokenStatsGroup[]; projects: TokenStatsGroup[]; sessions: TokenStatsGroup[]; daily: TokenStatsGroup[]; /** Optional model-specific daily series for trend filtering. */ dailyByModel?: Record<string, TokenStatsGroup[]>; /** CodeBuddy CLI 和 Qoder 来源返回的最近请求明细；旧后端或缺失时按空数组处理。 */ requests?: TokenStatsRequestRow[]; hours: TokenStatsGroup[]; filesScanned: number; parseErrors: number; coverageStartAt?: number | null; coverageEndAt?: number | null; }
 export interface TokenStatistics { generatedAt: number; rangeDays?: number | null; sources: TokenStatsSource[]; }
+
+export interface QoderCreditTotals {
+  credits: number;
+  billableCredits: number;
+  nonBillableCredits: number;
+  unknownBillingCredits: number;
+  records: number;
+}
+export interface QoderCreditGroup extends QoderCreditTotals { key: string }
+export interface QoderCreditRequest { timestamp: number; model: string; project: string; sessionId: string; credits: number; billable: boolean | null }
+export interface QoderCreditSource {
+  source: "qoder" | "qoder-ai";
+  summary: QoderCreditTotals;
+  daily: QoderCreditGroup[];
+  dailyByModel: Record<string, QoderCreditGroup[]>;
+  models: QoderCreditGroup[];
+  projects: QoderCreditGroup[];
+  requests: QoderCreditRequest[];
+  filesScanned: number;
+  parseErrors: number;
+  coverageStartAt: number | null;
+  coverageEndAt: number | null;
+}
+export interface QoderStatistics extends TokenStatistics { credits: QoderCreditSource[] }
+export interface QoderCreditStatistics {
+  generatedAt: number;
+  retentionDays: number;
+  savedAccountCount: number;
+  accounts: { accountKey: string; name: string; global: boolean; updatedAt: number; remaining: number; total: number; used: number; planExpiresAt: number | null }[];
+  daily: { global: boolean; accountKey: string; date: string; credits: number }[];
+  errors: { accountKey?: string; message: string }[];
+}
 
 export interface CodeBuddyCliStatus {
   configured: boolean;

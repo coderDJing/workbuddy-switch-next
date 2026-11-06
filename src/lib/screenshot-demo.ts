@@ -833,6 +833,26 @@ export function screenshotDemoResponse(command: string, args?: Record<string, un
     case "get_accounts": return { accounts: demoAccounts };
     case "get_qoder_status": return demoQoderStatus();
     case "get_qoder_credits": return { ok: true, remaining: 428, total: 500, used: 72 };
+    case "get_qoder_statistics": {
+      const empty = { total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, uncachedInput: 0, records: 0, cacheHitRate: null };
+      const sources = ["qoder", "qoder-ai"].map((source) => ({ source, summary: empty, models: [], projects: [], sessions: [], daily: [], hours: [], accounts: [], requests: [], filesScanned: 3, parseErrors: 0, unavailableTokenRecords: 30 }));
+      const credits = sources.map(({ source }, index) => {
+        const daily = Array.from({ length: 7 }, (_, day) => {
+          const date = new Date(demoNow - (6 - day) * 86_400_000);
+          const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+          return { key, credits: (day + 1) * (index + 1) * 2, billableCredits: (day + 1) * (index + 1), nonBillableCredits: (day + 1) * (index + 1), unknownBillingCredits: 0, records: day + 1 };
+        });
+        const summary = { credits: 56 * (index + 1), billableCredits: 28 * (index + 1), nonBillableCredits: 28 * (index + 1), unknownBillingCredits: 0, records: 28 };
+        return { source, summary, daily, dailyByModel: { "演示模型": daily }, models: [{ key: "演示模型", ...summary }], projects: [], requests: [{ timestamp: demoNow, model: "演示模型", project: "演示项目", sessionId: "demo-session", credits: 2, billable: true }], filesScanned: 3, parseErrors: 0, coverageStartAt: demoNow - 6 * 86_400_000, coverageEndAt: demoNow };
+      });
+      return { generatedAt: demoNow, sources, credits };
+    }
+    case "get_qoder_credit_statistics": return { generatedAt: demoNow, retentionDays: 90, savedAccountCount: 1, accounts: [{ accountKey: "demo-account", name: "演示账号", global: false, updatedAt: demoNow, remaining: 428, total: 500, used: 72, planExpiresAt: null }], daily: [], errors: [] };
+    case "get_qoder_automation": {
+      const config = { dailyEnabled: false, dailyTime: "09:00", alertsEnabled: false, expiryDays: 7, lowBalance: 20, rotateEnabled: false, rotateBelow: 10, cooldownMinutes: 30 };
+      return { settings: { cn: { ...config }, ai: { ...config } }, logs: [] };
+    }
+    case "get_qoder_companion": return { installed: false, template: { id: args?.global ? "wb-qoder-ai-v1" : "wb-qoder-cn-v1" } };
     // 会话管理页：按账号返回演示会话；国际版账号给一套不同 cwd，混排时可见档位差异。
     case "list_account_sessions": {
       const account = demoAccounts.find((item) => item.id === args?.accountId) ?? demoAccounts[0];

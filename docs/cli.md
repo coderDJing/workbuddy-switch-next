@@ -1,6 +1,45 @@
-# CodeBuddy CLI 命令行
+# AI 命令行：CodeBuddy 与 Qoder
 
-一次性命令执行后退出，无需打开 GUI 或启动 webui。账号与积分共用现有账号库，目前客户端目标只支持 `codebuddy-cli`。
+一次性命令执行后退出，无需打开 GUI 或启动 webui。支持 `codebuddy-cli`（默认）、`qoder-cli` 和 `qoder-desktop`；Qoder 使用独立账号库，不混入 WorkBuddy / CodeBuddy 账号。`help --json` 返回 `supportedTargets` 和各目标的 `capabilities`，AI 可先检查能力再调用。
+
+## Qoder 调用
+
+```bash
+workbuddy-switch-next accounts --target qoder-cli --variant cn
+workbuddy-switch-next inspect --target qoder-cli --variant cn --summary
+workbuddy-switch-next status --target qoder-cli --variant ai
+workbuddy-switch-next credits --target qoder-cli --variant all --summary
+workbuddy-switch-next switch <ACCOUNT_ID> --target qoder-cli --dry-run
+workbuddy-switch-next switch <ACCOUNT_ID> --target qoder-cli
+workbuddy-switch-next token-stats --target qoder-cli --variant cn
+workbuddy-switch-next credit-stats --target qoder-cli --variant cn
+workbuddy-switch-next credit-stats --target qoder-cli --variant cn --refresh
+workbuddy-switch-next rewards <ACCOUNT_ID> --target qoder-cli
+workbuddy-switch-next automation get --target qoder-cli --variant cn
+workbuddy-switch-next automation run --target qoder-cli --variant cn
+```
+
+- `--variant cn|ai|all` 默认 all。账号稳定 ID 由 `accounts` 返回；同一区域、同一身份的桌面端与 CLI 合并，余额只查询一次。也接受完整账号包 ID，按该身份选择目标客户端最新保存的包；不按昵称或 ID 前缀猜测。`clientPrepared` 只表示存在对应客户端账号包，不代表凭据已经验证有效。
+- `status` 的 `clients` 数组覆盖所选区域，每项含 `activeAccountId`、`activeAccountName`、运行和登录状态。`accounts` / `inspect` 的 `activeForTarget` 表示是否为对应区域目标客户端的当前账号。`inspect` 在查询后重读状态；失败时保留查询结果，当前标记为 null。
+- Qoder 切换默认拒绝运行中的目标。显式 `--close-running` 才允许关闭；桌面端还可加 `--relaunch`，仅重开切换前已运行的桌面端，CLI 不自动重开。`--dry-run` 只输出进程与账号包元数据，不验证凭据、不写登录状态。实际切换使用 Qoder 的专用锁、备份及回滚流程；过程不可中途强制终止。
+- `credits` / `inspect` 复用统一的积分汇总、`*Display` 两位展示值、逐账号错误和部分成功退出码。`--summary` 省略套餐、附加包和专属积分明细，保留原始精度、到期时间、失败信息与当前账号。Qoder 暂无可靠模型限额来源，`inspect` 固定返回 `availabilityKnown=false`、`limitsSupported=false`；`limits` 返回 `UNSUPPORTED_CAPABILITY`，退出码 2，不伪造恢复时间。`--model` 不适用于 Qoder。
+- `token-stats` 返回所选区域的本地会话累计统计，零占位或缺失 Token 计数保持 unavailable。`credit-stats` 分别返回 `localCredits` 与 `snapshots`：本地计费/非计费请求积分、账号额度快照的观察消耗不可相加。请求历史缺少可靠账号归属，`accountAttributionAvailable=false`。默认不联网；`--refresh` 只查询所选区域，支持 `--timeout` 与 `--concurrency`，失败保留本地统计并返回非零退出码。
+- `rewards` 必须指定账号或显式 `--all`，逐账号顺序领取，沿用每日任务组件的领取流程，不自动切号。完整安装需带 daily-runner；缺少组件、资格不足、授权失效等作为失败返回，不把已尝试视为已到账。
+- `automation get` 查看配置及记录；`automation run` 只执行所选区域已启用且到期的任务，不绕过每天次数、重试间隔及轮换空闲检查，也不启动常驻调度。持续调度需运行桌面应用或 `serve`。发现任务占锁会明确报错；正常中断会停止安排后续账号，已开始的任务完成后返回。
+
+修改自动任务配置时，将区域补丁保存为 JSON 文件，例如 `qoder-settings.json`：
+
+```json
+{"dailyEnabled":true,"dailyTime":"09:00","alertsEnabled":true,"expiryDays":7}
+```
+
+```bash
+workbuddy-switch-next automation set --target qoder-cli --variant cn --settings-file qoder-settings.json
+```
+
+支持字段：`dailyEnabled`、`dailyTime`、`alertsEnabled`、`expiryDays`、`lowBalance`、`rotateEnabled`、`rotateBelow`、`cooldownMinutes`。只修改明确提供的字段，保留其他配置及另一地区；未知字段和非法数值拒绝写入。时间为本机时区。`automation set` 必须明确 cn 或 ai，不能使用 all。
+
+以下模型限额、共享账号库、CodeBuddy 认证更新与默认关闭进程的说明适用于 `codebuddy-cli`；通用编码、JSON 信封和中断退出约定同样适用于 Qoder。Qoder 的 `--text` 为易读缩进 JSON，不套用 CodeBuddy 专用状态文案。
 
 ## 命令
 
@@ -24,7 +63,7 @@
 | --- | --- |
 | `--summary` | inspect/credits：紧凑结果，不增加请求 |
 | `--text` / `--json` / `--ascii-json` | 一次性命令的输出格式；text 不可与 JSON 参数混用 |
-| `--target codebuddy-cli` | 查询/切号的客户端目标，默认 codebuddy-cli |
+| `--target TARGET` | codebuddy-cli（默认）、qoder-cli、qoder-desktop |
 | `--variant cn\|ai\|all` | accounts/inspect/credits/limits/switch，默认 all；旧 status 只接受 cn/ai |
 | `--model MODEL` | inspect/limits，按模型名精确筛选 |
 | `--timeout SECONDS` | inspect/credits，每账号默认 30 秒，范围 1–3600 |
@@ -41,7 +80,7 @@ stdout 为一个最终 JSON 对象，stderr 为进度和诊断；不要合并后
 
 公共字段：`schemaVersion`、`ok`、`command`、`target`、`scope`、`elapsedMs`、`exitCode`、`error`。成功时 error 为 null，失败时为 `{code,message,retryable,hint}`，逐账号查询错误使用相同结构。retryable 的 true/false/null 分别表示可重试、不宜直接重试、无法可靠判断。
 
-scope 为 account（账号/积分）、client（客户端状态/切号/限额观察）或 mixed（inspect）；help/version 的 scope、target 为 null。优先读取 `clientStatus`、`activeAccountId`、`activeForTarget`；早期别名 `codebuddyCli`、`activeCliAccountId`、`activeCli` 仍保留。
+scope 为 account（账号/积分/奖励）、client（客户端状态/切号/限额观察）、mixed（inspect）或 platform（Qoder 统计与自动任务）；help/version 的 scope、target 为 null。CodeBuddy 优先读取 `clientStatus`、`activeAccountId`、`activeForTarget`；早期别名 `codebuddyCli`、`activeCliAccountId`、`activeCli` 仍保留。Qoder 当前状态按区域放在 `clients` 数组中。
 
 | 退出码 | 含义 |
 | --- | --- |

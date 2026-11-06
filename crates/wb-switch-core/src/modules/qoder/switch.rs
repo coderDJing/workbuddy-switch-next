@@ -196,14 +196,135 @@ pub fn execute(
     opts: SwitchOptions,
     progress: &dyn Fn(&str),
 ) -> Result<Value, String> {
-    let _lock = crate::modules::state_lock::StateLock::wait_at(
-        &store.join("switch.lock"),
-        SWITCH_LOCK_TIMEOUT,
+    execute_inner(
+        store,
+        roots,
+        ops,
+        bundle_id,
+        opts,
+        progress,
+        SwitchGuard::default(),
     )
-    .map_err(|e| e.to_string())?;
+}
+
+/// CLI retries lock contention cooperatively; a zero timeout never waits internally.
+pub fn execute_with_timeout(
+    store: &Path,
+    roots: &QoderRoots,
+    ops: &dyn QoderProcessOps,
+    bundle_id: &str,
+    opts: SwitchOptions,
+    timeout: Duration,
+) -> Result<Value, String> {
+    execute_inner(
+        store,
+        roots,
+        ops,
+        bundle_id,
+        opts,
+        &|_| {},
+        SwitchGuard {
+            lock_timeout: timeout,
+            strict_process_probe: true,
+            ..SwitchGuard::default()
+        },
+    )
+}
+
+/// Automatic switching must still see the queried account under the switch lock.
+pub fn execute_idle(
+    store: &Path,
+    roots: &QoderRoots,
+    ops: &dyn QoderProcessOps,
+    bundle_id: &str,
+    expected: &str,
+) -> Result<Value, String> {
+    execute_inner(
+        store,
+        roots,
+        ops,
+        bundle_id,
+        SwitchOptions {
+            close_running: false,
+            relaunch: false,
+        },
+        &|_| {},
+        SwitchGuard {
+            expected: Some(expected),
+            ..SwitchGuard::default()
+        },
+    )
+}
+
+fn idle_guard(
+    store: &Path,
+    roots: &QoderRoots,
+    ops: &dyn QoderProcessOps,
+    target: QoderTarget,
+    expected: &str,
+) -> Result<(), String> {
+    let desktop = if target.is_global() {
+        QoderTarget::GlobalDesktop
+    } else {
+        QoderTarget::Desktop
+    };
+    if target.is_desktop()
+        || ops.hosted_by(target)
+        || !ops.confirmed_idle(target)
+        || !ops.confirmed_idle(desktop)
+    {
+        return Err("Qoder 正在运行，已推迟自动轮换".into());
+    }
+    let current =
+        store::current_id(store, roots, target).and_then(|id| store::load(store, &id).ok());
+    if current.and_then(|m| m.identity_key).as_deref() != Some(expected) {
+        return Err("Qoder 当前账号已变化，已推迟自动轮换".into());
+    }
+    Ok(())
+}
+
+struct SwitchGuard<'a> {
+    expected: Option<&'a str>,
+    lock_timeout: Duration,
+    strict_process_probe: bool,
+}
+
+impl Default for SwitchGuard<'_> {
+    fn default() -> Self {
+        Self {
+            expected: None,
+            lock_timeout: SWITCH_LOCK_TIMEOUT,
+            strict_process_probe: false,
+        }
+    }
+}
+
+fn execute_inner(
+    store: &Path,
+    roots: &QoderRoots,
+    ops: &dyn QoderProcessOps,
+    bundle_id: &str,
+    opts: SwitchOptions,
+    progress: &dyn Fn(&str),
+    guard: SwitchGuard<'_>,
+) -> Result<Value, String> {
+    let SwitchGuard {
+        expected,
+        lock_timeout,
+        strict_process_probe,
+    } = guard;
+    let _lock =
+        crate::modules::state_lock::StateLock::wait_at(&store.join("switch.lock"), lock_timeout)
+            .map_err(|e| e.to_string())?;
     #[allow(unused_mut)]
     let mut meta = store::load(store, bundle_id)?;
     let target = meta.target;
+    if strict_process_probe && !ops.confirmed_idle(target) && ops.running_pids(target).is_empty() {
+        return Err("PROCESS_SCAN_FAILED: Cannot reliably inspect Qoder processes".into());
+    }
+    if let Some(expected) = expected {
+        idle_guard(store, roots, ops, target, expected)?;
+    }
     let specs = credentials(roots, target);
     let is_vault =
         cfg!(windows) && meta.files.len() == 1 && meta.files[0].name == "authorized.dpapi";
@@ -314,6 +435,12 @@ pub fn execute(
     let backup = backup_live(store, target, &specs).map_err(restart_after_failure)?;
 
     progress("写入目标账号凭据…");
+    if strict_process_probe && !ops.confirmed_idle(target) {
+        return Err(restart_after_failure("PROCESS_SCAN_FAILED: Qoder is running or process state is unknown; no credentials written".into()));
+    }
+    if let Some(expected) = expected {
+        idle_guard(store, roots, ops, target, expected)?;
+    }
     let applied = apply(&specs, &payload);
     if let Err(reason) = applied {
         let failed = restore_backup(&backup);

@@ -102,8 +102,17 @@ pub fn router() -> Router {
         .route("/api/jetbrains/switch", post(api_jetbrains_switch))
         .route("/api/jetbrains/detect", post(api_jetbrains_detect))
         .route("/api/qoder/status", get(api_qoder_status))
+        .route(
+            "/api/qoder/automation",
+            get(api_qoder_automation).post(api_qoder_automation_save),
+        )
+        .route("/api/qoder/automation/run", post(api_qoder_automation_run))
+        .route("/api/qoder/companion", post(api_qoder_companion))
+        .route("/api/qoder/cloud", post(api_qoder_cloud))
         .route("/api/qoder/auto-capture", post(api_qoder_auto_capture))
         .route("/api/qoder/credits", post(api_qoder_credits))
+        .route("/api/qoder/stats", get(api_qoder_statistics))
+        .route("/api/qoder/credits/stats", get(api_qoder_credit_statistics))
         .route("/api/qoder/rewards", post(api_qoder_rewards))
         .route("/api/qoder/export", post(api_qoder_export))
         .route("/api/qoder/backup/preview", post(api_qoder_backup_preview))
@@ -710,6 +719,60 @@ fn body_str<'a>(body: &'a Value, keys: &[&str]) -> &'a str {
 
 async fn api_qoder_status() -> Response {
     json_ok(qoder::status())
+}
+
+async fn api_qoder_automation() -> Response {
+    match qoder::automation::status() {
+        Ok(v) => json_ok(v),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+async fn api_qoder_automation_save(Json(body): Json<Value>) -> Response {
+    match qoder::automation::save(body["settings"].clone()) {
+        Ok(v) => json_ok(json!(v)),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+async fn api_qoder_automation_run() -> Response {
+    match qoder::automation::cycle().await {
+        Ok(v) => json_ok(v),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+
+async fn api_qoder_companion(Json(body): Json<Value>) -> Response {
+    let global = body["global"].as_bool().unwrap_or(false);
+    let result = match body["enabled"].as_bool() {
+        Some(enabled) => qoder::companion::configure(global, enabled),
+        None => qoder::companion::status(global),
+    };
+    match result {
+        Ok(v) => json_ok(v),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+async fn api_qoder_cloud(Json(body): Json<Value>) -> Response {
+    let passphrase = body_str(&body, &["passphrase"]);
+    let result = match body_str(&body, &["action"]) {
+        "backup" => webdav_sync::qoder_backup(passphrase).await,
+        "preview" => webdav_sync::qoder_preview(passphrase).await,
+        "sync" => webdav_sync::qoder_sync(passphrase).await,
+        "restore" => {
+            let indexes: Vec<_> = body["indexes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_u64)
+                .map(|n| n as usize)
+                .collect();
+            webdav_sync::qoder_restore(passphrase, &indexes, body_str(&body, &["snapshotId"])).await
+        }
+        _ => Err("未知的 Qoder 云端操作".into()),
+    };
+    match result {
+        Ok(v) => json_ok(v),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
 }
 
 async fn api_qoder_auto_capture() -> Response {
@@ -1615,6 +1678,22 @@ fn query_flag_enabled(query: Option<&str>, name: &str) -> bool {
 
 async fn api_credit_statistics(RawQuery(query): RawQuery) -> Response {
     json_ok(credit_usage::get_statistics(query_flag_enabled(query.as_deref(), "refresh")).await)
+}
+
+async fn api_qoder_statistics() -> Response {
+    match tokio::task::spawn_blocking(token_stats::get_qoder_statistics).await {
+        Ok(statistics) => json_ok(statistics),
+        Err(_) => json_err(
+            "扫描 Qoder 用量失败".into(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    }
+}
+
+async fn api_qoder_credit_statistics(RawQuery(query): RawQuery) -> Response {
+    json_ok(
+        qoder::credit_stats::get_statistics(query_flag_enabled(query.as_deref(), "refresh")).await,
+    )
 }
 
 async fn api_token_statistics(RawQuery(query): RawQuery) -> Response {

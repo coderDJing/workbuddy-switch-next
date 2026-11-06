@@ -1,7 +1,7 @@
 //! Qoder 账号包：整组凭据文件的字节副本 + `bundle.json` 元数据。
 //!
 //! 布局：`<store>/bundles/<id>/{bundle.json, <凭据存储名>…}`。副本是真实凭据的
-//! 密文，受 DPAPI / 钥匙串绑定，只能在本机同一系统用户下复用，不参与 WebDAV 同步。
+//! 密文，受 DPAPI / 钥匙串绑定，只能在本机同一系统用户下复用；WebDAV 使用独立的可移植导出。
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};

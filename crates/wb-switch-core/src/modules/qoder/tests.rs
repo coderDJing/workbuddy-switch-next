@@ -104,6 +104,37 @@ const OPEN: SwitchOptions = SwitchOptions {
 fn no_progress(_: &str) {}
 
 #[test]
+fn idle_rotation_rechecks_identity_and_never_closes_running_clients() {
+    let sb = sandbox();
+    let auth = sb.roots.cli_dir_for(QoderTarget::Cli).join(".auth");
+    put(&auth.join("user"), br#"{"uid":"old","token":"old-token"}"#);
+    put(&auth.join("machine_id"), b"0123456789abcdef-device");
+    let current = store::capture(&sb.store, &sb.roots, QoderTarget::Cli, Some("Old")).unwrap();
+    let key = current.identity_key.clone().unwrap();
+    put(
+        &auth.join("user"),
+        br#"{"uid":"next","token":"next-token"}"#,
+    );
+    let next = store::capture(&sb.store, &sb.roots, QoderTarget::Cli, Some("Next")).unwrap();
+    put(&auth.join("user"), br#"{"uid":"old","token":"old-token"}"#);
+    let before = read(&auth.join("user"));
+    let ops = FakeOps::default();
+    ops.running.set(true);
+    assert!(super::switch::execute_idle(&sb.store, &sb.roots, &ops, &next.id, &key).is_err());
+    assert_eq!(ops.closed.get(), 0);
+    assert_eq!(read(&auth.join("user")), before);
+    ops.running.set(false);
+    assert!(
+        super::switch::execute_idle(&sb.store, &sb.roots, &ops, &next.id, "changed-identity")
+            .is_err()
+    );
+    assert_eq!(read(&auth.join("user")), before);
+    assert!(super::switch::execute_idle(&sb.store, &sb.roots, &ops, &next.id, &key).is_ok());
+    assert_eq!(ops.closed.get(), 0);
+    assert!(ops.launched.borrow().is_empty());
+}
+
+#[test]
 fn capture_requires_login() {
     let sb = sandbox();
     let err = store::capture(&sb.store, &sb.roots, QoderTarget::Desktop, None).unwrap_err();

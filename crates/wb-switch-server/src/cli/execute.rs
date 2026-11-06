@@ -59,7 +59,7 @@ pub async fn execute(options: &Options) -> Result<(Value, u8), Failure> {
                     value["exitCode"] = json!(exit);
                     value["elapsedMs"] = json!(started.elapsed().as_millis() as u64);
                     if options.summary {
-                        value = super::summary::project(&value);
+                        value = if options.target.is_qoder() { super::qoder::compact(&value) } else { super::summary::project(&value) };
                     }
                     (value, exit)
                 });
@@ -104,13 +104,17 @@ async fn execute_inner(
     if options.command == Command::Help {
         let mut value = response("help", options.target);
         value["usage"] = json!(super::HELP);
-        value["supportedTargets"] = json!([options.target.as_str()]);
+        value["supportedTargets"] = json!(["codebuddy-cli", "qoder-cli", "qoder-desktop"]);
+        value["capabilities"] = super::qoder::capabilities();
         return Ok((value, 0));
     }
     if options.command == Command::Version {
         let mut value = response("version", options.target);
         value["version"] = json!(env!("CARGO_PKG_VERSION"));
         return Ok((value, 0));
+    }
+    if options.target.is_qoder() {
+        return super::qoder::execute(options, started, control).await;
     }
     let snapshot_guard = auth_snapshot(options, started, control).await?;
     let selected = select_accounts(load_accounts()?, options)?;
