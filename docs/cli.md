@@ -2,6 +2,12 @@
 
 一次性命令执行后退出，无需打开 GUI 或启动 webui。支持 `codebuddy-cli`（默认）、`qoder-cli` 和 `qoder-desktop`；Qoder 使用独立账号库，不混入 WorkBuddy / CodeBuddy 账号。`help --json` 返回 `supportedTargets` 和各目标的 `capabilities`，AI 可先检查能力再调用。
 
+## 一键复制给 Skill 作者
+
+打开界面侧栏的「AI CLI」，选择客户端和区域，点击「复制 Skill 接入说明」。复制内容是一份完整 Markdown，包含来源版本、能力发现、查询与操作示例、JSON 字段、退出码、数据边界和操作约定，可直接交给人或 AI 编写 Skill。内容随目标和区域变化，不包含实际账号、凭据或本机私有路径；安装版本与能力仍以实际 CLI 返回为准。
+
+只需命令时，可用「复制全部查询命令」或各行的「复制」。预览说明可以手动全选复制；剪贴板不可用时会自动展开预览。复制和预览均不执行命令，也不会创建或安装 Skill。
+
 ## Qoder 调用
 
 ```bash

@@ -21,7 +21,7 @@ Next 在上游项目的基础上，持续完善多平台工作台与 Agent 调�
 | 管理多个 AI 工具的账号 | WorkBuddy / CodeBuddy 与 Qoder 平级切换；平台内分国内版、国际版，客户端状态与当前账号集中展示 |
 | 判断剩余积分怎么用 | 查看余额、临期资源与用量趋势；Qoder 的本地请求积分和额度快照分开展示，缺失 Token 明确标记不可用 |
 | 把重复操作交给工具 | 按平台设置每日领取、余额提醒和 CLI 空闲轮换；查询失败、客户端运行中等情况明确记录 |
-| 让 AI Agent 帮忙管理 | 一次性 CLI 提供 JSON、能力发现、稳定账号 ID、区域筛选、汇总查询与明确错误码；界面内可直接复制对应命令 |
+| 让 AI Agent 帮忙管理 | 一次性 CLI 提供 JSON、能力发现、稳定账号 ID、区域筛选、汇总查询与明确错误码；界面内可一键复制 Skill 接入说明或查询命令 |
 | 切号后继续工作 | WorkBuddy / CodeBuddy 支持会话复制、跨账号关联与增量同步；悬浮窗集中查看任务状态，Qoder CLI 可通过 Hooks 接入 |
 | 跨设备延续配置与账号 | 加密 WebDAV 备份与同步，Qoder 使用独立备份；正式版与 RC 更新通道隔离 |
 
@@ -36,6 +36,8 @@ Next 在上游项目的基础上，持续完善多平台工作台与 Agent 调�
 日常使用推荐 [最新正式版](https://github.com/coderDJing/workbuddy-switch-next/releases/latest)。本轮正式版本为 **0.2.1**，变化与兼容说明见 [版本说明](docs/releases/0.2.1.md)；版本与安装包以 Releases 实际产物为准。需要提前体验后续变化时，可使用 [RC 候选版](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview)。也可按 [构建说明](docs/cli.md#构建与维护) 从源码构建。
 
 本文描述当前源码能力。0.2.1 汇总已通过 RC 构建验证的 Qoder 统计、平台设置、自动任务、CLI Hooks 悬浮窗接入、独立 WebDAV 备份、AI CLI 与新版界面；安装包须等待对应 Release 构建完成，旧版本不一定包含这些功能。
+
+一键复制 Skill 接入说明与全部查询命令纳入 **0.2.2-rc.202611062058**，详见 [本轮 RC 说明](docs/releases/0.2.2-rc.202611062058.md)；安装包以对应 Release 完成构建后的产物为准。
 
 前往 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 下载对应平台的安装包：
 
@@ -174,11 +176,11 @@ Next 工作台、Qoder 平台设置和 AI CLI 截图来自当前源码的只读�
 
 ![Qoder 平台设置：自动任务、保存状态、会话接入与备份](docs/images/next-qoder-settings.png)
 
-### 给 AI 一条可以直接调用的命令
+### 一键复制 Skill 接入说明
 
-侧栏「AI CLI」按客户端与区域生成查询命令，支持一键复制。GUI 与 CLI 使用同一套账号数据，适合在自己的 Agent 工作流中调用。
+侧栏「AI CLI」按客户端与区域生成接入说明。点击「复制 Skill 接入说明」，即可把命令、参数、JSON 返回、错误处理和操作约定一起交给人或 AI 编写 Skill；也支持复制全部查询命令或单条命令。GUI 与 CLI 使用同一套账号数据，适合在自己的 Agent 工作流中调用。
 
-![Next AI CLI 调用指南：选择客户端与区域，复制结构化查询命令](docs/images/next-ai-cli.png)
+![Next AI CLI 调用指南：选择客户端与区域，一键复制完整 Skill 接入说明](docs/images/next-ai-cli.png)
 
 ### 管理 WorkBuddy 与 CodeBuddy 账号
 
@@ -237,7 +239,7 @@ workbuddy-switch-next status --target codebuddy-cli  # 终端查看当前 CLI �
 
 ### CLI / AI 调用
 
-在界面左下方打开「AI CLI」，可选择 CodeBuddy CLI、Qoder CLI 或 Qoder 桌面端，按区域复制常用查询命令。指南只生成命令，不会自动执行。
+在界面左下方打开「AI CLI」，选择 CodeBuddy CLI、Qoder CLI 或 Qoder 桌面端及区域，点击「复制 Skill 接入说明」即可复制完整 Markdown 说明，直接交给人或 AI 编写 Skill。说明包含能力发现、命令示例、参数、返回约定、错误处理与操作边界，不包含实际账号或凭据；也可复制全部查询命令或单条命令。指南只生成文本，不会自动执行。
 
 无需打开 GUI 或启动 webui。默认目标为 `codebuddy-cli`，`inspect --summary` 一次查询账号、当前 CLI 状态、积分、到期信息和模型限额。
 
