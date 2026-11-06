@@ -31,6 +31,8 @@ for (const platform of supported) {
 }
 assert.ok(!Object.keys(npm.optionalDependencies).some(name => !name.startsWith(release.slug + '-')));
 const channel = release.channel === 'preview' ? `download/${release.previewTag}` : 'latest/download';
+const releasePage = release.channel === 'preview' ? `tag/${release.previewTag}` : 'latest';
+assert.ok(read('index.html').includes(`var releaseUrl = "https://github.com/${release.owner}/${release.repo}/releases/${releasePage}";`), 'Startup recovery link must match the release channel');
 assert.deepEqual(config.plugins.updater.endpoints, ['latest.json', 'latest-{{target}}-{{arch}}.json']
   .map(name => `https://github.com/${release.owner}/${release.repo}/releases/${channel}/${name}`));
 assert.match(Buffer.from(config.plugins.updater.pubkey, 'base64').toString(), /minisign public key/);

@@ -33,9 +33,9 @@ Next 在上游项目的基础上，持续完善多平台工作台与 Agent 调�
 
 ## 快速开始
 
-日常使用推荐 [最新正式版](https://github.com/coderDJing/workbuddy-switch-next/releases/latest)。0.2.0 的变化与兼容说明见 [版本说明](docs/releases/0.2.0.md)；版本与安装包以 Releases 实际产物为准。需要提前体验后续变化时，可使用 [RC 候选版](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview)。也可按 [构建说明](docs/cli.md#构建与维护) 从源码构建。
+日常使用推荐 [最新正式版](https://github.com/coderDJing/workbuddy-switch-next/releases/latest)。本轮正式版本为 **0.2.1**，变化与兼容说明见 [版本说明](docs/releases/0.2.1.md)；版本与安装包以 Releases 实际产物为准。需要提前体验后续变化时，可使用 [RC 候选版](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview)。也可按 [构建说明](docs/cli.md#构建与维护) 从源码构建。
 
-本文描述当前源码能力。本轮 Qoder 统计、平台设置、自动任务、CLI Hooks 悬浮窗接入、独立 WebDAV 备份、AI CLI 与新版界面纳入 **0.2.1-rc.202611061914**，详见 [本轮 RC 说明](docs/releases/0.2.1-rc.202611061914.md)；安装包须等待对应 Release 构建完成，旧版本不一定包含这些功能。
+本文描述当前源码能力。0.2.1 汇总已通过 RC 构建验证的 Qoder 统计、平台设置、自动任务、CLI Hooks 悬浮窗接入、独立 WebDAV 备份、AI CLI 与新版界面；安装包须等待对应 Release 构建完成，旧版本不一定包含这些功能。
 
 前往 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 下载对应平台的安装包：
 

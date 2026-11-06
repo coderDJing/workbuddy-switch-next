@@ -46,4 +46,8 @@ for (const relative of ['crates/wb-switch-core/Cargo.toml', 'crates/wb-switch-se
 const updateFile = path.join(root, 'crates/wb-switch-core/src/modules/update.rs');
 fs.writeFileSync(updateFile, fs.readFileSync(updateFile, 'utf8')
   .replace(/pub const UPDATE_CHANNEL: &str = "[^"]+";/, `pub const UPDATE_CHANNEL: &str = "${release.channel}";`));
+const bootFile = path.join(root, 'index.html');
+const releasePage = release.channel === 'preview' ? `tag/${release.previewTag}` : 'latest';
+fs.writeFileSync(bootFile, fs.readFileSync(bootFile, 'utf8')
+  .replace(/var releaseUrl = "[^"]+";/, `var releaseUrl = "https://github.com/${release.owner}/${release.repo}/releases/${releasePage}";`));
 console.log(`Synchronized Next version ${version} (${release.channel === 'preview' ? 'RC' : 'stable'}); run cargo check to refresh Cargo.lock.`);
