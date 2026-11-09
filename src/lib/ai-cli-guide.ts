@@ -1,7 +1,8 @@
 import { APP_VERSION, GITHUB_REPOSITORY_URL } from "./update";
 
-export type CliTarget = "codebuddy-cli" | "qoder-cli" | "qoder-desktop" | "workbuddy" | "codebuddy-ide" | "vscode" | "jetbrains";
+export type CliTarget = "codebuddy-cli" | "qoder-cli" | "qoder-desktop" | "workbuddy" | "codebuddy-ide" | "vscode" | "jetbrains" | "trae-desktop";
 export const CLI_TARGET_LABELS: Record<CliTarget, string> = {
+  "trae-desktop": "TRAE 桌面端",
   "codebuddy-cli": "CodeBuddy CLI", workbuddy: "WorkBuddy", "codebuddy-ide": "CodeBuddy IDE",
   vscode: "VS Code CodeBuddy 插件", jetbrains: "JetBrains CodeBuddy 插件", "qoder-cli": "Qoder CLI", "qoder-desktop": "Qoder 桌面端",
 };
@@ -9,6 +10,13 @@ export type CliRegion = "cn" | "ai" | "all";
 export type CliCommand = { title: string; command: string };
 
 export function cliQueryCommands(target: CliTarget, region: CliRegion): CliCommand[] {
+  if (target.startsWith("trae-")) return [
+    {title:"账号与额度概览",command:`workbuddy-switch-next inspect --target ${target} --variant ${region}`},
+    {title:"查看账号 ID",command:`workbuddy-switch-next accounts --target ${target} --variant ${region}`},
+    {title:"积分快照与历史",command:`workbuddy-switch-next credit-stats --target ${target} --variant ${region}`},
+    {title:"查看自动任务配置",command:`workbuddy-switch-next automation get --target ${target} --variant ${region}`},
+    {title:"发现完整管理操作",command:"workbuddy-switch-next operations"},
+  ];
   const qoder = target.startsWith("qoder-");
   if (target === "vscode" || target === "jetbrains") region = "cn";
   const args = `--target ${target} --variant ${region}`;
@@ -35,6 +43,18 @@ export function cliQueryText(target: CliTarget, region: CliRegion): string {
 
 /** Static reference for a Skill author: no local accounts, paths, or credentials. */
 export function cliSkillGuide(target: CliTarget, region: CliRegion): string {
+  if (target.startsWith("trae-")) return [
+    "# TRAE 桌面账号管理接入说明",
+    "这是咱们的管理 CLI，不是 TRAE 官方企业 CLI。先运行 help --json 和 operations 确认版本能力。",
+    cliQueryText(target,region),
+    "支持 accounts / status / inspect / credits / switch / credit-stats / automation；额度逐账号查询，未知不视为零。用 credit-stats 查看真实快照与历史，用 automation get/set/run 管理已启用的任务。",
+    "先在官方客户端登录，再通过 call trae_action --input-file PATH 保存账号，输入为 {action: capture, input: {variant: cn, client: desktop}}（文件须为合法 JSON）。",
+    `workbuddy-switch-next switch ACCOUNT_ID --target ${target} --dry-run`,
+    `workbuddy-switch-next switch ACCOUNT_ID --target ${target} --close-running --relaunch`,
+    "仅按用户授权切换；运行中默认拒绝，正常退出失败时停止操作。过期登录请回官方客户端重新登录。保留本地项目数据，云端会话归原账号。",
+    "不支持 --model / --wait / --concurrency。inspect / credits 的 --timeout 设置每个账号的网络超时；--summary 保留原结果。",
+    "stdout 为 JSON，stderr 为进度；检查退出码，3 表示部分额度查询失败。账号凭据不输出；--output-file 为通用 call 的显式结果保存参数，TRAE 加密备份通过 call trae_action 的 backup_export / backup_preview / backup_import 操作完成，密码放入输入文件。",
+  ].join("\n\n");
   if (!["codebuddy-cli", "qoder-cli", "qoder-desktop"].includes(target)) {
     if (target === "vscode" || target === "jetbrains") region = "cn";
     return [

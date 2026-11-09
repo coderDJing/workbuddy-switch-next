@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
  * 持久化在 localStorage（与 `wb-switch.compact` / `wb-switch.theme` 同风格），
  * 键名 `wb-switch.tools.<id>`，值 `"1"` / `"0"`；缺省时取 `defaultEnabled`。
  */
-export type ToolId = "workbuddy" | "codebuddyIde" | "codebuddyCli" | "vscodeExt" | "jetbrains" | "qoder";
+export type ToolId = "workbuddy" | "codebuddyIde" | "codebuddyCli" | "vscodeExt" | "jetbrains" | "qoder" | "trae";
 
 export interface ToolDef {
   id: ToolId;
@@ -62,6 +62,7 @@ export const SUPPORTED_TOOLS: ToolDef[] = [
       "Qoder 国内版与国际版的桌面端和 CLI 账号切换；最左侧平台栏出现 Qoder（Qoder 账号独立保存，不与 WorkBuddy / CodeBuddy 账号库共用）",
     defaultEnabled: true,
   },
+  { id: "trae", label: "TRAE 国内版 / 国际版", description: "TRAE 国内版与国际版的账号保存、切换和额度查询；账号独立保存", defaultEnabled: true },
 ];
 
 function storageKey(id: ToolId): string {

@@ -12,6 +12,7 @@ mod summary;
 mod target;
 #[cfg(test)]
 mod tests;
+mod trae;
 pub use args::{parse, Command, Options, HELP};
 pub use execute::execute;
 pub use output::{print_failure, print_result};

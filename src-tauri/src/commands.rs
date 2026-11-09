@@ -415,6 +415,17 @@ pub async fn get_qoder_status() -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub async fn get_trae_status() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(wb_switch_core::modules::trae::status)
+        .await
+        .map_err(|_| "TRAE 状态任务异常结束".to_string())?
+}
+#[tauri::command]
+pub async fn trae_action(action: String, input: Value) -> Result<Value, String> {
+    wb_switch_core::modules::trae::action(&action, input).await
+}
+
+#[tauri::command]
 pub async fn auto_capture_qoder_accounts() -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(qoder::auto_capture)
         .await

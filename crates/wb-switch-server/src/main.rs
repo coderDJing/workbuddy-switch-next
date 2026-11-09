@@ -25,6 +25,12 @@ use wb_switch_core::modules::{
 fn spawn_background_loops() {
     tokio::spawn(async move {
         loop {
+            let _ = wb_switch_core::modules::trae::automation::cycle().await;
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        }
+    });
+    tokio::spawn(async move {
+        loop {
             let _ = wb_switch_core::modules::qoder::automation::cycle().await;
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
         }

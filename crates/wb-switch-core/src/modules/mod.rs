@@ -34,6 +34,7 @@ pub mod session_pinned;
 pub mod state_lock;
 pub mod switch;
 pub mod token_stats;
+pub mod trae;
 pub mod travel;
 pub mod update;
 pub mod variant;

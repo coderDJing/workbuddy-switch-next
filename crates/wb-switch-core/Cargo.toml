@@ -1,6 +1,6 @@
 [package]
 name = "wb-switch-core"
-version = "0.2.3"
+version = "0.2.4-rc.202611091720"
 edition = "2021"
 rust-version = "1.89"
 description = "wb-switch 核心逻辑（账号/切换/会话/签到/更新），不依赖 Tauri，可被桌面端与 HTTP server 复用"
@@ -37,3 +37,6 @@ windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Security_Cr
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "5"
 
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7"

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { Settings } from "lucide-react";
 
-import { AppIconMark, QoderMark, WorkBuddyMark } from "@/components/product-marks";
+import { AppIconMark, QoderMark, TraeMark, WorkBuddyMark } from "@/components/product-marks";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { platformPath, type PlatformDef, type PlatformId } from "@/lib/platforms";
@@ -11,7 +11,7 @@ import { AiCliDialog } from "@/components/ai-cli-dialog";
 
 /** 平台栏图标：按产品线取产品图标。 */
 export function PlatformMark({ id, size }: { id: PlatformId; size: number }) {
-  return id === "qoder" ? <QoderMark size={size} /> : <WorkBuddyMark size={size} />;
+  return id === "trae" ? <TraeMark size={size} /> : id === "qoder" ? <QoderMark size={size} /> : <WorkBuddyMark size={size} />;
 }
 
 const railItemClass = (active: boolean) =>
@@ -29,7 +29,7 @@ function ActiveBar({ show }: { show: boolean }) {
 interface RailProps {
   platforms: PlatformDef[];
   /** 当前所在平台；在全局设置页时为上次所在平台（不高亮）。 */
-  activePlatform: PlatformId;
+  activePlatform?: PlatformId;
   onSettings: boolean;
   /** 各平台客户端是否在运行；缺省不画状态点。 */
   running: Partial<Record<PlatformId, boolean>>;
@@ -100,7 +100,7 @@ export function PlatformRail({ platforms, activePlatform, onSettings, running, s
 }
 
 interface NavProps {
-  platform: PlatformDef;
+  platform?: PlatformDef;
   /** 用户在设置里隐藏「关联会话」时为 false。 */
   sessionsNavEnabled: boolean;
   demoMode: boolean;
@@ -111,7 +111,7 @@ interface NavProps {
 
 /** 平台导航：只列出当前平台支持的页面。 */
 export function PlatformNav({ platform, sessionsNavEnabled, demoMode, topPadding, footer }: NavProps) {
-  const pages = platform.pages.filter((page) => page.key !== "sessions" || sessionsNavEnabled);
+  const pages = platform?.pages.filter((page) => page.key !== "sessions" || sessionsNavEnabled) ?? [];
   const sections = [
     { label: "工作空间", keys: ["accounts", "sessions"] },
     { label: "用量洞察", keys: ["token-stats", "credit-stats"] },
@@ -125,15 +125,15 @@ export function PlatformNav({ platform, sessionsNavEnabled, demoMode, topPadding
       </div>
       <div className="mb-3 hidden rounded-xl border border-sidebar-border bg-card/70 px-3 py-3 md:block">
         <p className="mb-1 text-[10px] font-medium tracking-wider text-muted-foreground">当前平台</p>
-        <div className="text-[13px] font-semibold tracking-tight" title={platform.label}>{platform.label}</div>
+        <div className="text-[13px] font-semibold tracking-tight" title={platform?.label}>{platform?.label ?? "所有平台已隐藏"}</div>
         {demoMode && (
           <Badge variant="secondary" className="mt-1 h-5 border-0 px-1.5 text-[10px] text-sidebar-foreground/60 shadow-none">
             演示模式
           </Badge>
         )}
       </div>
-      <nav className="min-h-0 flex-1 overflow-y-auto pb-4" aria-label={`${platform.label} 导航`}>
-        {sections.map(section => <div key={section.label} className="mb-4 space-y-1">
+      <nav className="min-h-0 flex-1 overflow-y-auto pb-4" aria-label={platform ? `${platform.label} 导航` : "应用导航"}>
+        {platform && sections.filter(section => pages.some(page => section.keys.includes(page.key))).map(section => <div key={section.label} className="mb-4 space-y-1">
           <p className="hidden px-3 pb-1 pt-2 text-[10px] font-medium tracking-wide text-muted-foreground md:block">{section.label}</p>
           {pages.filter(page => section.keys.includes(page.key)).map((page) => (
           <NavLink
@@ -155,7 +155,7 @@ export function PlatformNav({ platform, sessionsNavEnabled, demoMode, topPadding
           </NavLink>
         ))}</div>)}
       </nav>
-      <AiCliDialog platform={platform.id} />
+      {platform && <AiCliDialog platform={platform.id} />}
       {footer}
     </aside>
   );

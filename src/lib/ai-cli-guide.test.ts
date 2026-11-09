@@ -4,12 +4,12 @@ import operations from "./operations.json";
 
 describe("CLI guides", () => {
   it("discovers every client and keeps platform statistics free of region flags", () => {
-    expect(Object.keys(CLI_TARGET_LABELS)).toHaveLength(7);
+    expect(Object.keys(CLI_TARGET_LABELS)).toHaveLength(8);
     for (const target of Object.keys(CLI_TARGET_LABELS) as CliTarget[]) {
       const queries = cliQueryCommands(target, "all");
       expect(queries.some(q => q.command.endsWith(" operations"))).toBe(true);
       for (const query of queries) {
-        if (!target.startsWith("qoder-") && / (token-stats|credit-stats) /.test(query.command)) expect(query.command).not.toContain("--variant");
+        if (!target.startsWith("qoder-") && !target.startsWith("trae-") && / (token-stats|credit-stats) /.test(query.command)) expect(query.command).not.toContain("--variant");
         if (target === "vscode" || target === "jetbrains") {
           expect(query.command).not.toContain("--variant ai");
           expect(query.command).not.toContain("--variant all");

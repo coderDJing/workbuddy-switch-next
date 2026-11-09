@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link2, MessagesSquare, SlidersHorizontal, Sparkles, User } from "lucide-react";
 
 import { useSupportedTools, type ToolId } from "./supported-tools";
@@ -9,7 +10,7 @@ import { useSupportedTools, type ToolId } from "./supported-tools";
  * 平台按产品线命名，彼此平级、账号库互不相通。新增平台（如 Trae）= 在这里加一条
  * + 一个后端模块；页面里不要写 `platform === "xxx"` 判断能力，改这里的 `pages`。
  */
-export type PlatformId = "codebuddy" | "qoder";
+export type PlatformId = "codebuddy" | "qoder" | "trae";
 
 /** 平台内的页面。同一个 key 在不同平台由各自的页面组件实现。 */
 export type PlatformPageKey = "accounts" | "sessions" | "token-stats" | "credit-stats" | "settings";
@@ -24,7 +25,7 @@ export interface PlatformDef {
   id: PlatformId;
   /** 平台栏 tooltip 与平台导航标题。 */
   label: string;
-  /** 该平台是否启用：任一关联的「支持工具」开着即启用。 */
+  /** 关联客户端：用于兼容旧版尚未设置平台显示偏好的用户。 */
   tools: ToolId[];
   /** 该平台支持的页面，按导航顺序；第一项是平台首页。 */
   pages: PlatformPageDef[];
@@ -56,6 +57,7 @@ export const PLATFORMS: PlatformDef[] = [
       { key: "settings", label: "平台设置", icon: SlidersHorizontal },
     ],
   },
+  { id: "trae", label: "TRAE", tools: ["trae"], pages: [ACCOUNTS, { key: "credit-stats", label: "积分统计", icon: Sparkles }, { key: "settings", label: "平台设置", icon: SlidersHorizontal }] },
 ];
 
 export function platformPath(platform: PlatformId, page: PlatformPageKey = "accounts"): string {
@@ -66,11 +68,41 @@ export function findPlatform(id: string | undefined): PlatformDef | undefined {
   return PLATFORMS.find((p) => p.id === id);
 }
 
-/** 已启用的平台，按注册顺序。全部关掉时仍保留第一个，避免界面无处可去。 */
-export function useEnabledPlatforms(): PlatformDef[] {
+const PLATFORM_VISIBILITY_EVENT = "wb-switch:platform-visibility-changed";
+
+export function readPlatformVisibility(platform: PlatformDef, tools: Record<ToolId, boolean>): boolean {
+  try {
+    const stored = localStorage.getItem(`wb-switch.platform-visible.${platform.id}`);
+    if (stored !== null) return stored === "1";
+  } catch { /* 存储不可用时兼容原有工具开关。 */ }
+  return platform.tools.some(tool => tools[tool]);
+}
+
+export function setPlatformVisible(id: PlatformId, visible: boolean): void {
+  try { localStorage.setItem(`wb-switch.platform-visible.${id}`, visible ? "1" : "0"); }
+  catch { /* 与其他界面偏好一致，存储不可用时不影响账号。 */ }
+  window.dispatchEvent(new Event(PLATFORM_VISIBILITY_EVENT));
+}
+
+export function usePlatformVisibility(): Record<PlatformId, boolean> {
   const tools = useSupportedTools();
-  const enabled = PLATFORMS.filter((p) => p.tools.some((t) => tools[t]));
-  return enabled.length > 0 ? enabled : PLATFORMS.slice(0, 1);
+  const [, refresh] = useState(0);
+  useEffect(() => {
+    const sync = () => refresh(value => value + 1);
+    window.addEventListener("storage", sync);
+    window.addEventListener(PLATFORM_VISIBILITY_EVENT, sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener(PLATFORM_VISIBILITY_EVENT, sync);
+    };
+  }, []);
+  return Object.fromEntries(PLATFORMS.map(p => [p.id, readPlatformVisibility(p, tools)])) as Record<PlatformId, boolean>;
+}
+
+/** 全部隐藏时返回空列表，由路由保留全局设置入口。 */
+export function useEnabledPlatforms(): PlatformDef[] {
+  const visible = usePlatformVisibility();
+  return PLATFORMS.filter(p => visible[p.id]);
 }
 
 const LAST_PLATFORM_KEY = "wb-switch.platform";

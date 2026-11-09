@@ -831,6 +831,8 @@ export function screenshotDemoResponse(command: string, args?: Record<string, un
       return { ...appStatus, variant };
     }
     case "get_accounts": return { accounts: demoAccounts };
+    case "trae_action": return demoTraeManagement(String(args?.action), args?.input as Record<string, unknown> | undefined);
+    case "get_trae_status": return {accounts:[{id:"demo-trae-cn",uid:"demo-trae-user",name:"TRAE 演示账号",email:"trae@example.invalid",variant:"cn",client:"desktop",capturedAt:Math.floor(demoNow/1000),expiresAt:null,needsLogin:false,credits:{remaining:112.5,unlimited:false,available:true,checkedAt:Math.floor(demoNow/1000),unit:"credits"}}],clients:[{variant:"cn",client:"desktop",name:"Trae CN",detected:true,configured:true,running:false,activeAccountId:"demo-trae-cn",recognitionError:null}],nativeCliSupported:false};
     case "get_qoder_status": return demoQoderStatus();
     case "get_qoder_credits": return { ok: true, remaining: 428, total: 500, used: 72 };
     case "get_qoder_statistics": {
@@ -1045,4 +1047,13 @@ function demoQoderStatus(): QoderStatus {
     globalCli: { target: "global_cli", label: "Qoder 国际版 CLI", installed: false, loggedIn: false, running: false, currentId: null, currentLabel: null, echoName: null },
     bundles,
   };
+}
+
+function demoTraeManagement(action: string, input?: Record<string, unknown>) {
+  const now=Math.floor(Date.now()/1000),variant=input?.variant==="ai"?"ai":"cn";
+  const region={refreshEnabled:false,intervalMinutes:30,alertsEnabled:false,expiryDays:7,lowBalance:20,rotateEnabled:false,rotateBelow:10,cooldownMinutes:30};
+  if(action==="get_settings")return {settings:{cn:region,ai:{...region}},logs:[]};
+  const credit=(used:number,at:number)=>({remaining:150-used,total:150,used,available:true,unlimited:false,unit:"credits",checkedAt:at,periodEndAt:now+86400*30,expiresAt:now+86400*30});
+  const id="demo-trae-"+variant,name="TRAE 演示账号";
+  return {generatedAt:now,retentionDays:365,variant,accounts:[{id,uid:"demo-user",name,email:null,variant,client:"desktop",capturedAt:now-86400*7,expiresAt:now+86400*30,needsLogin:false,credits:credit(37.5,now)}],snapshots:Array.from({length:7},(_,index)=>{const at=now-(6-index)*86400;return {accountId:id,name,variant,at,credit:credit(7.5+index*5,at)};}),errors:[]};
 }

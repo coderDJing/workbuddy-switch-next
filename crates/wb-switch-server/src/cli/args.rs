@@ -18,7 +18,7 @@ Commands:
   token-stats                   Platform Token usage (unknown counters stay unavailable)
   credit-stats                  Platform credit statistics; --refresh queries official usage
   rewards ACCOUNT_ID|--all       Daily check-in / Qoder rewards (explicit selection required)
-  automation [get|set|run]       Qoder automation settings/history; run only enabled, due tasks
+  automation [get|set|run]       Platform automation settings/history; run only enabled tasks
   login                         Wait for official authorization, save account, do not switch clients
   operations [OPERATION]        Discover complete WebUI operations and input contracts
   call OPERATION                Run a named operation in-process, without starting a server
@@ -31,7 +31,7 @@ One-shot options:
   --summary                     Compact inspect/credits output; keeps raw balances and 2-decimal display strings
   --variant cn|ai|all            Filter accounts (default: all)
   --target TARGET               codebuddy-cli (default), workbuddy, codebuddy-ide, vscode, jetbrains,
-                                qoder-cli, qoder-desktop
+                                qoder-cli, qoder-desktop, trae-desktop
   --dry-run                     Preview switch target without writing or closing clients
   --close-running               Explicitly allow closing a desktop/Qoder target
   --relaunch                    Desktop restart; requires --close-running (new desktop targets require both)
@@ -338,7 +338,9 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
         let allowed = match key.as_str() {
             "--json" | "--ascii-json" | "--text" => options.command != Command::Serve,
             "--variant" => {
-                ((options.target.is_qoder() || options.target.is_desktop())
+                ((options.target.is_qoder()
+                    || options.target.is_desktop()
+                    || options.target.is_trae())
                     && options.command == Command::Status)
                     || matches!(
                         options.command,
@@ -372,7 +374,9 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
             "--dry-run" => options.command == Command::Switch,
             "--close-running" | "--relaunch" => {
                 options.command == Command::Switch
-                    && (options.target.is_qoder() || options.target.is_desktop())
+                    && (options.target.is_qoder()
+                        || options.target.is_desktop()
+                        || options.target.is_trae())
             }
             "--settings-file" => options.command == Command::Automation,
             "--refresh" => options.command == Command::CreditStats,
@@ -478,13 +482,18 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
             return Err(Failure::usage("automation set requires --variant cn or ai"));
         }
     }
-    if matches!(options.command, Command::Automation) && !options.target.is_qoder() {
+    if matches!(options.command, Command::Automation)
+        && !options.target.is_qoder()
+        && !options.target.is_trae()
+    {
         return Err(Failure::usage(
-            "This command requires --target qoder-cli or qoder-desktop",
+            "This command requires --target qoder-cli, qoder-desktop or trae-desktop",
         ));
     }
     if options.relaunch
-        && (!(options.target == Target::QoderDesktop || options.target.is_desktop())
+        && (!(options.target == Target::QoderDesktop
+            || options.target.is_desktop()
+            || options.target.is_trae())
             || !options.close_running)
     {
         return Err(Failure::usage(
@@ -511,6 +520,7 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
     }
     if matches!(options.command, Command::TokenStats | Command::CreditStats)
         && !options.target.is_qoder()
+        && !options.target.is_trae()
         && flags.contains_key("--variant")
     {
         return Err(Failure::usage(
@@ -523,6 +533,15 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
     {
         return Err(Failure::usage(
             "Platform credit-stats does not support per-account --timeout or --concurrency",
+        ));
+    }
+    if options.target.is_trae()
+        && ["--model", "--concurrency", "--wait"]
+            .iter()
+            .any(|k| flags.contains_key(*k))
+    {
+        return Err(Failure::usage(
+            "TRAE queries are sequential; --model, --concurrency and --wait are unsupported",
         ));
     }
     if options.target.is_qoder() && flags.contains_key("--model") {

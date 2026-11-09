@@ -1,6 +1,6 @@
 [package]
 name = "wb-switch-server"
-version = "0.2.3"
+version = "0.2.4-rc.202611091720"
 edition = "2021"
 description = "wb-switch HTTP server + CLI（npm 安装形态：wb-switch 命令启动本地 webui）"
 
@@ -13,6 +13,7 @@ wb-switch-core = { path = "../wb-switch-core" }
 axum = "0.7"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signal"] }
 serde_json = "1"
+serde = { version = "1", features = ["derive"] }
 chrono = "0.4"
 rust-embed = "8"
 tower = { version = "0.5", features = ["util"] }

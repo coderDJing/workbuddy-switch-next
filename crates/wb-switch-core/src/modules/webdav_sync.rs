@@ -184,7 +184,11 @@ fn device_name() -> String {
 }
 
 /// 纯函数：把载荷 JSON 加密为信封字节（魔数 + 头长度 + 明文头 + salt + nonce + 密文）。
-fn build_envelope(payload: &Value, passphrase: &str, updated_at: i64) -> Result<Vec<u8>, String> {
+pub(crate) fn build_envelope(
+    payload: &Value,
+    passphrase: &str,
+    updated_at: i64,
+) -> Result<Vec<u8>, String> {
     validate_passphrase(passphrase)?;
     let account_count = payload
         .get("accounts")
@@ -283,7 +287,10 @@ fn split_envelope(bytes: &[u8]) -> Result<EnvelopeParts<'_>, String> {
 }
 
 /// 纯函数：解密信封，返回（头, 载荷）。密码错误时报错明确。
-fn decrypt_envelope(bytes: &[u8], passphrase: &str) -> Result<(RemoteHeader, Value), String> {
+pub(crate) fn decrypt_envelope(
+    bytes: &[u8],
+    passphrase: &str,
+) -> Result<(RemoteHeader, Value), String> {
     let (header_bytes, salt, nonce, ciphertext) = split_envelope(bytes)?;
     let header: Value =
         serde_json::from_slice(header_bytes).map_err(|_| "备份文件头损坏".to_string())?;
@@ -933,6 +940,64 @@ pub async fn qoder_sync(passphrase: &str) -> Result<Value, String> {
         qoder::backup::import_missing(&merged.to_string(), &(0..count).collect::<Vec<_>>())?;
     result["count"] = json!(count);
     result["ok"] = json!(true);
+    Ok(result)
+}
+
+/// TRAE uses its own remote object and the shared encrypted envelope/ETag guards.
+pub(crate) async fn trae_cloud(
+    engine: &crate::modules::trae::Engine,
+    action: &str,
+    passphrase: &str,
+    snapshot: Option<&str>,
+) -> Result<Value, String> {
+    let _guard = crate::modules::state_lock::StateLock::try_at(
+        &config::home_dir().join(".wb-switch/trae/cloud.lock"),
+    )
+    .map_err(|_| "TRAE 云同步正在执行")?;
+    let mut target = resolve_target(&load_webdav_config())?;
+    target.file_url = format!("{}/trae-accounts.wbs", target.dir_url.trim_end_matches('/'));
+    let response = download_backup(&target).await?;
+    if action == "cloud_preview" || action == "cloud_restore" {
+        let response = response.ok_or("云端还没有 TRAE 备份")?;
+        let id = format!("{:x}", Sha256::digest(&response.body));
+        if action == "cloud_restore" && snapshot != Some(id.as_str()) {
+            return Err("云端 TRAE 备份已变化，请重新预览".into());
+        }
+        let (_, payload) = decrypt_envelope_async(response.body, passphrase.into()).await?;
+        if action == "cloud_restore" {
+            return engine.import_payload(&payload);
+        }
+        let mut preview = engine.preview_payload(&payload)?;
+        preview["snapshotId"] = json!(id);
+        return Ok(preview);
+    }
+    let local = engine.backup_payload()?;
+    let etag = response.as_ref().map(strong_etag).transpose()?;
+    let payload = if action == "cloud_sync" {
+        if let Some(response) = response {
+            let (_, remote) = decrypt_envelope_async(response.body, passphrase.into()).await?;
+            crate::modules::trae::backup::merge(local, remote)?
+        } else {
+            local
+        }
+    } else if action == "cloud_backup" {
+        local
+    } else {
+        return Err("未知 TRAE 云端操作".into());
+    };
+    let count = payload["accounts"].as_array().map_or(0, Vec::len);
+    if count == 0 {
+        return Err("没有可备份的 TRAE 账号".into());
+    }
+    let encrypted =
+        encrypt_envelope_async(payload.clone(), passphrase.into(), config::now_ms()).await?;
+    upload_backup(&target, encrypted, etag.as_deref()).await?;
+    let mut result = if action == "cloud_sync" {
+        engine.import_payload(&payload)?
+    } else {
+        json!({"ok":true})
+    };
+    result["count"] = json!(count);
     Ok(result)
 }
 

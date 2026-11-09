@@ -40,6 +40,8 @@ import { setSessionsNavEnabled, useSessionsNavEnabled } from "@/lib/nav-prefs";
 import { setDefaultArchiveSyncEnabled, useDefaultArchiveSyncEnabled } from "@/lib/sync-prefs";
 import { getThemePreference, setThemePreference, type ThemePreference } from "@/lib/theme";
 import { SUPPORTED_TOOLS, setToolEnabled, useSupportedTools, type ToolId } from "@/lib/supported-tools";
+import { PLATFORMS, setPlatformVisible, usePlatformVisibility } from "@/lib/platforms";
+import { PlatformMark } from "@/components/platform-sidebar";
 import type {
   AccountMeta,
   AppNotification,
@@ -2172,18 +2174,34 @@ function AppearanceCard() {
   );
 }
 
-/**
- * 支持工具：控制各客户端入口是否在界面上出现。
- *
- * 关闭只隐藏入口（账号卡片按钮、页顶状态徽标）并跳过该端的状态轮询，
- * 不动账号库、不影响其它工具，重新打开即恢复。JetBrains 端默认关闭
- * （新增端先灰度），打开后才出现对应入口。
- */
+/** 平台显示偏好与客户端开关分别保存，隐藏平台时保留各端原有选择。 */
+function PlatformVisibilityCard() {
+  const visible = usePlatformVisibility();
+  return (
+    <SettingsGroup id="settings-platforms" title="显示的平台">
+      <CardContent className="space-y-0 p-0">
+        <p className="border-b px-5 py-4 text-sm text-muted-foreground">只显示你需要的平台。隐藏后移除侧栏和平台页面，保留已保存的账号与设置，可随时重新打开。</p>
+        {PLATFORMS.map((platform, index) => (
+          <SettingsFieldRow key={platform.id}
+            className={index === PLATFORMS.length - 1 ? "border-b-0" : undefined}
+            label={<span className="flex items-center gap-2.5"><PlatformMark id={platform.id} size={20} /><span>{platform.label}</span></span>}
+            description={visible[platform.id] ? "已显示在侧栏" : "已隐藏，可随时重新显示"}
+            htmlFor={`platform-visible-${platform.id}`}>
+            <Switch id={`platform-visible-${platform.id}`} checked={visible[platform.id]}
+              onCheckedChange={on => setPlatformVisible(platform.id, on)} aria-label={`显示 ${platform.label} 平台`} />
+          </SettingsFieldRow>
+        ))}
+      </CardContent>
+    </SettingsGroup>
+  );
+}
+
 function SupportedToolsCard() {
   const enabled = useSupportedTools();
   const variant = useAccountsStore((s) => s.variant);
   /** 行内产品图标：与账号页页顶徽标同一套档位规则（国际版用国际版字块）。 */
   const marks: Record<ToolId, (size: number) => ReactNode> = {
+    trae: (size) => <PlatformMark id="trae" size={size} />,
     workbuddy: (size) => (variant === "ai" ? <WorkBuddyAiMark size={size} /> : <WorkBuddyMark size={size} />),
     codebuddyIde: (size) =>
       variantUsesIntlCodebuddyIde(variant) ? <CodeBuddyAiIdeMark size={size} /> : <CodeBuddyCnIdeMark size={size} />,
@@ -2500,6 +2518,7 @@ function AllAccountsBackupCard() {
 export default function SettingsPage() {
   return (
     <SettingsShell title="设置" description="外观、启用的平台与客户端、悬浮窗、备份同步与自动更新等应用级配置。">
+      <PlatformVisibilityCard />
       <AppearanceCard />
       <SupportedToolsCard />
       {api.isDesktop() && !api.isDemoMode() ? <CompanionCard /> : null}

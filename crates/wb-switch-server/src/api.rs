@@ -59,6 +59,11 @@ static SWITCH_RUNNING: Mutex<bool> = Mutex::new(false);
 
 pub fn router() -> Router {
     Router::new()
+        .route("/api/trae/status", get(api_trae_status))
+        .route(
+            "/api/trae/action",
+            post(api_trae_action).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
         .route("/api/status", get(api_status))
         .route("/api/accounts", get(api_accounts))
         .route("/api/codebuddy-cli/status", get(api_codebuddy_cli_status))
@@ -713,6 +718,29 @@ fn body_str<'a>(body: &'a Value, keys: &[&str]) -> &'a str {
 
 async fn api_qoder_status() -> Response {
     json_ok(qoder::status())
+}
+
+async fn api_trae_status() -> Response {
+    match tokio::task::spawn_blocking(wb_switch_core::modules::trae::status).await {
+        Ok(Ok(v)) => json_ok(v),
+        Ok(Err(e)) => json_err(e, StatusCode::BAD_REQUEST),
+        Err(_) => json_err(
+            "TRAE 状态任务异常结束".into(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    }
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TraeAction {
+    action: String,
+    input: Value,
+}
+async fn api_trae_action(Json(body): Json<TraeAction>) -> Response {
+    match wb_switch_core::modules::trae::action(&body.action, body.input).await {
+        Ok(v) => json_ok(v),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
 }
 
 async fn api_qoder_automation() -> Response {

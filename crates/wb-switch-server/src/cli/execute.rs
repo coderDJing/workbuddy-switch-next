@@ -59,7 +59,7 @@ pub async fn execute(options: &Options) -> Result<(Value, u8), Failure> {
                     value["exitCode"] = json!(exit);
                     value["elapsedMs"] = json!(started.elapsed().as_millis() as u64);
                     if options.summary {
-                        value = if options.target.is_qoder() { super::qoder::compact(&value) } else { super::summary::project(&value) };
+                        value = if options.target.is_trae() { value } else if options.target.is_qoder() { super::qoder::compact(&value) } else { super::summary::project(&value) };
                     }
                     (value, exit)
                 });
@@ -111,7 +111,8 @@ async fn execute_inner(
             "workbuddy",
             "codebuddy-ide",
             "vscode",
-            "jetbrains"
+            "jetbrains",
+            "trae-desktop"
         ]);
         value["capabilities"] = super::qoder::capabilities();
         value["operationsCommand"] = json!("operations [OPERATION]");
@@ -127,6 +128,9 @@ async fn execute_inner(
         let mut value = response("version", options.target);
         value["version"] = json!(env!("CARGO_PKG_VERSION"));
         return Ok((value, 0));
+    }
+    if options.target.is_trae() {
+        return super::trae::execute(options, control).await;
     }
     if matches!(
         options.command,

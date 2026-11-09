@@ -9,6 +9,7 @@ pub enum Target {
     CodebuddyCli,
     QoderCli,
     QoderDesktop,
+    TraeDesktop,
     Workbuddy,
     CodebuddyIde,
     Vscode,
@@ -21,6 +22,7 @@ impl Target {
             "codebuddy-cli" => Ok(Self::CodebuddyCli),
             "qoder-cli" => Ok(Self::QoderCli),
             "qoder-desktop" => Ok(Self::QoderDesktop),
+            "trae-desktop" => Ok(Self::TraeDesktop),
             "workbuddy" => Ok(Self::Workbuddy),
             "codebuddy-ide" => Ok(Self::CodebuddyIde),
             "vscode" => Ok(Self::Vscode),
@@ -34,6 +36,7 @@ impl Target {
             Self::CodebuddyCli => "codebuddy-cli",
             Self::QoderCli => "qoder-cli",
             Self::QoderDesktop => "qoder-desktop",
+            Self::TraeDesktop => "trae-desktop",
             Self::Workbuddy => "workbuddy",
             Self::CodebuddyIde => "codebuddy-ide",
             Self::Vscode => "vscode",
@@ -41,6 +44,9 @@ impl Target {
         }
     }
 
+    pub fn is_trae(self) -> bool {
+        matches!(self, Self::TraeDesktop)
+    }
     pub fn is_qoder(self) -> bool {
         matches!(self, Self::QoderCli | Self::QoderDesktop)
     }

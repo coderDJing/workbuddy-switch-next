@@ -1,3 +1,6 @@
+import TraeCreditStatsPage from "@/pages/TraeCreditStatsPage";
+import TraeSettingsPage from "@/pages/TraeSettingsPage";
+import TraePage from "@/pages/TraePage";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { BrowserRouter, HashRouter, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router-dom";
@@ -36,6 +39,8 @@ import { useWorkbuddyStatusRefresh } from "@/lib/use-workbuddy-status-refresh";
 import { useAccountsStore } from "@/stores/accounts";
 import { useQoderStatus, qoderDesktopRunning } from "@/stores/qoder-status";
 import { useQoderView } from "@/stores/qoder-view";
+import { useTraeStatus } from "@/stores/trae-status";
+import { useTraeView } from "@/stores/trae-view";
 import { normalizeVariant, variantLabel } from "@/lib/variant";
 
 /**
@@ -240,6 +245,10 @@ function Layout() {
   const qoderStatus = useQoderStatus((s) => s.status);
   const qoderError = useQoderStatus((s) => s.error);
   const qoderVariant = useQoderView((s) => s.variant);
+  const traeStatus = useTraeStatus((s) => s.status);
+  const traeError = useTraeStatus((s) => s.error);
+  const traeVariant = useTraeView((s) => s.variant);
+  const traeRunning = traeError ? undefined : traeStatus?.clients.find(c => c.variant === traeVariant && c.client === "desktop")?.running ?? undefined;
   const sessionsNavEnabled = useSessionsNavEnabled();
   const platforms = useEnabledPlatforms();
   const { pathname } = useLocation();
@@ -251,8 +260,8 @@ function Layout() {
     platforms.find((p) => p.id === readLastPlatform()) ??
     platforms[0];
   const topPadding = macTitleBar ? "pt-14" : "pt-4";
-  useCreditAutoRefresh();
-  useWorkbuddyStatusRefresh(platforms.some((p) => p.id === "qoder"));
+  useCreditAutoRefresh(platforms.some((p) => p.id === "codebuddy"));
+  useWorkbuddyStatusRefresh(platforms.some((p) => p.id === "qoder"), platforms.some((p) => p.id === "codebuddy"), platforms.some((p) => p.id === "trae"));
   useRotateDeferredNotice();
 
   return (
@@ -260,10 +269,10 @@ function Layout() {
       {macTitleBar && <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-50 h-11" aria-hidden="true" />}
       <PlatformRail
         platforms={platforms}
-        activePlatform={activePlatform.id}
+        activePlatform={activePlatform?.id}
         onSettings={onSettings}
-        running={{ codebuddy: running, qoder: qoderDesktopRunning(qoderStatus, qoderError, qoderVariant) }}
-        statusLabels={{ codebuddy: `WorkBuddy ${variantLabel(workbuddyVariant)}`, qoder: variantLabel(qoderVariant) }}
+        running={{ codebuddy: running, qoder: qoderDesktopRunning(qoderStatus, qoderError, qoderVariant), trae: traeRunning }}
+        statusLabels={{ codebuddy: `WorkBuddy ${variantLabel(workbuddyVariant)}`, qoder: variantLabel(qoderVariant), trae: variantLabel(traeVariant) }}
         topPadding={topPadding}
         macTitleBar={macTitleBar}
       />
@@ -293,6 +302,7 @@ const PLATFORM_PAGES: Record<PlatformId, Partial<Record<PlatformPageKey, ReactNo
     "credit-stats": <CreditStatsPage />,
     settings: <CodebuddySettingsPage />,
   },
+  trae: { accounts: <TraePage />, "credit-stats": <TraeCreditStatsPage />, settings: <TraeSettingsPage /> },
   qoder: { accounts: <QoderPage />, "token-stats": <TokenStatsPage key="qoder" platform="qoder" />, "credit-stats": <QoderCreditStatsPage />, settings: <QoderSettingsPage /> },
 };
 
@@ -301,6 +311,7 @@ function HomeRedirect() {
   const platforms = useEnabledPlatforms();
   const last = readLastPlatform();
   const target = platforms.find((p) => p.id === last) ?? platforms[0];
+  if (!target) return <Navigate to="/settings" replace />;
   return <Navigate to={platformPath(target.id)} replace />;
 }
 

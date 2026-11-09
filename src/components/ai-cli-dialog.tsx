@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccountsStore } from "@/stores/accounts";
 import { useQoderView } from "@/stores/qoder-view";
+import { useTraeView } from "@/stores/trae-view";
 import type { PlatformId } from "@/lib/platforms";
 import { CLI_TARGET_LABELS, cliQueryCommands, cliQueryText, cliSkillGuide, type CliRegion, type CliTarget } from "@/lib/ai-cli-guide";
 
@@ -34,9 +35,10 @@ function CommandRow({ title, command }: { title: string; command: string }) {
 /** Copyable discovery/query examples only; opening this guide never runs a command. */
 export function AiCliDialog({ platform }: { platform: PlatformId }) {
   const qoderVariant = useQoderView(s => s.variant);
+  const traeVariant = useTraeView(s => s.variant);
   const codebuddyVariant = useAccountsStore(s => s.variant);
-  const [target, setTarget] = useState<CliTarget>(platform === "qoder" ? "qoder-cli" : "codebuddy-cli");
-  const [region, setRegion] = useState<CliRegion>(platform === "qoder" ? qoderVariant : codebuddyVariant);
+  const [target, setTarget] = useState<CliTarget>(platform === "trae" ? "trae-desktop" : platform === "qoder" ? "qoder-cli" : "codebuddy-cli");
+  const [region, setRegion] = useState<CliRegion>(platform === "trae" ? traeVariant : platform === "qoder" ? qoderVariant : codebuddyVariant);
   const [copied, setCopied] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const qoder = target.startsWith("qoder-");
@@ -60,8 +62,8 @@ export function AiCliDialog({ platform }: { platform: PlatformId }) {
     if (open) {
       setCopied(null);
       setShowGuide(false);
-      setTarget(platform === "qoder" ? "qoder-cli" : "codebuddy-cli");
-      setRegion(platform === "qoder" ? qoderVariant : codebuddyVariant);
+      setTarget(platform === "trae" ? "trae-desktop" : platform === "qoder" ? "qoder-cli" : "codebuddy-cli");
+      setRegion(platform === "trae" ? traeVariant : platform === "qoder" ? qoderVariant : codebuddyVariant);
     }
   }}>
     <DialogTrigger asChild>
@@ -93,7 +95,7 @@ export function AiCliDialog({ platform }: { platform: PlatformId }) {
         {showGuide && <textarea id="cli-skill-guide" aria-label="Skill 接入说明" readOnly value={guide} onFocus={event => event.currentTarget.select()} className="h-64 w-full resize-y rounded-lg border bg-card p-3 font-mono text-xs leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring" />}
       </section>
       <div className="grid min-w-0 gap-3">{commands.map(({ title, command }) => <CommandRow key={command} title={title} command={command} />)}</div>
-      <p className="text-xs leading-6 text-muted-foreground">桌面安装包附带同版本命令；安装后请新开终端。stdout 为最终结果，stderr 为进度。{qoder ? "Qoder 的模型限额尚无可靠来源，返回未知；统计中的缺失计数不会当作零。" : "限额来自已有观察记录，未观察到限制不代表模型可用。"}</p>
+      <p className="text-xs leading-6 text-muted-foreground">桌面安装包附带同版本命令；安装后请新开终端。stdout 为最终结果，stderr 为进度。{target.startsWith("trae-") ? "TRAE 支持官方额度快照、账号管理和自动任务；备份密码通过输入文件安全传递。" : qoder ? "Qoder 的模型限额尚无可靠来源，返回未知；统计中的缺失计数不会当作零。" : "限额来自已有观察记录，未观察到限制不代表模型可用。"}</p>
     </DialogContent>
   </Dialog>;
 }

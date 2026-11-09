@@ -26,11 +26,12 @@ function refreshOnShow() {
   }
 }
 
-export function useCreditAutoRefresh() {
+export function useCreditAutoRefresh(enabled = true) {
   const visibleRef = useRef(document.visibilityState !== "hidden");
   const timerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    if (!enabled) return;
     function stopTimer() {
       if (timerRef.current !== undefined) {
         window.clearInterval(timerRef.current);
@@ -104,5 +105,5 @@ export function useCreditAutoRefresh() {
       unlisten?.();
       unlistenCache?.();
     };
-  }, []);
+  }, [enabled]);
 }

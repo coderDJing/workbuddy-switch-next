@@ -1671,5 +1671,47 @@
     "input": "{}",
     "signature": "webdavInfo()",
     "parameters": {}
+  },
+  "get_trae_status": {
+    "method": "GET",
+    "path": "/api/trae/status",
+    "input": "{}",
+    "signature": "getTraeStatus()",
+    "parameters": {}
+  },
+  "trae_action": {
+    "method": "POST",
+    "path": "/api/trae/action",
+    "input": "{action,input}",
+    "signature": "traeAction(action:\"capture\"|\"switch\"|\"credits\"|\"rename\"|\"delete\"|\"open\"|\"statistics\"|\"get_settings\"|\"save_settings\"|\"automation_run\"|\"backup_export\"|\"backup_preview\"|\"backup_import\"|\"cloud_backup\"|\"cloud_preview\"|\"cloud_restore\"|\"cloud_sync\", input:TraeInput)",
+    "parameters": {
+      "action": {
+        "type": "\"capture\" | \"switch\" | \"credits\" | \"rename\" | \"delete\" | \"open\" | \"statistics\" | \"get_settings\" | \"save_settings\" | \"automation_run\" | \"backup_export\" | \"backup_preview\" | \"backup_import\" | \"cloud_backup\" | \"cloud_preview\" | \"cloud_restore\" | \"cloud_sync\"",
+        "required": true,
+        "enum": [
+          "capture",
+          "switch",
+          "credits",
+          "rename",
+          "delete",
+          "open",
+          "statistics",
+          "get_settings",
+          "save_settings",
+          "automation_run",
+          "backup_export",
+          "backup_preview",
+          "backup_import",
+          "cloud_backup",
+          "cloud_preview",
+          "cloud_restore",
+          "cloud_sync"
+        ]
+      },
+      "input": {
+        "type": "TraeInput",
+        "required": true
+      }
+    }
   }
 }

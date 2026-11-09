@@ -82,6 +82,26 @@ fn spawn_background_loops(app: tauri::AppHandle) {
             tokio::time::sleep(Duration::from_secs(30)).await;
         }
     });
+    let trae_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            if let Ok(result) = modules::trae::automation::cycle().await {
+                #[cfg(desktop)]
+                for title in result["notices"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(serde_json::Value::as_str)
+                {
+                    tray::notify_rotate_deferred(
+                        &trae_app,
+                        &serde_json::json!({"title":title,"body":"请前往 TRAE 账号管理查看详情"}),
+                    );
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+    });
     let credit_cache_app = app.clone();
     modules::credits::spawn_credit_cache_watcher(move |cache| {
         let _ = credit_cache_app.emit("credit-query-cache-updated", cache);
@@ -279,6 +299,8 @@ pub fn run() {
             commands::switch_jetbrains_account,
             commands::detect_jetbrains_account,
             commands::get_qoder_status,
+            commands::get_trae_status,
+            commands::trae_action,
             commands::get_qoder_automation,
             commands::save_qoder_automation,
             commands::run_qoder_automation,

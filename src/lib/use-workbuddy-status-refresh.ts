@@ -5,16 +5,18 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as api from "@/lib/api";
 import { useAccountsStore } from "@/stores/accounts";
 import { useQoderStatus } from "@/stores/qoder-status";
+import { useTraeStatus } from "@/stores/trae-status";
 
 export const WORKBUDDY_STATUS_REFRESH_INTERVAL_MS = 60 * 1000;
 
 /** Refresh WorkBuddy status only while the main window is visible and focused. */
-export function useWorkbuddyStatusRefresh(qoderEnabled = false) {
+export function useWorkbuddyStatusRefresh(qoderEnabled = false, workbuddyEnabled = true, traeEnabled = false) {
   const activeRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
 
   useEffect(() => {
+    if (!qoderEnabled && !workbuddyEnabled && !traeEnabled) return;
     let disposed = false;
     let documentVisible = document.visibilityState !== "hidden";
     const webui = api.isWebui();
@@ -33,8 +35,9 @@ export function useWorkbuddyStatusRefresh(qoderEnabled = false) {
 
     function refreshStatus() {
       if (disposed || !activeRef.current) return;
-      void useAccountsStore.getState().refreshStatus(abortControllerRef.current?.signal);
+      if (workbuddyEnabled) void useAccountsStore.getState().refreshStatus(abortControllerRef.current?.signal);
       if (qoderEnabled) void useQoderStatus.getState().refresh();
+      if (traeEnabled) void useTraeStatus.getState().refresh();
     }
 
     function startTimer() {
@@ -119,5 +122,5 @@ export function useWorkbuddyStatusRefresh(qoderEnabled = false) {
       window.removeEventListener("blur", onBlur);
       unlisten?.();
     };
-  }, [qoderEnabled]);
+  }, [qoderEnabled, workbuddyEnabled, traeEnabled]);
 }

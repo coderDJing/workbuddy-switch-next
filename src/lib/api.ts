@@ -76,7 +76,7 @@ import { UpdateCheckTimeoutError, waitForUpdateCheck } from "./update-check";
  */
 
 const DEMO_READ_COMMANDS = new Set([
-  "get_status", "get_accounts", "get_codebuddy_cli_status", "get_codebuddy_cn_ide_status", "get_codebuddy_ide_status", "get_vscode_ext_status", "get_jetbrains_status", "get_qoder_status", "get_qoder_credits", "list_vscode_sessions", "list_codebuddy_ide_sessions", "list_codebuddy_intl_ide_sessions", "vscode_session_links_preview", "codebuddy_ide_session_links_preview", "codebuddy_intl_ide_session_links_preview", "list_account_sessions", "session_links_preview_cross", "list_session_groups", "get_session_group", "preview_session_group_pair", "get_checkin_status",
+  "get_trae_status", "get_status", "get_accounts", "get_codebuddy_cli_status", "get_codebuddy_cn_ide_status", "get_codebuddy_ide_status", "get_vscode_ext_status", "get_jetbrains_status", "get_qoder_status", "get_qoder_credits", "list_vscode_sessions", "list_codebuddy_ide_sessions", "list_codebuddy_intl_ide_sessions", "vscode_session_links_preview", "codebuddy_ide_session_links_preview", "codebuddy_intl_ide_session_links_preview", "list_account_sessions", "session_links_preview_cross", "list_session_groups", "get_session_group", "preview_session_group_pair", "get_checkin_status",
   "get_credit_expiry", "get_credit_statistics", "get_auto_checkin_config",
   "get_token_statistics", "get_qoder_statistics", "get_qoder_credit_statistics",
   "get_qoder_automation", "get_qoder_companion",
@@ -180,6 +180,10 @@ async function httpCall<T>(cmd: string, args?: Record<string, unknown>): Promise
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (demoModeEnabled) {
+    if (cmd === "trae_action") {
+      if (args?.action === "statistics" || args?.action === "get_settings") return screenshotDemoResponse(cmd, args) as T;
+      throw new Error(DEMO_UNAVAILABLE_MESSAGE);
+    }
     if ((cmd === "get_credit_statistics" || cmd === "get_qoder_credit_statistics") && args?.refresh === true) {
       throw new Error(DEMO_UNAVAILABLE_MESSAGE);
     }
@@ -1264,3 +1268,19 @@ export function revealErrorLog(): Promise<void> {
   if (demoModeEnabled || isWebui()) return Promise.resolve();
   return call<unknown>("reveal_error_log").then(() => undefined);
 }
+
+export type TraeClient = "desktop";
+export interface TraeCredit {remaining:number|null;total?:number|null;used?:number|null;unlimited:boolean;available:boolean;checkedAt:number;unit:"usd"|"credits"|"unknown";expiresAt?:number|null;periodEndAt?:number|null}
+export interface TraeAccount { id:string;uid:string;name:string;email:string|null;variant:"cn"|"ai";client:TraeClient;capturedAt:number;expiresAt:number|null;needsLogin:boolean;credits?:TraeCredit|null }
+export interface TraeStatus { accounts:TraeAccount[];clients:{variant:"cn"|"ai";client:TraeClient;name:string;detected:boolean;configured:boolean;running:boolean|null;activeAccountId:string|null;recognitionError:string|null}[];nativeCliSupported:false }
+export interface TraeInput {variant?:"cn"|"ai";client?:TraeClient;accountId?:string;name?:string;closeRunning?:boolean;relaunch?:boolean;dryRun?:boolean;timeoutSeconds?:number;refresh?:boolean;settings?:TraeAutomation["settings"];passphrase?:string;data?:string;snapshotId?:string;path?:string}
+export function getTraeStatus():Promise<TraeStatus> {return call("get_trae_status");}
+export function traeAction(action:"capture"|"switch"|"credits"|"rename"|"delete"|"open"|"statistics"|"get_settings"|"save_settings"|"automation_run"|"backup_export"|"backup_preview"|"backup_import"|"cloud_backup"|"cloud_preview"|"cloud_restore"|"cloud_sync",input:TraeInput):Promise<unknown> {return call("trae_action",{action,input});}
+
+export interface TraeSnapshot {accountId:string;name:string;variant:"cn"|"ai";at:number;credit:TraeCredit}
+export interface TraeStatistics {generatedAt:number;retentionDays:number;variant:"cn"|"ai";accounts:TraeAccount[];snapshots:TraeSnapshot[];errors:{accountId:string;message:string}[]}
+export interface TraeRegionSettings {refreshEnabled:boolean;intervalMinutes:number;alertsEnabled:boolean;expiryDays:number;lowBalance:number;rotateEnabled:boolean;rotateBelow:number;cooldownMinutes:number}
+export interface TraeAutomation {settings:{cn:TraeRegionSettings;ai:TraeRegionSettings};logs:{at:number;region:"cn"|"ai";action:string;outcome:string}[]}
+export interface TraeBackupPreview {accounts:{name:string;variant:"cn"|"ai";exists:boolean}[];count:number;snapshotId:string}
+export function getTraeStatistics(variant:"cn"|"ai",refresh=false):Promise<TraeStatistics> {return traeAction("statistics",{variant,refresh}) as Promise<TraeStatistics>;}
+export function getTraeAutomation():Promise<TraeAutomation> {return traeAction("get_settings",{}) as Promise<TraeAutomation>;}
