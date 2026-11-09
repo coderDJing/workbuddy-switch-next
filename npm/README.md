@@ -11,7 +11,7 @@ workbuddy-switch-next              # 启动本地服务 + 自动打开浏览器
 workbuddy-switch-next version      # 查看版本
 ```
 
-支持 Windows x64、macOS Apple Silicon / Intel、Linux x64。桌面安装后请新开终端；macOS / Linux AppImage 需先启动桌面应用完成命令注册。独立 CLI 可按完整路径运行。
+支持 Windows x64、macOS Apple Silicon（arm64）。桌面安装后请新开终端；macOS 需先启动桌面应用完成命令注册。独立 CLI 可按完整路径运行。
 
 Next 继续使用 `~/.wb-switch` 账号库，无需删除或迁移账号数据；使用前退出不支持共享认证锁的旧版 GUI。
 
@@ -26,7 +26,7 @@ Next 继续使用 `~/.wb-switch` 账号库，无需删除或迁移账号数据�
 | 平台设置 | CodeBuddy CLI 自动轮换、自动签到、限额监听及权限检测 |
 | WebDAV | 加密备份、选择恢复及跨设备同步，包含凭据新旧判断与并发保护；不包含 Qoder 账号 |
 
-webui 不提供桌面专属的 Agent Companion 悬浮窗。Qoder 目前完成 Windows 国内版网页登录、已有登录文件的桌面切换与恢复，以及隔离目录下的 CLI 登录身份确认；全新桌面首次启动、国际版、macOS / Linux、自动续期和跨客户端同时使用尚未完成真实验证。各端的功能矩阵与限制见 [项目 README](https://github.com/coderDJing/workbuddy-switch-next#支持的工具)。
+webui 不提供桌面专属的 Agent Companion 悬浮窗。Qoder 目前完成 Windows 国内版网页登录、已有登录文件的桌面切换与恢复，以及隔离目录下的 CLI 登录身份确认；全新桌面首次启动、国际版、macOS、自动续期和跨客户端同时使用尚未完成真实验证。各端的功能矩阵与限制见 [项目 README](https://github.com/coderDJing/workbuddy-switch-next#支持的工具)。
 
 切换 CodeBuddy CLI 会关闭运行中的 CLI，不自动重开。设置 →「支持工具」控制各端入口；自动轮换、签到、限额监听和权限检测位于 WorkBuddy / CodeBuddy →「平台设置」。
 

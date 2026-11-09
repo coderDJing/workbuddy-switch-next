@@ -22,12 +22,11 @@ jobs:
     name: cargo test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
-      # 三平台结果一次跑齐：任一平台失败不阻塞其余平台出结果。
+      # 两个支持平台结果一次跑齐：任一平台失败不阻塞其余平台出结果。
       fail-fast: false
       matrix:
         os:
-          - macos-26-intel
-          - ubuntu-latest
+          - macos-26
           - windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,14 +52,13 @@ jobs:
             ${{ runner.os }}-cargo-
 
       # 只跑 core：零 tauri 依赖，不需要 webkit / npm / 前端 dist。
-      # 不传 --target，使用 runner 原生 target。Apple Silicon 安装包在 build.yml
-      # 中交叉编译；这里运行本机架构测试，不执行交叉编译产物。
+      # 不传 --target，使用 runner 原生 target；macOS 构建与测试均使用 Apple Silicon。
       - name: Run tests
         run: cargo test -p wb-switch-core
         env:
           WB_SWITCH_HOME: ${{ runner.temp }}/wb-switch-test-home
 
-      # One-shot CLI 与 npm 入口也必须覆盖三平台。server 测试只需 SPA 占位，
+      # One-shot CLI 与 npm 入口也必须覆盖两个支持平台。server 测试只需 SPA 占位，
       # 真正前端构建与 Tauri 检查仍由 lint job 完成。
       - name: Prepare server test assets
         run: |
@@ -90,24 +88,13 @@ jobs:
         run: cargo test --manifest-path vendor/agent-companion/Cargo.toml -p agent-studio-core -p agent-studio-runtime --locked
 
       - name: Companion desktop tests
-        if: runner.os != 'Linux'
         run: cargo test --manifest-path vendor/agent-companion/Cargo.toml -p tauri-plugin-agent-studio --locked
 
-      # linux 专属 cfg 分支只在 ubuntu 上展开（macOS 侧由 lint job 覆盖）。
-      # rust-embed 要求 #[folder] 目录存在，先建 dist 占位（前端产物由 build.yml 产出）。
-      - name: Clippy (linux cfg)
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p dist
-          cargo clippy -p wb-switch-core -p wb-switch-server --all-targets --no-deps -- -D warnings
-
-  # 前端类型、格式与 lint 门禁。跑在 macOS 上：clippy 按宿主平台展开 cfg 分支，
-  # 与开发者本机一致，本地全绿即 CI 全绿。linux 专属分支由 rust-tests 的 ubuntu
-  # job 覆盖，windows 分支暂未纳入。
+  # 前端类型、格式与 lint 门禁在 Apple Silicon 上运行。
   # clippy 必须带 --no-deps：vendor/agent-companion 是 path 依赖快照，其告警不归本仓库。
   lint:
     name: lint (tsc + fmt + clippy + server tests)
-    runs-on: macos-26-intel
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -178,6 +165,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run release:check
+      - name: Verify updater manifest compatibility
+        run: python3 scripts/merge-update-manifests.py --self-test
       - run: node --test scripts/vendor-agent-companion.test.mjs scripts/release-artifacts.test.mjs scripts/release-policy.test.mjs scripts/cleanup-rc-releases.test.mjs scripts/deb-cli-contents.test.mjs
 
       - name: Companion frontend checks

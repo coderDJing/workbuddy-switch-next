@@ -78,11 +78,11 @@
 
 - WorkBuddy / CodeBuddy 与 Qoder 平台导航分开，区分全局设置与平台设置；按客户端开关入口与状态轮询。
 - Qoder 国内版 / 国际版桌面端与 CLI 独立账号管理，支持网页登录添加、本机识别、身份合并、备份导入导出，以及分类积分和可用到期信息展示。
-- 桌面安装包内置同版本 CLI，补齐 Windows、macOS、Linux 的命令注册与安装包内容校验。
+- 桌面安装包内置同版本 CLI，补齐 Windows、macOS 的命令注册与安装包内容校验。
 - 改善滚动条、macOS 标题栏和 Qoder 多客户端账号卡片，修复账号状态循环导致的内存增长。
 - RC 使用上海时间版本号及 `preview` 更新入口；正式版使用 `latest`。普通诊断日志只在 RC 启用。
 
-Qoder 的真实验证目前限于 Windows 国内版网页登录、已有登录文件的桌面切换与恢复，以及隔离目录下的官方 CLI 登录身份确认。全新桌面首次启动、国际版、macOS / Linux、自动续期与跨客户端同时使用仍待真实验证，详情见 [试验与验证记录](research/qoder-first-login-feasibility.md)。
+Qoder 的真实验证目前限于 Windows 国内版网页登录、已有登录文件的桌面切换与恢复，以及隔离目录下的官方 CLI 登录身份确认。全新桌面首次启动、国际版、macOS、自动续期与跨客户端同时使用仍待真实验证，详情见 [试验与验证记录](research/qoder-first-login-feasibility.md)。
 
 ## 后续维护
 
@@ -102,7 +102,7 @@ Qoder 的真实验证目前限于 Windows 国内版网页登录、已有登录�
 - `npm run build:desktop` 通过，包含优化构建的原生 Companion runtime；该真实可执行文件通过隔离目录下的 hooks、异步等待/回答、双客户端、服务锁、所有权交接及认证 RPC 检查。
 - Companion 固定基线补丁重放及文件逐一核验通过；三平台 CI 已补充 Companion 前后端检查。
 
-上述账号、认证、会话和 WebDAV 测试使用合成数据或隔离目录，未切换本机实际保存账号，也未连接用户真实 WebDAV 服务。macOS/Linux 及真实客户端切换尚未在本机验证，配置 CI 不代表远端已通过。
+上述账号、认证、会话和 WebDAV 测试使用合成数据或隔离目录，未切换本机实际保存账号，也未连接用户真实 WebDAV 服务。macOS 及真实客户端切换尚未在本机验证，配置 CI 不代表远端已通过。
 
 常用命令：`npm test`、`npm run build`、`cargo test -p wb-switch-core`、`cargo test -p wb-switch-server`、`cargo test -p wb-switch-rust`、`node --test npm/tests/cli-launcher.test.cjs`、`npm run build:desktop`。Companion 验证命令及集成说明见 [集成文档](agent-companion-integration.md)。
 
@@ -116,7 +116,7 @@ Qoder 的真实验证目前限于 Windows 国内版网页登录、已有登录�
 - 更新地址测试已按包版本分别校验正式版 / RC 的预期入口。README 主界面截图使用当前只读演示重新采集，并新增 Qoder 页面预览。
 - 上述结果为本地验证；三平台 CI、四平台安装包构建、签名及 Release 发布以对应版本的 GitHub Actions 和 Release 实际产物为准。
 
-`0.2.0` 使用正式版通道。四平台构建、更新包签名、完整更新清单及校验和由 `.github/workflows/build.yml` 产出。手动运行仅上传构建 artifacts；推送匹配版本的 tag 后才发布版本 Release。正式版标记为 GitHub latest；RC 标记为预发布并更新 `preview` 入口，成功后清理旧 RC 的 Release、tag 及过期 preview 附件，保留当前 RC、正式版及其他历史预发布类型。
+`0.2.0` 使用正式版通道。支持 Windows x64 与 macOS Apple Silicon（arm64）。两个支持平台的构建、更新包签名、完整更新清单及校验和由 `.github/workflows/build.yml` 产出，macOS 构建与测试使用原生 arm64 runner。旧 Windows 使用的 `latest-macos-x86_64.json` 地址继续保留为 Windows 更新兼容入口。手动运行仅上传构建 artifacts；推送匹配版本的 tag 后才发布版本 Release。正式版标记为 GitHub latest；RC 标记为预发布并更新 `preview` 入口，成功后清理旧 RC 的 Release、tag 及过期 preview 附件，保留当前 RC、正式版及其他历史预发布类型。
 
 Next 使用独立签名和应用标识，正式版与 RC 分别从自有仓库的 `latest` / `preview` Release 获取更新，清单内的下载 URL 固定到版本 tag。两通道不互相更新；RC 用户转正式版需手动安装。更新源配置写入 `github_config_next.json`；旧配置仅作一次性读取与代理迁移，不修改原配置或账号文件。
 

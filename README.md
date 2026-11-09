@@ -35,16 +35,14 @@ Next 在上游项目的基础上，持续完善多平台工作台与 Agent 调�
 
 日常使用推荐 [最新正式版](https://github.com/coderDJing/workbuddy-switch-next/releases/latest)。本轮正式版本为 **0.2.2**，变化与兼容说明见 [版本说明](docs/releases/0.2.2.md)；版本与安装包以 Releases 实际产物为准。需要提前体验后续变化时，可使用 [RC 候选版](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview)。也可按 [构建说明](docs/cli.md#构建与维护) 从源码构建。
 
-本文描述当前源码能力。0.2.2 在 [0.2.1](docs/releases/0.2.1.md) 的 Qoder 统计、自动任务、独立 WebDAV 备份和 AI CLI 基础上，新增一键复制 Skill 接入说明与全部查询命令。本轮改动已通过 RC 四平台构建与测试验证；正式安装包以对应 Release 完成构建后的产物为准。
+当前源码为 **0.2.3-rc.202611090934**，更新 WorkBuddy 每日任务组件并优化任务状态识别，支持 Windows x64 与 macOS Apple Silicon（arm64）。具体变化见 [候选版说明](docs/releases/0.2.3-rc.202611090934.md)，安装包与远端验证结果以对应 Release 和 GitHub Actions 实际产物为准。
 
 前往 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 下载对应平台的安装包：
 
 | 平台 | 安装包 | 安装方式 |
 | --- | --- | --- |
 | macOS Apple Silicon（M 系列，arm64） | `workbuddy-switch-next-macos-aarch64.dmg` | 打开 DMG，将 `WorkBuddy Switch Next.app` 拖入「应用程序」 |
-| macOS Intel（x86_64） | `workbuddy-switch-next-macos-x86_64.dmg` | 打开 DMG，将 `WorkBuddy Switch Next.app` 拖入「应用程序」 |
 | Windows x64 | `workbuddy-switch-next-windows-x86_64-setup.exe` | 运行安装程序并按提示完成安装 |
-| Linux x64 | `workbuddy-switch-next-linux-x86_64.deb` / `workbuddy-switch-next-linux-x86_64.AppImage` | Debian/Ubuntu 安装 `.deb`；其他发行版可给 AppImage 添加执行权限后直接运行 |
 
 正式版只接收正式版更新，RC 只通过 `preview` 接收 RC 更新。已安装 RC 的用户如需转正式版，请退出应用后手动安装正式版，无需删除 `~/.wb-switch` 账号库。安装包与独立 CLI 可用同一 Release 中的 `SHA256SUMS` 核对完整性。
 
@@ -105,8 +103,8 @@ xattr -rd com.apple.quarantine "/Applications/WorkBuddy Switch Next.app"
 
 最左侧平台栏切换「WorkBuddy / CodeBuddy」与「Qoder」，各平台平级、账号库互不相通：WorkBuddy / CodeBuddy 各端（WorkBuddy / CodeBuddy IDE / CodeBuddy CLI / VS Code / JetBrains 插件）共用一个账号库，Qoder 独立管理「账号包」。Qoder 提供「账号管理」「Token 统计」「积分统计」「平台设置」，关联会话仍仅支持 WorkBuddy / CodeBuddy。平台栏底部是全局设置（外观、支持工具、悬浮窗、通知、WebDAV 连接、更新）；各平台的自动任务在各自「平台设置」管理。Qoder 的平台设置还提供 CLI 悬浮窗接入与独立 WebDAV 备份操作。关闭设置 →「支持工具」里的 Qoder 后，平台栏不再显示 Qoder。
 
-- **登录添加**：选择国内版或国际版，点击「登录添加」，在 Qoder 官方网页完成授权。Windows 将授权独立加密保存，添加时无需先登录客户端；切换时按所选客户端生成登录数据。macOS / Linux 仍使用客户端存储，桌面端需要已有登录文件。登录添加不自动切换当前客户端。
-- **本机账号识别**：打开 Qoder 页面时自动识别并保存已登录的国内版、国际版桌面端和 CLI 账号，按可验证的账号身份合并展示，不会切换当前客户端。macOS / Linux 桌面端需要时通过页面提示授权系统密钥访问；删除的账号不会被后台识别重新添加。
+- **登录添加**：选择国内版或国际版，点击「登录添加」，在 Qoder 官方网页完成授权。Windows 将授权独立加密保存，添加时无需先登录客户端；切换时按所选客户端生成登录数据。macOS 仍使用客户端存储，桌面端需要已有登录文件。登录添加不自动切换当前客户端。
+- **本机账号识别**：打开 Qoder 页面时自动识别并保存已登录的国内版、国际版桌面端和 CLI 账号，按可验证的账号身份合并展示，不会切换当前客户端。macOS 桌面端需要时通过页面提示授权系统密钥访问；删除的账号不会被后台识别重新添加。
 - **账号积分**：每张账号卡显示 Qoder 返回的剩余、总计和已用积分，进入页面后查询，并每 5 分钟自动更新，也可手动刷新。桌面端和 CLI 共用同一账号余额；查询失败时显示错误，不按零积分处理。
 - **积分统计**：读取 `~/.qoder-cn/projects` 与 `~/.qoder/projects` 的本地会话用量，国内版和国际版分别去重，支持日期与模型筛选、每日趋势、模型排行和最近 500 条请求明细。计费、非计费和计费状态未知的积分分别展示，不把所有请求积分当成实际扣款。没有可靠账号标识的历史请求不归入当前账号。
 - **平台设置与自动任务**：国内版、国际版独立设置。自动领取按本机时间每天执行，启动补领；每账号每天最多尝试 3 次，失败间隔 30 分钟。余额、有效期和查询异常每 5 分钟检查，同类提醒每天最多一次，进入通知中心。自动功能默认关闭，仅本工具运行时生效；桌面与 Web 服务用文件锁避免重复执行。
@@ -118,9 +116,9 @@ xattr -rd com.apple.quarantine "/Applications/WorkBuddy Switch Next.app"
 - **每日奖励**：账号列表右上角「领取积分」会检查并领取可用的积分活动和 Pro 升级包，再刷新余额；「刷新积分」单独查询余额。国际版需要 Qoder UMID 设备身份；可从本机客户端或 CLI 获取，缺失时会提示。领取未确认和资格不满足会分别显示；登录令牌失效时需要重新登录。
 - **切换**：先把现场凭据整组备份（各端保留最近 10 份），再写入目标账号包，写入后逐份比对 sha256，任何一步失败整组回滚。现场登录态还没导入时会先自动保存；保存失败则取消切换。
 - **进程**：通过界面切换时，对应桌面端运行中会先关闭、写入后重新打开；CLI 运行中会被关闭，不会自动重开。AI CLI 切换默认拒绝关闭客户端，需显式传入 `--close-running`，桌面端另加 `--relaunch` 才会重开原本运行的客户端。从 Qoder 内置终端启动本工具时拒绝关闭 Qoder，需先手动退出。
-- **备份迁移**：可选择国内版、国际版账号导出为 JSON，在另一台电脑导入。备份包含登录凭据，应妥善保管；凭据过期时需重新登录。导入不会切换当前客户端。macOS / Linux 的桌面端需要可用的 Qoder 本机加密存储；无法准备的客户端会在导入结果中提示。
+- **备份迁移**：可选择国内版、国际版账号导出为 JSON，在另一台电脑导入。备份包含登录凭据，应妥善保管；凭据过期时需重新登录。导入不会切换当前客户端。macOS 的桌面端需要可用的 Qoder 本机加密存储；无法准备的客户端会在导入结果中提示。
 - **限制**：Qoder 会话历史不按账号隔离，切换后不同账号可见同一份本地历史。同一账号的各客户端凭据分别保存，按稳定账号身份合并展示；无法读取账号身份的本机导入项不会按名称猜测合并。
-- **验证范围**：Windows Qoder CN 0.4.11 已验证真实网页登录添加、已有登录文件的桌面端切换及恢复原账号，并用官方 CLI 在隔离目录确认生成的登录身份。全新桌面目录的首次启动、国际版、macOS / Linux、自动续期及跨客户端同时使用尚未完成真实验证。详见 [Qoder 验证记录](docs/research/qoder-first-login-feasibility.md)。
+- **验证范围**：Windows Qoder CN 0.4.11 已验证真实网页登录添加、已有登录文件的桌面端切换及恢复原账号，并用官方 CLI 在隔离目录确认生成的登录身份。全新桌面目录的首次启动、国际版、macOS、自动续期及跨客户端同时使用尚未完成真实验证。详见 [Qoder 验证记录](docs/research/qoder-first-login-feasibility.md)。
 - **AI CLI 验证**：已通过 JSON 协议、区域过滤、账号去重、损坏账号库及锁竞争测试，并在隔离目录完成实际凭据切换与恢复；本机两个国内版账号的额度查询成功。模型限额与恢复时间没有可靠数据源，明确返回未知或不支持。
 
 凭据布局与切换流程参考 [NextAgentX/qoder-trae-workbuddy-switch](https://github.com/NextAgentX/qoder-trae-workbuddy-switch) 及 [JIUSHIQINGSHAN/qoder-switch](https://github.com/JIUSHIQINGSHAN/qoder-switch)，代码按本项目结构重写。
@@ -224,7 +222,7 @@ Token 统计页按来源展示 Token 总览与趋势、构成占比、活跃热�
 
 ## CLI 与 webui
 
-桌面安装包已自带同版本的 `workbuddy-switch-next` 命令。Windows 安装后请新开终端；macOS 与 Linux AppImage 首次启动应用后请新开终端，Linux deb 安装后可直接使用。详细的 PATH 与冲突处理见 [CLI 文档](docs/cli.md)。
+桌面安装包已自带同版本的 `workbuddy-switch-next` 命令。Windows 安装后请新开终端；macOS 首次启动应用后请新开终端。详细的 PATH 与冲突处理见 [CLI 文档](docs/cli.md)。
 
 不安装桌面版时，也可从 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 下载对应平台的独立 CLI，按完整路径运行。
 

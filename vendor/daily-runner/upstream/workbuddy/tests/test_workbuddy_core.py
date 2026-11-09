@@ -9,9 +9,12 @@ import os
 import re
 import sys
 import tempfile
+import threading
+import errno
 import time
 import types
 import unittest
+from unittest import mock
 import uuid
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -41,6 +44,14 @@ def assignment_value(name):
 
 def load_functions(*names, **globals_):
     namespace = {"__builtins__": __builtins__, **globals_}
+    if set(names) & {"interpret_failure", "run_account"}:
+        names = ("is_unapproved_channel", *names)
+    if set(names) & {"_bootstrap_store", "refresh_all", "auto_refresh", "_refresh_account_once", "load_accounts"}:
+        names = ("_token_store_lock", "_write_refresh_recovery", "_save_refresh_store", "_load_refresh_store", *names)
+        namespace.update(contextmanager=contextlib.contextmanager, threading=threading,
+                         errno=errno, _TOKEN_STORE_THREAD_LOCK=threading.Lock(), uuid=uuid)
+    if "_rebuild_token_file" in names and "_jwt_claims" not in names:
+        names = ("_jwt_claims", *names)
     body = [FUNCTIONS[name] for name in names]
     module = ast.Module(body=body, type_ignores=[])
     exec(compile(module, str(SOURCE_PATH), "exec"), namespace)
@@ -208,6 +219,39 @@ class CoreBehaviorTests(unittest.TestCase):
         self.assertIn("daily-checkin", " ".join(calls))
         self.assertIn("签到未确认", " ".join(logs))
         self.assertNotIn("签到成功", " ".join(logs))
+
+    def test_sign_credit_delayed_is_success_not_missing_credit(self):
+        calls = []
+
+        def api_retry(session, method, url, **kwargs):
+            calls.append(url)
+            if url.endswith("checkin-activity-status"):
+                return FakeResponse(payload={
+                    "code": 0,
+                    "data": {"active": True, "today_checked_in": False},
+                })
+            return FakeResponse(payload={
+                "code": 0,
+                "data": {"credit_delayed": True, "is_streak_day": True},
+            })
+
+        module = load_functions(
+            "_api_code_ok", "t_sign",
+            api_retry=api_retry,
+            BASE="https://example.test",
+            is_enterprise_denial=lambda status, payload: False,
+            _checkin_status=lambda session: {"today_checked_in": True},
+            _checkin_tail=lambda session: "（签到连签3天）",
+            t_daily_activity=lambda *args: calls.append("daily-activity"),
+        )
+        logs = []
+        state = {}
+        module["t_sign"](object(), "u1", "nick", logs.append, state)
+        text = " ".join(logs)
+        self.assertIn("签到成功", text)
+        self.assertIn("积分待入账", text)
+        self.assertNotIn("回执缺少 credit", text)
+        self.assertTrue(state.get("checked_in"))
 
     def test_sign_10001_requires_fresh_checked_in_state(self):
         fresh_states = [{}, {"today_checked_in": True}]
@@ -444,39 +488,162 @@ class CoreBehaviorTests(unittest.TestCase):
         self.assertEqual([], claimed)
         self.assertIn("不按 1 冒领", " ".join(logs))
 
-    def test_401_refresh_helper_updates_state_once(self):
+    def test_401_refresh_preserves_other_accounts_and_stable_key(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            store_path = os.path.join(temp_dir, "wb_refresh_tokens.json")
-            refresh_calls = []
-            module = load_functions(
-                "_refresh_account_once",
-                os=os, json=json,
-                time=type("Time", (), {
-                    "strftime": staticmethod(lambda fmt: "2026-10-27 12:00"),
-                }),
-                REFRESH_STORE=store_path,
-                refresh_one=lambda rt, at="": (
-                    refresh_calls.append((rt, at)) or ("new-access", "new-refresh")),
-                jwt_user=lambda token: "user-1",
-                _rebuild_token_file=lambda store: None,
-            )
-            account = {
-                "note": "old-note",
-                "access_token": "old-access",
-                "refresh_token": "old-refresh",
-            }
-            logs = []
-            self.assertTrue(
-                module["_refresh_account_once"](account, logs.append))
-            self.assertEqual("new-access", account["access_token"])
-            self.assertEqual("new-refresh", account["refresh_token"])
-            self.assertEqual("user-1", account["note"])
-            with open(store_path, encoding="utf-8") as handle:
-                store = json.load(handle)
-            self.assertEqual(
-                "new-refresh", store["user-1"]["refresh_token"])
-            self.assertIn("已续期一次", " ".join(logs))
-            self.assertEqual([("old-refresh", "old-access")], refresh_calls)
+            path = Path(temp_dir) / "tokens.json"
+            original = {"first": {"access_token": "old-at", "refresh_token": "old-rt", "extra": "keep"},
+                        "second": {"access_token": "other-at", "refresh_token": "other-rt"}}
+            path.write_text(json.dumps(original), encoding="utf-8")
+            calls = []
+            module = load_functions("_refresh_account_once", os=os, json=json, uuid=uuid, time=time,
+                REFRESH_STORE=str(path), refresh_one=lambda rt, at: calls.append((rt, at)) or ("new-at", "new-rt"),
+                _rebuild_token_file=lambda store: None)
+            account = {"note": "first", "access_token": "old-at", "refresh_token": "old-rt"}
+            self.assertTrue(module["_refresh_account_once"](account, lambda message: None))
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(original["second"], saved["second"])
+            self.assertEqual("keep", saved["first"]["extra"])
+            self.assertEqual("new-rt", saved["first"]["refresh_token"])
+            self.assertEqual("first", account["note"])
+            self.assertEqual([("old-rt", "old-at")], calls)
+
+    def test_401_refresh_rejects_unreadable_or_changed_pool_before_network(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "tokens.json"
+            refresh = mock.Mock()
+            module = load_functions("_refresh_account_once", os=os, json=json, uuid=uuid, time=time,
+                REFRESH_STORE=str(path), refresh_one=refresh, _rebuild_token_file=mock.Mock())
+            account = {"note": "first", "refresh_token": "old-rt"}
+            for contents in (None, "{", "[]", json.dumps({"first": {"refresh_token": "different"}})):
+                with self.subTest(contents=contents):
+                    if contents is not None:
+                        path.write_text(contents, encoding="utf-8")
+                    self.assertFalse(module["_refresh_account_once"](account, lambda message: None))
+                    if contents is not None:
+                        self.assertEqual(contents, path.read_text(encoding="utf-8"))
+            refresh.assert_not_called()
+
+    def test_401_refresh_write_failure_keeps_original_and_recovery_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "tokens.json"
+            original = json.dumps({"first": {"refresh_token": "old-rt"}, "second": {"refresh_token": "other-rt"}})
+            path.write_text(original, encoding="utf-8")
+            module = load_functions("_refresh_account_once", os=os, json=json, uuid=uuid, time=time,
+                REFRESH_STORE=str(path), refresh_one=lambda rt, at: ("new-at", "new-rt"),
+                _rebuild_token_file=mock.Mock())
+            with mock.patch.object(os, "replace", side_effect=OSError("failed")):
+                with self.assertRaises(RuntimeError):
+                    module["_refresh_account_once"]({"note": "first", "refresh_token": "old-rt"}, lambda message: None)
+            self.assertEqual(original, path.read_text(encoding="utf-8"))
+            copies = list(Path(temp_dir).glob("tokens.json.tmp-*"))
+            self.assertEqual(1, len(copies))
+            self.assertEqual("new-rt", json.loads(copies[0].read_text(encoding="utf-8"))["first"]["refresh_token"])
+
+    def test_401_concurrent_refresh_preserves_both_accounts_and_token_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "tokens.json"
+            token_file = Path(temp_dir) / "access.txt"
+            path.write_text(json.dumps({name: {"access_token": name + "-old-at", "refresh_token": name + "-old-rt"}
+                                        for name in ("first", "second")}), encoding="utf-8")
+            entered, release = threading.Event(), threading.Event()
+            calls = []
+            def refresh(rt, at):
+                calls.append(rt)
+                if rt == "first-old-rt":
+                    entered.set()
+                    if not release.wait(5):
+                        raise RuntimeError("test timed out")
+                return rt.replace("old-rt", "new-at"), rt.replace("old-rt", "new-rt")
+            module = load_functions("_refresh_account_once", "_rebuild_token_file", os=os, json=json, time=time,
+                REFRESH_STORE=str(path), TOKEN_FILE=str(token_file), refresh_one=refresh,
+                jwt_user=lambda token: token.split("-")[0])
+            accounts = [{"note": name, "access_token": name + "-old-at", "refresh_token": name + "-old-rt"}
+                        for name in ("first", "second")]
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                first = executor.submit(module["_refresh_account_once"], accounts[0], lambda message: None)
+                self.assertTrue(entered.wait(5))
+                second = executor.submit(module["_refresh_account_once"], accounts[1], lambda message: None)
+                try:
+                    self.assertEqual(["first-old-rt"], calls)
+                finally:
+                    release.set()
+                self.assertTrue(first.result(timeout=5))
+                self.assertTrue(second.result(timeout=5))
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual("first-new-rt", saved["first"]["refresh_token"])
+            self.assertEqual("second-new-rt", saved["second"]["refresh_token"])
+            self.assertEqual({"first-new-at", "second-new-at"}, set(token_file.read_text(encoding="utf-8").split("@")))
+
+    def test_401_same_account_concurrent_refresh_uses_one_rotation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "tokens.json"
+            path.write_text(json.dumps({"first": {"access_token": "old-at", "refresh_token": "old-rt"}}), encoding="utf-8")
+            entered, release = threading.Event(), threading.Event()
+            calls = []
+            def refresh(rt, at):
+                calls.append(rt)
+                entered.set()
+                if not release.wait(5):
+                    raise RuntimeError("test timed out")
+                return "new-at", "new-rt"
+            module = load_functions("_refresh_account_once", os=os, json=json, time=time, REFRESH_STORE=str(path),
+                                    refresh_one=refresh, _rebuild_token_file=mock.Mock())
+            accounts = [{"note": "first", "access_token": "old-at", "refresh_token": "old-rt"} for _ in range(2)]
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                first = executor.submit(module["_refresh_account_once"], accounts[0], lambda message: None)
+                self.assertTrue(entered.wait(5))
+                second = executor.submit(module["_refresh_account_once"], accounts[1], lambda message: None)
+                release.set()
+                self.assertTrue(first.result(timeout=5))
+                self.assertTrue(second.result(timeout=5))
+            self.assertEqual(["old-rt"], calls)
+            self.assertEqual([("new-at", "new-rt")] * 2,
+                             [(account["access_token"], account["refresh_token"]) for account in accounts])
+
+    def test_401_reuses_credentials_rotated_by_another_executor(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "tokens.json"
+            path.write_text(json.dumps({"first": {"access_token": "new-at", "refresh_token": "new-rt"}}), encoding="utf-8")
+            refresh = mock.Mock()
+            module = load_functions("_refresh_account_once", os=os, json=json, time=time, REFRESH_STORE=str(path),
+                                    refresh_one=refresh, _rebuild_token_file=mock.Mock())
+            account = {"note": "first", "access_token": "old-at", "refresh_token": "old-rt"}
+            self.assertTrue(module["_refresh_account_once"](account, lambda message: None))
+            self.assertEqual(("new-at", "new-rt"), (account["access_token"], account["refresh_token"]))
+            refresh.assert_not_called()
+
+    def test_401_merges_changes_during_refresh_and_rejects_same_account_conflict(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "tokens.json"
+            original = {"first": {"access_token": "old-at", "refresh_token": "old-rt", "extra": "old"},
+                        "second": {"refresh_token": "second-old"}}
+            for conflict in (False, True):
+                with self.subTest(conflict=conflict):
+                    path.write_text(json.dumps(original), encoding="utf-8")
+                    def refresh(rt, at):
+                        other = json.loads(path.read_text(encoding="utf-8"))
+                        other["second"]["refresh_token"] = "second-new"
+                        other["first"]["extra"] = "changed"
+                        if conflict:
+                            other["first"]["refresh_token"] = "external-rt"
+                        path.write_text(json.dumps(other), encoding="utf-8")
+                        return "new-at", "new-rt"
+                    module = load_functions("_refresh_account_once", os=os, json=json, time=time,
+                        REFRESH_STORE=str(path), refresh_one=refresh, _rebuild_token_file=mock.Mock())
+                    account = {"note": "first", "refresh_token": "old-rt"}
+                    if conflict:
+                        with self.assertRaises(RuntimeError):
+                            module["_refresh_account_once"](account, lambda message: None)
+                        copies = list(Path(temp_dir).glob("tokens.json.tmp-*"))
+                        self.assertEqual("new-rt", json.loads(copies[0].read_text(encoding="utf-8"))["first"]["refresh_token"])
+                    else:
+                        self.assertTrue(module["_refresh_account_once"](account, lambda message: None))
+                    saved = json.loads(path.read_text(encoding="utf-8"))
+                    self.assertEqual("second-new", saved["second"]["refresh_token"])
+                    self.assertEqual("changed", saved["first"]["extra"])
+                    self.assertEqual("external-rt" if conflict else "new-rt", saved["first"]["refresh_token"])
 
     def test_refresh_one_sends_cn_header_subset_and_empty_body(self):
         session = FakeSession([FakeResponse(payload={
@@ -539,8 +706,8 @@ class CoreBehaviorTests(unittest.TestCase):
             "X-Domain",
         }, set(headers))
 
-    def test_module_import_does_not_refresh_or_load_accounts(self):
-        """ACCOUNTS 初始化早于 uid_of 时，续期会 NameError 且请求根本发不出去。"""
+    def test_import_defers_accounts_and_explicit_loading_refreshes_with_uid_header(self):
+        """Host import must not refresh; explicit upstream account loading still works."""
         now = int(time.time())
         old_at = jwt_token({
             "typ": "Bearer", "sub": "sub-1",
@@ -588,6 +755,9 @@ class CoreBehaviorTests(unittest.TestCase):
             try:
                 with contextlib.redirect_stdout(io.StringIO()):
                     exec(compile(SOURCE, str(SOURCE_PATH), "exec"), namespace)
+                    self.assertEqual([], calls, "Host owns credential renewal during imports")
+                    self.assertEqual([], namespace["ACCOUNTS"])
+                    namespace["ACCOUNTS"] = namespace["load_accounts"]()
             finally:
                 if previous_requests is not None:
                     sys.modules["requests"] = previous_requests
@@ -602,8 +772,10 @@ class CoreBehaviorTests(unittest.TestCase):
                 else:
                     os.environ["WORKBUDDY_REFRESH_TOKEN"] = previous_env
 
-        self.assertEqual([], calls, "导入不能刷新凭据")
-        self.assertEqual([], namespace["ACCOUNTS"])
+        self.assertEqual(1, len(calls), "续期请求应实际发出，不能被 NameError 吞掉")
+        self.assertEqual("sub-1", calls[0][1].get("X-User-Id"))
+        self.assertEqual(1, len(namespace["ACCOUNTS"]))
+        self.assertEqual(new_rt, namespace["ACCOUNTS"][0]["refresh_token"])
 
     def test_env_merge_repeated_runs_preserve_rotated_refresh_token(self):
         """相同 env 输入重复运行：按 JWT subject 合并，不能覆盖已轮换的 RT。"""
@@ -829,16 +1001,246 @@ class CoreBehaviorTests(unittest.TestCase):
                 "code": 0,
                 "data": {"reward_credit": 30},
             }),
+            FakeResponse(payload={
+                "code": 0,
+                "data": {"state": "idle", "daily_limit_reached": True},
+            }),
         ]
         session = FakeSession(response_queue)
         module = load_functions(
-            "_api_code_ok", "_dig", "t_travel", BASE="https://example.test")
+            "_api_code_ok", "_dig", "_read_travel_status", "_travel_observe",
+            "t_travel_prepare", "t_travel_depart", "t_travel",
+            BASE="https://example.test")
         logs = []
         module["t_travel"](session, "u1", "nick", logs.append)
         claim_call = [call for call in session.calls
                       if call[1].endswith("/buddy/travel/claim")][0]
         self.assertEqual({"record_id": "record-42"}, claim_call[2]["json"])
         self.assertIn("+30积分", " ".join(logs))
+
+    def test_travel_blindbox_cycle_claims_before_opening_and_departs_last(self):
+        class Session:
+            def __init__(self):
+                self.state = "arrived"
+                self.opens = 0
+                self.calls = []
+
+            def get(self, url, **kwargs):
+                path = url.split("/v2/activity/growth", 1)[1]
+                self.calls.append(("GET", path))
+                if path == "/buddy/visible":
+                    return FakeResponse(payload={
+                        "code": 0, "data": {"has_buddy": True, "buddy_visible": True}})
+                if path == "/buddy/travel/status":
+                    return FakeResponse(payload={
+                        "code": 0,
+                        "data": {
+                            "state": self.state,
+                            "record_id": "record-1",
+                            "daily_limit_reached": False,
+                            "arrive_at": 0,
+                            "server_now": 0,
+                        },
+                    })
+                if path == "/buddy/quota":
+                    return FakeResponse(payload={
+                        "code": 0, "data": {"balance": 30, "affordable": 3}})
+                if path == "/buddy/travel/config":
+                    return FakeResponse(payload={
+                        "code": 0,
+                        "data": {"locations": [{"id": "loc-1", "name": "公园"}]},
+                    })
+                raise AssertionError("unexpected GET: " + path)
+
+            def post(self, url, **kwargs):
+                path = url.split("/v2/activity/growth", 1)[1]
+                self.calls.append(("POST", path))
+                if path == "/buddy/travel/claim":
+                    self.state = "idle"
+                    return FakeResponse(payload={
+                        "code": 0, "data": {"reward_credit": 30}})
+                if path == "/buddy/open":
+                    self.opens += 1
+                    return FakeResponse(payload={
+                        "code": 0,
+                        "data": {"results": [{
+                            "instance": {"name": "道具", "rarity": "R"}}]},
+                    })
+                if path == "/buddy/travel/depart":
+                    self.state = "traveling"
+                    return FakeResponse(payload={
+                        "code": 0,
+                        "data": {"arrive_at": 3600, "server_now": 0},
+                    })
+                raise AssertionError("unexpected POST: " + path)
+
+        module = load_functions(
+            "_api_code_ok", "_dig", "_read_travel_status", "_travel_observe",
+            "t_travel_prepare", "t_travel_probe", "t_travel_depart",
+            "t_blindbox", "t_travel_blindbox_cycle",
+            BASE="https://example.test",
+            time=type("Time", (), {
+                "sleep": staticmethod(lambda seconds: None),
+            }),
+        )
+        session = Session()
+        logs = []
+        module["t_travel_blindbox_cycle"](
+            session, "u1", "nick", logs.append,
+            do_travel=True, do_blindbox=True)
+
+        claim_index = session.calls.index(("POST", "/buddy/travel/claim"))
+        status_indexes = [
+            i for i, call in enumerate(session.calls)
+            if call == ("GET", "/buddy/travel/status")
+        ]
+        quota_index = session.calls.index(("GET", "/buddy/quota"))
+        depart_index = session.calls.index(("POST", "/buddy/travel/depart"))
+        first_open_index = session.calls.index(("POST", "/buddy/open"))
+
+        self.assertEqual(2, len(status_indexes))
+        self.assertLess(claim_index, status_indexes[1])
+        self.assertLess(status_indexes[1], quota_index)
+        self.assertLess(quota_index, first_open_index)
+        self.assertLess(first_open_index, depart_index)
+        self.assertEqual(3, session.opens)
+        self.assertEqual("traveling", session.state)
+
+    def test_blindbox_opens_zero_three_or_five_times_after_idle(self):
+        class Session:
+            def __init__(self, affordable):
+                self.affordable = affordable
+                self.opens = 0
+                self.calls = []
+
+            def get(self, url, **kwargs):
+                path = url.split("/v2/activity/growth", 1)[1]
+                self.calls.append(("GET", path))
+                if path == "/buddy/visible":
+                    return FakeResponse(payload={
+                        "code": 0, "data": {"has_buddy": True, "buddy_visible": True}})
+                if path == "/buddy/travel/status":
+                    return FakeResponse(payload={
+                        "code": 0,
+                        "data": {"state": "idle", "daily_limit_reached": True},
+                    })
+                if path == "/buddy/quota":
+                    return FakeResponse(payload={
+                        "code": 0,
+                        "data": {
+                            "balance": self.affordable * 10,
+                            "affordable": self.affordable,
+                        },
+                    })
+                raise AssertionError("unexpected GET: " + path)
+
+            def post(self, url, **kwargs):
+                path = url.split("/v2/activity/growth", 1)[1]
+                self.calls.append(("POST", path))
+                if path == "/buddy/open":
+                    self.opens += 1
+                    return FakeResponse(payload={
+                        "code": 0,
+                        "data": {"results": [{
+                            "instance": {"name": "道具", "rarity": "R"}}]},
+                    })
+                raise AssertionError("unexpected POST: " + path)
+
+        module = load_functions(
+            "_api_code_ok", "_dig", "_read_travel_status", "_travel_observe",
+            "t_travel_prepare", "t_travel_probe", "t_travel_depart",
+            "t_blindbox", "t_travel_blindbox_cycle",
+            BASE="https://example.test",
+            time=type("Time", (), {
+                "sleep": staticmethod(lambda seconds: None),
+            }),
+        )
+        for affordable, expected in ((0, 0), (3, 3), (9, 5)):
+            with self.subTest(affordable=affordable):
+                session = Session(affordable)
+                module["t_travel_blindbox_cycle"](
+                    session, "u1", "nick", lambda message: None,
+                    do_travel=False, do_blindbox=True)
+                self.assertEqual(expected, session.opens)
+                self.assertFalse(any(
+                    path == "/buddy/travel/depart"
+                    for _, path in session.calls))
+
+    def test_travel_blindbox_cycle_blocks_unsafe_travel_states(self):
+        class Session:
+            def __init__(self, state, claim_ok=True, state_after_claim="idle"):
+                self.state = state
+                self.claim_ok = claim_ok
+                self.state_after_claim = state_after_claim
+                self.calls = []
+
+            def get(self, url, **kwargs):
+                path = url.split("/v2/activity/growth", 1)[1]
+                self.calls.append(("GET", path))
+                if path == "/buddy/visible":
+                    return FakeResponse(payload={
+                        "code": 0, "data": {"has_buddy": True, "buddy_visible": True}})
+                if path == "/buddy/travel/status":
+                    return FakeResponse(payload={
+                        "code": 0,
+                        "data": {
+                            "state": self.state,
+                            "record_id": "record-1",
+                            "daily_limit_reached": False,
+                            "arrive_at": 0,
+                            "server_now": 0,
+                        },
+                    })
+                if path == "/buddy/quota":
+                    return FakeResponse(payload={
+                        "code": 0, "data": {"balance": 90, "affordable": 9}})
+                if path == "/buddy/travel/config":
+                    raise AssertionError("unsafe state must not read depart config")
+                raise AssertionError("unexpected GET: " + path)
+
+            def post(self, url, **kwargs):
+                path = url.split("/v2/activity/growth", 1)[1]
+                self.calls.append(("POST", path))
+                if path == "/buddy/travel/claim":
+                    if not self.claim_ok:
+                        return FakeResponse(500, {"code": 500, "msg": "claim failed"})
+                    self.state = self.state_after_claim
+                    return FakeResponse(payload={
+                        "code": 0, "data": {"reward_credit": 30}})
+                if path == "/buddy/open":
+                    raise AssertionError("unsafe state must not open blind box")
+                if path == "/buddy/travel/depart":
+                    raise AssertionError("unsafe state must not depart")
+                raise AssertionError("unexpected POST: " + path)
+
+        module = load_functions(
+            "_api_code_ok", "_dig", "_read_travel_status", "_travel_observe",
+            "t_travel_prepare", "t_travel_probe", "t_travel_depart",
+            "t_blindbox", "t_travel_blindbox_cycle",
+            BASE="https://example.test",
+            time=type("Time", (), {
+                "sleep": staticmethod(lambda seconds: None),
+            }),
+        )
+        cases = (
+            ("traveling", True, "idle"),
+            ("arrived", False, "idle"),
+            ("", True, "idle"),
+            ("unexpected", True, "idle"),
+            ("arrived", True, "traveling"),
+        )
+        for state, claim_ok, state_after_claim in cases:
+            with self.subTest(
+                    state=state, claim_ok=claim_ok,
+                    state_after_claim=state_after_claim):
+                session = Session(state, claim_ok, state_after_claim)
+                module["t_travel_blindbox_cycle"](
+                    session, "u1", "nick", lambda message: None,
+                    do_travel=True, do_blindbox=True)
+                paths = [path for _, path in session.calls]
+                self.assertNotIn("/buddy/open", paths)
+                self.assertNotIn("/buddy/travel/config", paths)
+                self.assertNotIn("/buddy/travel/depart", paths)
 
     def test_webchat_success_stops_and_failure_deletes(self):
         module = load_functions(
@@ -1211,19 +1613,47 @@ class CoreBehaviorTests(unittest.TestCase):
     def test_workbuddy_11140_is_account_restricted_not_token_expiry(self):
         module = load_functions(
             "interpret_failure", "is_account_restricted", json=json)
-        description, skip = module["interpret_failure"](
-            403, {"code": 11140, "msg": "request illegal"})
+        positive_cases = (
+            (403, {"code": 11140, "msg": "request illegal"}),
+            (403, {"code": "11140", "message":
+                   "Your account shows unusual activity and has been restricted."}),
+            (403, '{"code":11140,"msg":"账号存在异常行为，已被限制使用"}'),
+            (403, {"code": 11140, "displayMsg": "账户存在异常行为"}),
+            (403, {"code": 11140, "displayMsg": "账户非法，已被限制使用"}),
+        )
+        for status, payload in positive_cases:
+            with self.subTest(payload=payload):
+                self.assertTrue(module["is_account_restricted"](status, payload))
+        description, skip = module["interpret_failure"](*positive_cases[0])
         self.assertTrue(skip)
         self.assertIn("账号受限", description)
         self.assertNotIn("Token", description)
-        self.assertTrue(module["is_account_restricted"](
-            403, {"msg": "account restricted"}))
-        self.assertTrue(module["is_account_restricted"](
-            403, "<html><title>11140 request illegal</title></html>"))
         self.assertFalse(module["is_account_restricted"](
             401, {"msg": "token expired"}))
         self.assertTrue(module["interpret_failure"](
             401, {"msg": "token expired"})[1])
+
+    def test_workbuddy_11140_rate_limit_and_body_examples_are_not_restricted(self):
+        module = load_functions(
+            "interpret_failure", "is_account_restricted", json=json)
+        negative_cases = (
+            (429, {"code": 11140, "msg":
+                   "The model provider is rate-limiting requests."}),
+            (429, {"code": 11140, "msg": "too many requests"}),
+            (403, {"code": 50400, "msg": "account restricted"}),
+            (403, {"msg": "request illegal"}),
+            (403, {"code": 11140, "msg": "normal",
+                   "data": {"content": "code=11140 request illegal"}}),
+            (403, "<html><title>11140 request illegal</title></html>"),
+        )
+        for status, payload in negative_cases:
+            with self.subTest(payload=payload):
+                self.assertFalse(module["is_account_restricted"](status, payload))
+        description, skip = module["interpret_failure"](
+            429, {"code": 11140,
+                  "msg": "The model provider is rate-limiting requests."})
+        self.assertFalse(skip)
+        self.assertNotIn("账号受限", description)
 
     def test_local_expert_flow_uses_real_chat_and_local_events(self):
         states = [("accepted", 0, 1), ("completed", 1, 1), ("completed", 1, 1)]

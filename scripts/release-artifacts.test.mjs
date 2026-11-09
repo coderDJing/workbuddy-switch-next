@@ -14,10 +14,12 @@ test('RC manifests pin immutable signed archives and safely encode filenames', (
     'https://github.com/coderDJing/workbuddy-switch-next/releases/download/v0.2.0-rc.1/WorkBuddy%20Switch%20Next_0.2.0-rc.1_x64-setup.exe');
   assert.throws(() => buildManifest({ release, archiveName: '../other.exe', signature: 'x', keys: ['win'] }));
 });
-test('Linux deb and AppImage updater keys cannot replace one another', () => {
-  assert.deepEqual(platformSpec('linux', 'x86_64', 'deb').keys, ['linux-x86_64-deb']);
-  assert.deepEqual(platformSpec('linux', 'x86_64', 'appimage').keys, ['linux-x86_64-appimage', 'linux-x86_64']);
-  assert.throws(() => platformSpec('linux', 'x86_64', 'other'));
+test('release artifacts only support Windows x64 and Apple Silicon', () => {
+  assert.deepEqual(platformSpec('macos', 'aarch64').keys, ['darwin-aarch64']);
+  assert.deepEqual(platformSpec('windows', 'x86_64').keys, ['windows-x86_64-nsis', 'windows-x86_64']);
+  for (const [os, arch, bundle] of [['linux', 'x86_64', 'deb'], ['linux', 'x86_64', 'appimage'], ['linux', 'aarch64', ''], ['macos', 'x86_64', ''], ['windows', 'aarch64', '']]) {
+    assert.throws(() => platformSpec(os, arch, bundle), /Unsupported platform/);
+  }
 });
 
 test('artifact entry points reject unsupported versions and channel mismatches before filesystem work', () => {

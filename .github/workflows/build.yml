@@ -9,7 +9,7 @@ on:
         description: Platform to build (manual runs upload artifacts only)
         type: choice
         default: all
-        options: [all, win-x64, mac-arm64, mac-x64, linux-x64]
+        options: [all, win-x64, mac-arm64]
 
 permissions:
   contents: write
@@ -35,10 +35,8 @@ jobs:
           import fs from 'node:fs';
           const release = JSON.parse(fs.readFileSync('release-config.json', 'utf8'));
           const platforms = [
-            {name:'mac-arm64',os:'macos-26-intel',target:'aarch64-apple-darwin',platform:'darwin-arm64',bundles:'app',update_os:'macos',arch:'aarch64'},
-            {name:'mac-x64',os:'macos-26-intel',target:'x86_64-apple-darwin',platform:'darwin-x64',bundles:'app',update_os:'macos',arch:'x86_64'},
+            {name:'mac-arm64',os:'macos-26',target:'aarch64-apple-darwin',platform:'darwin-arm64',bundles:'app',update_os:'macos',arch:'aarch64'},
             {name:'win-x64',os:'windows-latest',target:'x86_64-pc-windows-msvc',platform:'win32-x64',bundles:'nsis',update_os:'windows',arch:'x86_64'},
-            {name:'linux-x64',os:'ubuntu-latest',target:'x86_64-unknown-linux-gnu',platform:'linux-x64',bundles:'deb,appimage',update_os:'linux',arch:'x86_64'},
           ];
           const request = process.env.REQUESTED_PLATFORM || 'all';
           const selected = process.env.GITHUB_REF_TYPE === 'tag' || request === 'all' ? platforms : platforms.filter(p=>p.name===request);
@@ -82,11 +80,6 @@ jobs:
             target
           key: ${{ runner.os }}-next-release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-next-release-${{ matrix.target }}-
-      - name: Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -124,7 +117,7 @@ jobs:
       - name: Verify Windows desktop installer includes CLI
         if: runner.os == 'Windows' && vars.PUBLISH_APP != 'false'
         run: node scripts/verify-windows-cli-bundle.mjs
-      - name: Verify macOS and Linux desktop bundles include CLI
+      - name: Verify macOS desktop bundle includes CLI
         if: runner.os != 'Windows' && vars.PUBLISH_APP != 'false'
         run: node scripts/verify-unix-cli-bundle.mjs
       - name: Collect signed archives and immutable updater manifests
@@ -200,7 +193,7 @@ jobs:
           merge-multiple: true
       - name: Validate complete updater feed
         env:
-          REQUIRED_PLATFORMS: darwin-aarch64,darwin-x86_64,windows-x86_64-nsis,windows-x86_64,linux-x86_64,linux-x86_64-deb,linux-x86_64-appimage
+          REQUIRED_PLATFORMS: darwin-aarch64,windows-x86_64-nsis,windows-x86_64
         run: |
           python3 scripts/merge-update-manifests.py artifacts
           node scripts/release-artifacts.mjs validate artifacts

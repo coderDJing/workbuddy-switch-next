@@ -3,7 +3,8 @@
 
 Also:
 - copies latest-macos-*.json to latest-darwin-*.json (Tauri {{target}}=darwin)
-- injects windows-* platform entries into latest-macos-x86_64.json so already
+- creates a Windows-only latest-macos-x86_64.json compatibility alias when no
+  Intel Mac build exists, and injects windows-* entries when it does, so already
   installed Windows apps (which still request the macOS Intel manifest) can
   find windows-x86_64-nsis / windows-x86_64.
 - when REQUIRED_PLATFORMS is set (comma separated), fails after merging if any
@@ -62,10 +63,10 @@ def merge_manifests(items: list[tuple[Path, dict]]) -> dict | None:
 
 def inject_windows_into_macos_intel(directory: Path, merged: dict) -> None:
     macos_intel = directory / "latest-macos-x86_64.json"
-    if not macos_intel.is_file():
-        return
     try:
-        data = json.loads(macos_intel.read_text(encoding="utf-8"))
+        data = (json.loads(macos_intel.read_text(encoding="utf-8"))) if macos_intel.is_file() else {
+            **merged, "platforms": {},
+        }
     except (OSError, json.JSONDecodeError):
         return
     if not isinstance(data, dict):
@@ -241,6 +242,22 @@ def _self_test() -> None:
         assert missing_platforms(merged, expected) == []
         assert missing_platforms(merged, [*expected, "linux-aarch64"]) == ["linux-aarch64"]
         assert missing_platforms(merged, ["linux-x86_64-deb"]) == []
+        # Current releases only contain Apple Silicon and Windows; the old
+        # macOS Intel URL must still serve Windows without advertising Intel.
+        for path in root.glob("latest*.json"):
+            if path.name not in {"latest-macos-aarch64.json", "latest-windows-x86_64.json"}:
+                path.unlink()
+        latest = merge_directory(root)
+        current = json.loads(latest.read_text(encoding="utf-8"))
+        assert set(current["platforms"]) == {
+            "darwin-aarch64", "windows-x86_64-nsis", "windows-x86_64",
+        }
+        alias = json.loads((root / "latest-macos-x86_64.json").read_text(encoding="utf-8"))
+        assert set(alias["platforms"]) == {"windows-x86_64-nsis", "windows-x86_64"}
+        assert alias["version"] == current["version"]
+        # Re-merging compatibility aliases must not reintroduce removed targets.
+        assert merge_directory(root) is not None
+        assert json.loads(latest.read_text(encoding="utf-8")) == current
         print("merge-update-manifests: self-test ok")
 
 

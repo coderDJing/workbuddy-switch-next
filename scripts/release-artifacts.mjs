@@ -22,11 +22,11 @@ export function buildManifest({ release, archiveName, signature, keys, date = ne
 }
 
 export function platformSpec(os, arch, bundle = '') {
-  if (!['aarch64', 'x86_64'].includes(arch)) throw new Error(`Unsupported architecture: ${arch}`);
+  if (!((os === 'macos' && arch === 'aarch64') || (os === 'windows' && arch === 'x86_64')) || bundle) {
+    throw new Error(`Unsupported platform: ${os}/${arch}/${bundle}`);
+  }
   if (os === 'macos') return { folder: 'macos', extension: '.app.tar.gz', keys: [`darwin-${arch}`], json: `latest-macos-${arch}.json` };
   if (os === 'windows') return { folder: 'nsis', extension: '-setup.exe', keys: [`windows-${arch}-nsis`, `windows-${arch}`], json: `latest-windows-${arch}.json` };
-  if (os === 'linux' && (!bundle || bundle === 'appimage')) return { folder: 'appimage', extension: '.AppImage', keys: [`linux-${arch}-appimage`, `linux-${arch}`], json: `latest-linux-${arch}.json` };
-  if (os === 'linux' && bundle === 'deb') return { folder: 'deb', extension: '.deb', keys: [`linux-${arch}-deb`], json: `latest-linux-deb-${arch}.json` };
   throw new Error(`Unsupported platform: ${os}/${bundle}`);
 }
 
@@ -64,7 +64,7 @@ function bundleRoot(target) {
 
 function collect(env = process.env) {
   const release = readRelease(), target = env.RUST_TARGET, platform = env.PLATFORM_TAG;
-  if (!platform || !/^[a-z0-9-]+$/.test(platform)) throw new Error('Missing platform tag');
+  if (!['darwin-arm64', 'win32-x64'].includes(platform)) throw new Error('Unsupported platform tag');
   const bundle = bundleRoot(target), destination = path.join(root, 'dist-bin');
   fs.mkdirSync(destination, { recursive: true });
   const suffix = platform.startsWith('win32') ? '.exe' : '';
@@ -78,7 +78,7 @@ function collect(env = process.env) {
   fs.copyFileSync(daily, path.join(pkgBin, `daily-runner${suffix}`));
   if (env.PUBLISH_APP === 'false') return;
   const os = env.UPDATE_OS, arch = env.UPDATE_ARCH;
-  const variants = os === 'linux' ? ['appimage', 'deb'] : [''];
+  const variants = [''];
   for (const variant of variants) {
     const spec = platformSpec(os, arch, variant);
     const source = singleArchive(path.join(bundle, spec.folder), spec, release.version);

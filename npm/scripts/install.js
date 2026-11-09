@@ -11,10 +11,7 @@ const path = require("path");
 
 const FILE = {
   "darwin-arm64": "wb-switch-darwin-arm64",
-  "darwin-x64": "wb-switch-darwin-x64",
   "win32-x64": "wb-switch-win32-x64.exe",
-  "linux-x64": "wb-switch-linux-x64",
-  "linux-arm64": "wb-switch-linux-arm64",
 }[`${process.platform}-${process.arch}`];
 
 const PLATFORM_PKG = `workbuddy-switch-next-${process.platform}-${process.arch}`;
@@ -22,7 +19,7 @@ const PLATFORM_PKG = `workbuddy-switch-next-${process.platform}-${process.arch}`
 if (!FILE) {
   console.warn(
     `workbuddy-switch-next: 跳过平台 ${process.platform}-${process.arch}（当前不支持），` +
-      `可手动下载二进制后放置到 bin/ 目录`,
+      `仅支持 Windows x64 和 macOS Apple Silicon（arm64）`,
   );
   process.exit(0);
 }

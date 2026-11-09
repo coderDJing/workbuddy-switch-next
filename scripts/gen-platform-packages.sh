@@ -26,9 +26,6 @@ JSON
 }
 
 gen darwin-arm64 darwin arm64 wb-switch-darwin-arm64
-gen darwin-x64 darwin x64 wb-switch-darwin-x64
 gen win32-x64 win32 x64 wb-switch-win32-x64.exe
-gen linux-x64 linux x64 wb-switch-linux-x64
-gen linux-arm64 linux arm64 wb-switch-linux-arm64
 
 echo "平台包生成完成（版本 $V），把对应二进制复制到各包 bin/ 后 npm publish。"

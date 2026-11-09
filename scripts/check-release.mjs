@@ -22,14 +22,14 @@ assert.equal(json('package.json').name, release.slug);
 const npm = json('npm/package.json');
 assert.equal(npm.name, release.slug);
 assert.equal(npm.bin[release.slug], npm.bin['workbuddy-switch'], 'Legacy command must resolve to the same launcher');
-const supported = ['darwin-arm64', 'darwin-x64', 'win32-x64', 'linux-x64'];
+const supported = ['darwin-arm64', 'win32-x64'];
 for (const platform of supported) {
   const name = `${release.slug}-${platform}`;
   assert.equal(npm.optionalDependencies[name], release.version);
   const pkg = json(`npm/platform/${name}/package.json`);
   assert.equal(pkg.name, name); assert.equal(pkg.version, release.version);
 }
-assert.ok(!Object.keys(npm.optionalDependencies).some(name => !name.startsWith(release.slug + '-')));
+assert.deepEqual(Object.keys(npm.optionalDependencies).sort(), supported.map(platform => `${release.slug}-${platform}`).sort(), 'Only supported platform packages may ship');
 const channel = release.channel === 'preview' ? `download/${release.previewTag}` : 'latest/download';
 const releasePage = release.channel === 'preview' ? `tag/${release.previewTag}` : 'latest';
 assert.ok(read('index.html').includes(`var releaseUrl = "https://github.com/${release.owner}/${release.repo}/releases/${releasePage}";`), 'Startup recovery link must match the release channel');

@@ -122,6 +122,8 @@ def workbuddy_cn(token, skip_checkin=False):
             log("工作台搭建师：未找到专家，等待下次重试")
     daily.t_workstation = workstation
     lines, summary = daily.run_account(1, {"access_token": token, "note": ""}, True)
+    if summary.get("channel_rejected"):
+        return {"ok": False, "message": "请求渠道被拒绝（11-128），本轮已停止"}
     if summary.get("restricted"):
         return {"ok": False, "message": "账号受限，本轮已停止"}
     if summary.get("enterprise"):
@@ -142,6 +144,8 @@ def workbuddy_global(token, uid, skip_checkin=False):
     uid = uid or daily.uid_of(token)
     try:
         response, _ = daily.preflight_restricted(token, uid)
+    except daily.UnapprovedChannel:
+        return {"ok": False, "message": "请求渠道被拒绝（11-128），本轮已停止"}
     except daily.AccountRestricted:
         return {"ok": False, "message": "账号受限，本轮已停止"}
     if response.status_code == 401:

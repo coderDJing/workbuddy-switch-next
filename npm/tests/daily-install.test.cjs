@@ -7,7 +7,7 @@ const { spawnSync } = require('node:child_process');
 
 test('platform installation places the daily component next to the CLI', () => {
   const platform = `${process.platform}-${process.arch}`;
-  if (!['darwin-arm64', 'darwin-x64', 'win32-x64', 'linux-x64', 'linux-arm64'].includes(platform)) return;
+  if (!['darwin-arm64', 'win32-x64'].includes(platform)) return;
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-daily-install-'));
   try {
     const script = path.join(root, 'scripts', 'install.js');

@@ -30,7 +30,7 @@ class RunnerTests(unittest.TestCase):
             module.t_workstation(None, "u", "n", lambda _: None, "test-token")
             return [], {"done": 2, "total": 3, "rest": ["待完成"]}
         module.run_account = execute
-        with patch.dict(sys.modules, {"workbuddy_daily": module}):
+        with patch.dict(sys.modules, {"workbuddy_daily": module}), patch.object(runner, "is_current_desktop_account", return_value=False):
             result = runner.workbuddy_cn("test-token")
         self.assertEqual(calls, ["desktop"])
         self.assertFalse(result["ok"])
@@ -71,6 +71,7 @@ class RunnerTests(unittest.TestCase):
         module = types.ModuleType("workbuddy_intl_daily")
         class Restricted(Exception): pass
         module.AccountRestricted = Restricted
+        module.UnapprovedChannel = type("UnapprovedChannel", (Exception,), {})
         module.uid_of = lambda _: "uid"
         def preflight(*_): raise Restricted()
         module.preflight_restricted = preflight
@@ -83,6 +84,7 @@ class RunnerTests(unittest.TestCase):
         module = types.ModuleType("workbuddy_intl_daily")
         calls = []
         module.AccountRestricted = type("Restricted", (Exception,), {})
+        module.UnapprovedChannel = type("UnapprovedChannel", (Exception,), {})
         module.preflight_restricted = lambda *_: (types.SimpleNamespace(status_code=200), {})
         module.detect_activity = lambda *_: (True, True, False, "可领取")
         def step(name):
@@ -104,6 +106,7 @@ class RunnerTests(unittest.TestCase):
         module = types.ModuleType("workbuddy_intl_daily")
         calls = []
         module.AccountRestricted = type("Restricted", (Exception,), {})
+        module.UnapprovedChannel = type("UnapprovedChannel", (Exception,), {})
         module.preflight_restricted = lambda *_: (types.SimpleNamespace(status_code=200), {})
         module.detect_activity = lambda *_: (True, True, False, "可领取")
         def step(name):
@@ -137,11 +140,34 @@ class RunnerTests(unittest.TestCase):
     def test_global_forbidden_preflight_never_starts_activity(self):
         module = types.ModuleType("workbuddy_intl_daily")
         module.AccountRestricted = type("Restricted", (Exception,), {})
+        module.UnapprovedChannel = type("UnapprovedChannel", (Exception,), {})
         module.preflight_restricted = lambda *_: (types.SimpleNamespace(status_code=403), {})
         with patch.dict(sys.modules, {"workbuddy_intl_daily": module}):
             result = runner.workbuddy_global("token", "uid")
         self.assertFalse(result["ok"])
         self.assertIn("预检", result["message"])
+
+    def test_cn_channel_rejection_is_not_auth_failure(self):
+        module = types.ModuleType("workbuddy_daily")
+        module.run_account = lambda *_: ([], {"channel_rejected": True, "rest": ["渠道拦截"]})
+        with patch.dict(sys.modules, {"workbuddy_daily": module}):
+            result = runner.workbuddy_cn("token")
+        self.assertFalse(result["ok"])
+        self.assertNotIn("authInvalid", result)
+        self.assertIn("11-128", result["message"])
+
+    def test_global_channel_rejection_stops_before_activity(self):
+        module = types.ModuleType("workbuddy_intl_daily")
+        module.AccountRestricted = type("Restricted", (Exception,), {})
+        module.UnapprovedChannel = type("UnapprovedChannel", (Exception,), {})
+        def rejected(*_):
+            raise module.UnapprovedChannel("fixture")
+        module.preflight_restricted = rejected
+        with patch.dict(sys.modules, {"workbuddy_intl_daily": module}):
+            result = runner.workbuddy_global("token", "uid")
+        self.assertFalse(result["ok"])
+        self.assertNotIn("authInvalid", result)
+        self.assertIn("11-128", result["message"])
 
     def test_qoder_runs_claim_and_pro_without_refresh_token(self):
         module = types.ModuleType("qoder_daily")
