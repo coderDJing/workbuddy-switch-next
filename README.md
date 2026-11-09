@@ -33,9 +33,9 @@ Next 在上游项目的基础上，持续完善多平台工作台与 Agent 调�
 
 ## 快速开始
 
-日常使用推荐 [最新正式版](https://github.com/coderDJing/workbuddy-switch-next/releases/latest)。本轮正式版本为 **0.2.2**，变化与兼容说明见 [版本说明](docs/releases/0.2.2.md)；版本与安装包以 Releases 实际产物为准。需要提前体验后续变化时，可使用 [RC 候选版](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview)。也可按 [构建说明](docs/cli.md#构建与维护) 从源码构建。
+日常使用推荐 [最新正式版](https://github.com/coderDJing/workbuddy-switch-next/releases/latest)。本轮正式版本为 **0.2.3**，变化与兼容说明见 [版本说明](docs/releases/0.2.3.md)；版本与安装包以 Releases 实际产物为准。需要提前体验后续变化时，可使用 [RC 候选版](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview)。也可按 [构建说明](docs/cli.md#构建与维护) 从源码构建。
 
-当前源码为 **0.2.3-rc.202611091112**，补齐现有平台 CLI 业务管理、登录和能力发现，并保留每日任务组件更新，支持 Windows x64 与 macOS Apple Silicon（arm64）。具体变化见 [候选版说明](docs/releases/0.2.3-rc.202611091112.md)，安装包与远端验证结果以对应 Release 和 GitHub Actions 实际产物为准。
+当前源码为 **0.2.3**，补齐现有平台 CLI 业务管理、登录和能力发现，并保留每日任务组件更新，支持 Windows x64 与 macOS Apple Silicon（arm64）。具体变化见 [版本说明](docs/releases/0.2.3.md)，安装包与远端验证结果以对应 Release 和 GitHub Actions 实际产物为准。
 
 前往 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 下载对应平台的安装包：
 
