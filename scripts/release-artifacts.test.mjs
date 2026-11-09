@@ -3,9 +3,22 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildManifest, manifestFromEnvironment, platformSpec, validateArtifacts } from './release-artifacts.mjs';
+import { buildManifest, desktopReleaseNotes, manifestFromEnvironment, platformSpec, validateArtifacts } from './release-artifacts.mjs';
 
 const release = { owner: 'coderDJing', repo: 'workbuddy-switch-next', version: '0.2.0-rc.1', channel: 'preview' };
+test('release notes lead with two immutable desktop downloads and are idempotent', () => {
+  for (const config of [release, { ...release, version: '0.2.0', channel: 'stable' }]) {
+    const data = { ...config, slug: 'workbuddy-switch-next' };
+    const notes = desktopReleaseNotes('# Changes\n\nKeep existing notes.\n', data);
+    assert.equal((notes.match(/\]\(https:/g) || []).length, 2);
+    assert.ok(notes.indexOf('下载 Windows') < notes.indexOf('# Changes'));
+    assert.ok(notes.includes(`/download/v${config.version}/workbuddy-switch-next-windows-x86_64-setup.exe`));
+    assert.ok(notes.includes(`/download/v${config.version}/workbuddy-switch-next-macos-aarch64.dmg`));
+    assert.ok(notes.endsWith('# Changes\n\nKeep existing notes.\n'));
+    assert.equal(desktopReleaseNotes(notes, data), notes);
+  }
+});
+
 test('RC manifests pin immutable signed archives and safely encode filenames', () => {
   const data = buildManifest({ release, archiveName: 'WorkBuddy Switch Next_0.2.0-rc.1_x64-setup.exe', signature: 'fixture\n', keys: ['windows-x86_64-nsis'] });
   assert.equal(data.version, release.version);

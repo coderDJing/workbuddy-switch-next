@@ -198,23 +198,25 @@ jobs:
           python3 scripts/merge-update-manifests.py artifacts
           node scripts/release-artifacts.mjs validate artifacts
           node scripts/release-artifacts.mjs checksums artifacts
+      - name: Prepare desktop download links
+        run: node scripts/release-artifacts.mjs notes "docs/releases/$RELEASE_VERSION.md" release-notes.md
       - name: Publish versioned release
         run: |
           FLAGS=()
           if [ "$IS_PREVIEW" = true ]; then FLAGS+=(--prerelease --latest=false); else FLAGS+=(--latest); fi
           gh release create "v$RELEASE_VERSION" artifacts/* --verify-tag \
             --title "WorkBuddy Switch Next $RELEASE_VERSION" \
-            --notes-file "docs/releases/$RELEASE_VERSION.md" "${FLAGS[@]}"
+            --notes-file release-notes.md "${FLAGS[@]}"
       - name: Promote the preview update channel
         if: needs.select-matrix.outputs.preview == 'true'
         run: |
           if gh release view preview >/dev/null 2>&1; then
             gh api --method PATCH "repos/$GH_REPO/git/refs/tags/preview" -f sha="$GITHUB_SHA" -F force=true
             gh release upload preview artifacts/* --clobber
-            gh release edit preview --title "WorkBuddy Switch Next — 预览版" --notes-file "docs/releases/$RELEASE_VERSION.md" --prerelease --latest=false
+            gh release edit preview --title "WorkBuddy Switch Next — 预览版" --notes-file release-notes.md --prerelease --latest=false
           else
             gh release create preview artifacts/* --target "$GITHUB_SHA" --title "WorkBuddy Switch Next — 预览版" \
-              --notes-file "docs/releases/$RELEASE_VERSION.md" --prerelease --latest=false
+              --notes-file release-notes.md --prerelease --latest=false
           fi
       - name: Remove superseded RC releases and preview assets
         if: needs.select-matrix.outputs.preview == 'true'

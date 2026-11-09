@@ -95,6 +95,13 @@ function collect(env = process.env) {
   }
 }
 
+export function desktopReleaseNotes(notes, release = readRelease()) {
+  validateRelease(release);
+  const base = `https://github.com/${release.owner}/${release.repo}/releases/download/v${release.version}/`;
+  const content = notes.replace(/<!-- desktop-downloads:start -->[\s\S]*?<!-- desktop-downloads:end -->\s*/g, '').trimStart();
+  return `<!-- desktop-downloads:start -->\n[下载 Windows x64 安装包](${base}${release.slug}-windows-x86_64-setup.exe) · [下载 Mac Apple Silicon 安装包](${base}${release.slug}-macos-aarch64.dmg)\n\n桌面安装包已包含 CLI 和每日任务组件，安装后即可使用。\n<!-- desktop-downloads:end -->\n\n${content}`;
+}
+
 export function checksumDirectory(folder) {
   const lines = fs.readdirSync(folder).filter(name => name !== 'SHA256SUMS' && fs.statSync(path.join(folder, name)).isFile())
     .sort().map(name => `${crypto.createHash('sha256').update(fs.readFileSync(path.join(folder, name))).digest('hex')}  ${name}`);
@@ -134,7 +141,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const folder = bundleRoot(process.env.RUST_TARGET);
     fs.rmSync(folder, { recursive: true, force: true });
   } else if (command === 'collect') collect();
+  else if (command === 'notes') {
+    if (!process.argv[3] || !process.argv[4]) throw new Error('Usage: release-artifacts.mjs notes input.md output.md');
+    fs.writeFileSync(process.argv[4], desktopReleaseNotes(fs.readFileSync(process.argv[3], 'utf8')));
+  }
   else if (command === 'validate') console.log(`Validated ${validateArtifacts(path.resolve(process.argv[3] || 'dist-bin'))} updater manifests.`);
   else if (command === 'checksums') checksumDirectory(path.resolve(process.argv[3] || 'dist-bin'));
-  else throw new Error('Usage: release-artifacts.mjs manifest|clean|collect|checksums');
+  else throw new Error('Usage: release-artifacts.mjs manifest|clean|collect|validate|checksums|notes');
 }
