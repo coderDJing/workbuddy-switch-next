@@ -23,6 +23,15 @@ pub struct StateLock {
     _file: File,
 }
 
+impl Drop for StateLock {
+    fn drop(&mut self) {
+        // A concurrent Unix fork can retain the open file description until
+        // exec, even with CLOEXEC. Closing only this handle then leaves flock
+        // held briefly by the child. End the transaction explicitly instead.
+        let _ = self._file.unlock();
+    }
+}
+
 impl StateLock {
     pub fn try_at(path: &Path) -> io::Result<Self> {
         if let Some(parent) = path.parent() {
@@ -117,6 +126,27 @@ pub fn spawn_revision_watcher(on_change: impl Fn() + Send + 'static) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dropping_owner_unlocks_even_when_a_duplicate_handle_survives() {
+        let root = std::env::temp_dir().join(format!("wb-state-lock-{}", uuid::Uuid::new_v4()));
+        let path = root.join("state.lock");
+        let guard = StateLock::try_at(&path).unwrap();
+        let inherited = guard._file.try_clone().unwrap();
+        assert_eq!(
+            StateLock::try_at(&path).unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
+        drop(guard);
+        let next = StateLock::try_at(&path).unwrap();
+        assert_eq!(
+            StateLock::try_at(&path).unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
+        drop(next);
+        drop(inherited);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn independent_handles_exclude_each_other_and_drop_releases() {
