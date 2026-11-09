@@ -19,7 +19,10 @@
     "build:app": "node scripts/build-release.mjs --debug --bundles app",
     "build:app:release": "node scripts/build-release.mjs --bundles app",
     "release:check": "node scripts/check-release.mjs",
-    "version:set": "node scripts/bump-version.mjs"
+    "version:set": "node scripts/bump-version.mjs",
+    "postbuild": "node scripts/clean-build-cache.mjs --auto",
+    "clean:build-cache": "node scripts/clean-build-cache.mjs",
+    "clean:build-cache:check": "node scripts/clean-build-cache.mjs --dry-run"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",

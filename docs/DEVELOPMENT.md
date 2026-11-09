@@ -96,3 +96,12 @@ Next 更新配置为 `github_config_next.json`。首次读取原 `github_config.
 ## 图标
 
 `npm run icons:generate` 从已批准的贝雷帽母图导出网页、桌面、已有移动端及托盘资源。Windows 圆角、单色托盘的表情与 N 镂空由导出脚本处理，设计来源与尺寸检查见维护说明。
+
+## 本地构建缓存清理
+
+`npm run build` 和桌面打包成功后自动检查本项目 `target` 中的 Rust 中间缓存。增量缓存超过 8 GiB，或中间缓存合计超过 30 GiB 时，先清理增量缓存；其余缓存仍超过 30 GiB 时再清理依赖、构建脚本输出与编译指纹。编译进程运行中或无法检查进程状态时跳过，自动清理失败不改变构建成功结果。
+
+- `npm run clean:build-cache:check`：预览可清理的路径与大小。
+- `npm run clean:build-cache`：手动清理已识别的 Rust 中间缓存。直接运行 Cargo 后也可执行此命令。
+
+清理限定在当前项目 `target` 的标准 debug / release、架构子目录和 `next-release-validation` 编译缓存内，拒绝符号链接或目录联接。保留安装包、顶层可执行文件、验证记录、账号数据与其他项目目录，不清理系统 Temp。清理后的缓存会在下次编译时重新生成，因此不会在每次成功构建后全部删除。

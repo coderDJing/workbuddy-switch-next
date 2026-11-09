@@ -19,4 +19,7 @@ const result = spawnSync(process.execPath,
   [path.join(root, 'node_modules/@tauri-apps/cli/tauri.js'), 'build', ...process.argv.slice(2)],
   { cwd: root, stdio: 'inherit', env });
 if (result.error) throw result.error;
+if (result.status === 0) {
+  spawnSync(process.execPath, [path.join(root, 'scripts/clean-build-cache.mjs'), '--auto'], { cwd: root, stdio: 'inherit' });
+}
 process.exitCode = result.status ?? 1;
