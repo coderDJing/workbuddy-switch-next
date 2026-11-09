@@ -1,6 +1,93 @@
-# AI 命令行：CodeBuddy 与 Qoder
+# AI 命令行：现有平台完整管理
 
-一次性命令执行后退出，无需打开 GUI 或启动 webui。支持 `codebuddy-cli`（默认）、`qoder-cli` 和 `qoder-desktop`；Qoder 使用独立账号库，不混入 WorkBuddy / CodeBuddy 账号。`help --json` 返回 `supportedTargets` 和各目标的 `capabilities`，AI 可先检查能力再调用。
+一次性命令执行后退出，无需打开 GUI 或启动 webui。支持 `codebuddy-cli`（默认）、`workbuddy`、`codebuddy-ide`、`vscode`、`jetbrains`、`qoder-cli` 和 `qoder-desktop`。Qoder 使用独立账号库，不混入 WorkBuddy / CodeBuddy 账号。`help --json` 返回目标和快捷命令能力；`operations` 返回与 WebUI 共用的完整命名操作及参数契约。
+
+## 覆盖范围
+
+| 目标 | 状态 / 账号 / 积分 / 综合查询 / 切号 | Token / 积分统计 / 每日领取 | 自动任务与其他管理 |
+| --- | --- | --- | --- |
+| WorkBuddy、CodeBuddy IDE | 支持，国内版 / 国际版 | 统计为 WorkBuddy/CodeBuddy 平台汇总；每日签到按账号资格返回 | `call`：账号管理、会话复制 / 关联 / 同步、任务配置、导入导出、WebDAV |
+| CodeBuddy CLI | 支持，保留已有默认行为 | 同上 | `limits` 保留已有观察台账；其他操作用 `call` |
+| VS Code、JetBrains CodeBuddy 插件 | 支持，国内版 | 同上 | `call` 暴露各客户端已有能力；JetBrains 无会话复制能力 |
+| Qoder 桌面端 / CLI | 支持，国内版 / 国际版 | 保留区域筛选、本地用量与额度快照口径 | 保留 `automation`；`call` 补充本机识别、账号管理、备份和 CLI Hooks 接入 |
+
+桌面悬浮窗窗口管理、安装包下载重启、开机自启及原生权限窗口依赖桌面宿主，不伪装成独立 CLI 能力；`help --json` 的 `desktopHostOnly` 列出这些边界。后台调度仍需桌面应用或 `serve` 常驻，执行一次命令不会启动调度服务。
+
+## WorkBuddy 与各 IDE / 插件
+
+```bash
+workbuddy-switch-next status --target workbuddy --variant cn
+workbuddy-switch-next accounts --target codebuddy-ide --variant ai
+workbuddy-switch-next inspect --target workbuddy --summary
+workbuddy-switch-next switch ACCOUNT_ID --target workbuddy --dry-run
+workbuddy-switch-next switch ACCOUNT_ID --target workbuddy
+workbuddy-switch-next switch ACCOUNT_ID --target codebuddy-ide --close-running --relaunch
+workbuddy-switch-next accounts --target vscode
+workbuddy-switch-next status --target jetbrains
+workbuddy-switch-next token-stats --target workbuddy
+workbuddy-switch-next credit-stats --target codebuddy-cli
+workbuddy-switch-next rewards ACCOUNT_ID --target workbuddy
+```
+
+桌面目标默认拒绝切换运行中的客户端。需要关闭并重开时，同时指定 `--close-running --relaunch`；这复用现有客户端重启事务，可能中断任务。`--dry-run` 只读状态与账号元数据，不验证凭据。CodeBuddy CLI 仍保留既有关闭 CLI、不重开的语义；Qoder 进程策略见下节。
+
+WorkBuddy / CodeBuddy IDE 的 `status` 默认同时展示两区，`--variant` 可选单区；切换区域以账号本身为准。插件仅支持国内账号。`activeForTarget` 对应账号所在区域的客户端，多个区域状态放在 `clientStatus.clients` 中。完整模型可用性未知，桌面目标不提供快捷 `limits`，平台观察台账可用 `call get_rate_limits`。
+
+WorkBuddy/CodeBuddy 的 `token-stats` 和 `credit-stats` 是平台汇总，不接受 `--variant`、账号筛选或 Qoder 专有统计参数；不把缺失数据当作零。`credit-stats --refresh` 可能刷新官方用量。`rewards` 是现有每日签到能力，必须指定账号或显式 `--all`，国际版没有签到时返回跳过，不宣称获得奖励。
+
+## 完整命名操作
+
+```bash
+workbuddy-switch-next operations
+workbuddy-switch-next operations update_account_display
+workbuddy-switch-next call get_accounts
+workbuddy-switch-next call update_account_display --input-file edit-account.json
+workbuddy-switch-next call list_account_sessions --input-file sessions.json
+workbuddy-switch-next call get_auto_checkin_config
+workbuddy-switch-next call get_auto_rotate_config
+workbuddy-switch-next call get_qoder_companion --input-file qoder-region.json
+workbuddy-switch-next call webdav_info
+workbuddy-switch-next call export_all_accounts --output-file accounts-backup.json
+```
+
+`edit-account.json` 示例：
+
+```json
+{"accountId":"ACCOUNT_ID","patch":{"note":"工作账号"}}
+```
+
+`sessions.json` 示例：
+
+```json
+{"accountId":"ACCOUNT_ID","client":"workbuddy"}
+```
+
+`qoder-region.json` 示例：
+
+```json
+{"global":false}
+```
+
+命名操作使用与界面一致的操作名和请求结构，在进程内调用同一后端，不访问网络端口、不要求服务已启动。`operations OPERATION` 返回 `parameters`（类型、必填性和枚举值）、输入表达式与前端函数签名；未知顶层字段、缺少必填字段、错误基本类型和错误枚举在业务执行前拒绝。GET 参数进行 URL 编解码，支持中文和带特殊字符的账号 ID。复杂会话结构与预览令牌继续由原有 core 校验。
+
+`call` 不接受 `--target`、`--variant` 等快捷命令筛选参数：操作需要的客户端、区域和账号必须放进 JSON 输入。`--input-file -` 从标准输入读取，支持 UTF-8 BOM，最多 64 MiB。密码、令牌和备份正文放文件或 stdin，不放进命令行参数。JSON stdout 使用统一结果信封，实际结果位于 `result`；普通结果隐藏凭据，失败不输出原始远端响应。
+
+`export_accounts`、`export_all_accounts`、`export_qoder_accounts` 必须指定 `--output-file`，原始备份只写文件，stdout 仅报告路径和包含凭据标记。`--output-file` 不覆盖已有文件；执行失败时移除尚未完成的新文件。普通操作指定输出文件时写入脱敏后的业务结果。备份文件仍包含有效凭据，需妥善保管。
+
+账号 CRUD、登录态导入、导入预览 / 导入、会话复制 / 关联 / 同步、签到 / 每日任务、自动领取 / 轮换配置、限额 Hooks、Qoder CLI Companion Hooks、WebDAV 配置 / 测试 / 备份 / 恢复 / 同步均可通过 `operations` 发现。会话同步和备份恢复应先获取预览，再原样携带对应的 `previewToken` 或快照标识执行，遵循现有冲突与锁定规则。
+
+命名切号操作默认不关闭客户端，需在 JSON 中显式指定 `restart:true`（Qoder 用 `closeRunning` / `relaunch`）才允许对应进程动作。更推荐使用带 `--dry-run` 和明确进程策略的 `switch --target` 快捷命令。
+
+## 登录添加
+
+```bash
+workbuddy-switch-next login --target workbuddy --variant cn
+workbuddy-switch-next login --target qoder-cli --variant ai
+```
+
+命令向 stderr 输出官方授权链接并在同一进程等待授权完成，成功后保存账号，不切换客户端；无需另外启动界面。WorkBuddy / CodeBuddy 各端复用共同账号登录流程，Qoder 使用原有区域设备授权流程。不要把登录拆成跨进程的 `oauth_start` / `oauth_poll` 调用：这些状态仅存在于发起进程，相关操作在目录中标为 `oneShot:false`，用 `login` 完成完整流程。`switch_progress` 同样不提供跨进程任务状态；切号命令会等待事务结束。
+
+路由与输入契约维护在 `src/lib/operations.json`，前端和 CLI 共用。修改前端 API 参数后运行 `node scripts/sync-cli-operations.mjs --write`，验证时运行 `node scripts/sync-cli-operations.mjs`，避免 CLI 参数说明与实际实现漂移。
 
 ## 一键复制给 Skill 作者
 

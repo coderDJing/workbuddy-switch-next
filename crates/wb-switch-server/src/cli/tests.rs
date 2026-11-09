@@ -108,8 +108,6 @@ fn qoder_options_never_expand_mutations_or_silently_ignore_filters() {
         vec!["credits", "--target=qoder-cli", "--close-running"],
         vec!["inspect", "--target=qoder-cli", "--model=unverified"],
         vec!["credit-stats", "--target=qoder-cli", "--timeout=5"],
-        vec!["token-stats"],
-        vec!["rewards", "--all"],
         vec!["automation", "run"],
         vec!["switch", "a", "--close-running"],
     ] {
@@ -163,7 +161,7 @@ fn rejects_unknown_commands_options_and_conflicting_selectors() {
         vec!["credits", "--timeout", "0"],
         vec!["credits", "--concurrency=17"],
         vec!["limits", "--json=false"],
-        vec!["switch", "id", "--target", "workbuddy"],
+        vec!["switch", "id", "--target", "unsupported-client"],
         vec!["credits", "--json", "--json"],
         vec!["accounts", "--variant"],
         vec!["accounts", "--text", "--json"],

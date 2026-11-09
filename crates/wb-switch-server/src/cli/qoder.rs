@@ -25,10 +25,9 @@ use wb_switch_core::modules::{
 };
 
 pub(super) fn capabilities() -> Value {
-    json!({"codebuddy-cli":{"commands":["accounts","status","inspect","credits","switch","limits"]},
-        "qoder-cli":{"commands":["accounts","status","inspect","credits","switch","token-stats","credit-stats","rewards","automation"],"variants":["cn","ai"],"modelLimits":false,"switchClosesRunningByDefault":false},
-        "qoder-desktop":{"commands":["accounts","status","inspect","credits","switch","token-stats","credit-stats","rewards","automation"],"variants":["cn","ai"],"modelLimits":false,"switchClosesRunningByDefault":false}})
+    json!({"codebuddy-cli":{"commands":["accounts","status","inspect","credits","switch","token-stats","credit-stats","rewards","login","limits"]},"workbuddy":{"commands":["accounts","status","inspect","credits","switch","token-stats","credit-stats","rewards","login"],"variants":["cn","ai"],"switchClosesRunningByDefault":false},"codebuddy-ide":{"commands":["accounts","status","inspect","credits","switch","token-stats","credit-stats","rewards","login"],"variants":["cn","ai"],"switchClosesRunningByDefault":false},"vscode":{"commands":["accounts","status","inspect","credits","switch","token-stats","credit-stats","rewards","login"],"variants":["cn"],"switchClosesRunningByDefault":false},"jetbrains":{"commands":["accounts","status","inspect","credits","switch","token-stats","credit-stats","rewards","login"],"variants":["cn"],"switchClosesRunningByDefault":false},"qoder-cli":{"commands":["accounts","status","inspect","credits","switch","token-stats","credit-stats","rewards","login","automation"],"variants":["cn","ai"],"modelLimits":false,"switchClosesRunningByDefault":false},"qoder-desktop":{"commands":["accounts","status","inspect","credits","switch","token-stats","credit-stats","rewards","login","automation"],"variants":["cn","ai"],"modelLimits":false,"switchClosesRunningByDefault":false}})
 }
+
 #[derive(Clone)]
 struct Account {
     id: String,

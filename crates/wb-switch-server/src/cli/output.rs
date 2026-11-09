@@ -81,9 +81,12 @@ pub fn print_result(value: &Value, json_output: bool, ascii_json: bool) {
         println!("{}", encode_json(value, ascii_json));
         return;
     }
-    if value["target"]
+    if matches!(
+        value["command"].as_str(),
+        Some("operations" | "call" | "login" | "token-stats" | "credit-stats" | "rewards")
+    ) || value["target"]
         .as_str()
-        .is_some_and(|s| s.starts_with("qoder-"))
+        .is_some_and(|s| s.starts_with("qoder-") || s != "codebuddy-cli")
     {
         println!("{}", serde_json::to_string_pretty(value).unwrap());
         return;

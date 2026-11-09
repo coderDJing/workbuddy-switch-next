@@ -164,6 +164,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Verify CLI operation contracts
+        run: node scripts/sync-cli-operations.mjs
       - run: npm run release:check
       - name: Verify updater manifest compatibility
         run: python3 scripts/merge-update-manifests.py --self-test

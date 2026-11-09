@@ -43,7 +43,9 @@ pub(super) fn response(command: &str, target: Target) -> Value {
 fn scope(command: &str) -> Option<&'static str> {
     match command {
         "accounts" | "credits" | "rewards" => Some("account"),
-        "token-stats" | "credit-stats" | "automation" => Some("platform"),
+        "token-stats" | "credit-stats" | "automation" | "operations" | "call" | "login" => {
+            Some("platform")
+        }
         "status" | "switch" | "limits" => Some("client"),
         "inspect" => Some("mixed"),
         _ => None,
@@ -145,6 +147,8 @@ impl Context {
                     | "--port"
                     | "--wait"
                     | "--settings-file"
+                    | "--input-file"
+                    | "--output-file"
             ) {
                 i += 1;
             } else if arg == "--" {

@@ -9,16 +9,19 @@ The legacy workbuddy-switch command is also supported by the npm package.
 
 Commands:
   serve                         Start webui (default when no command is given)
-  status --target codebuddy-cli  Show CodeBuddy CLI authentication status
+  status --target TARGET        Show selected client authentication status
   accounts [list]               List account metadata (never credentials)
   inspect [ACCOUNT_ID]           One call: accounts, CLI status, fresh credits and model limits
-  switch ACCOUNT_ID             Switch CodeBuddy CLI; closes running CLI processes
+  switch ACCOUNT_ID             Switch selected client (default: CodeBuddy CLI)
   credits [ACCOUNT_ID | --all]   Query credit balances (default: all accounts)
   limits [ACCOUNT_ID]            Read observed model limits and recovery times
-  token-stats                   Qoder local Token usage (unknown counters stay unavailable)
-  credit-stats                  Qoder local credits and saved quota snapshots; --refresh queries selected region
-  rewards ACCOUNT_ID|--all      Claim Qoder daily rewards (explicit selection required)
+  token-stats                   Platform Token usage (unknown counters stay unavailable)
+  credit-stats                  Platform credit statistics; --refresh queries official usage
+  rewards ACCOUNT_ID|--all       Daily check-in / Qoder rewards (explicit selection required)
   automation [get|set|run]       Qoder automation settings/history; run only enabled, due tasks
+  login                         Wait for official authorization, save account, do not switch clients
+  operations [OPERATION]        Discover complete WebUI operations and input contracts
+  call OPERATION                Run a named operation in-process, without starting a server
   version                       Show version
 
 One-shot options:
@@ -27,10 +30,13 @@ One-shot options:
   --ascii-json                  JSON with Unicode escapes for legacy pipes (implies --json)
   --summary                     Compact inspect/credits output; keeps raw balances and 2-decimal display strings
   --variant cn|ai|all            Filter accounts (default: all)
-  --target TARGET                codebuddy-cli (default), qoder-cli, qoder-desktop
+  --target TARGET               codebuddy-cli (default), workbuddy, codebuddy-ide, vscode, jetbrains,
+                                qoder-cli, qoder-desktop
   --dry-run                     Preview switch target without writing or closing clients
-  --close-running               Qoder only: explicitly allow closing the target client
-  --relaunch                    Qoder desktop only: reopen if it was running; requires --close-running
+  --close-running               Explicitly allow closing a desktop/Qoder target
+  --relaunch                    Desktop restart; requires --close-running (new desktop targets require both)
+  --input-file PATH             call: JSON object file; - reads stdin (keeps secrets out of process arguments)
+  --output-file PATH            call: new output file; mandatory for credential exports, never overwrites
   --settings-file PATH          automation set: JSON patch for --variant cn|ai; unknown fields rejected
   --refresh                     credit-stats: query selected region before reading snapshots
   --timeout SECONDS             Credit query timeout per account (default: 30)
@@ -51,6 +57,10 @@ Credit *Display strings are rounded to 2 decimals for presentation; numeric fiel
 Progress goes to stderr; in JSON mode, progress is JSON Lines and stdout is one final object.
 Streams use UTF-8 without BOM; --ascii-json escapes non-ASCII characters losslessly.
 Qoder targets use an independent account store and stable IDs from accounts.
+WorkBuddy/CodeBuddy token-stats and credit-stats cover the platform, not one client or region.
+Use operations for account CRUD/import/export, sessions, automation configuration, hooks and WebDAV.
+login emits official authorization instructions to stderr and waits in the same process.
+Credential exports are written only to an explicit file; ordinary call results redact secrets.
 Qoder status defaults to both regions; --variant cn|ai selects one.
 Qoder switching refuses running clients unless --close-running is given.
 Qoder limits returns UNSUPPORTED_CAPABILITY; inspect reports availabilityKnown=false.
@@ -71,6 +81,9 @@ pub enum Command {
     CreditStats,
     Rewards,
     Automation,
+    Operations,
+    Call,
+    Login,
     Version,
     Help,
 }
@@ -89,6 +102,9 @@ impl Command {
             Self::CreditStats => "credit-stats",
             Self::Rewards => "rewards",
             Self::Automation => "automation",
+            Self::Operations => "operations",
+            Self::Call => "call",
+            Self::Login => "login",
             Self::Version => "version",
             Self::Help => "help",
         }
@@ -99,6 +115,9 @@ pub(super) fn json_by_default(command: &str, explicit_target: bool) -> bool {
     matches!(
         command,
         "accounts"
+            | "operations"
+            | "call"
+            | "login"
             | "inspect"
             | "switch"
             | "credits"
@@ -132,6 +151,8 @@ pub struct Options {
     pub refresh: bool,
     pub close_running: bool,
     pub relaunch: bool,
+    pub input_file: Option<String>,
+    pub output_file: Option<String>,
 }
 pub fn parse(args: &[String]) -> Result<Options, Failure> {
     let mut options = Options {
@@ -155,6 +176,8 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
         refresh: false,
         close_running: false,
         relaunch: false,
+        input_file: None,
+        output_file: None,
     };
     let mut positional = Vec::new();
     let mut flags = BTreeMap::new();
@@ -188,6 +211,8 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
                 | "--port"
                 | "--wait"
                 | "--settings-file"
+                | "--input-file"
+                | "--output-file"
         );
         if !takes_value
             && !matches!(
@@ -253,6 +278,9 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
         "credit-stats" => Command::CreditStats,
         "rewards" => Command::Rewards,
         "automation" => Command::Automation,
+        "operations" => Command::Operations,
+        "call" => Command::Call,
+        "login" => Command::Login,
         "version" => Command::Version,
         "help" => Command::Help,
         _ => {
@@ -283,11 +311,35 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
             "Use status --target codebuddy-cli for CLI authentication status",
         ));
     }
+    // The complete named-operation interface has its own strict syntax. It
+    // does not inherit the legacy target defaults or accept arbitrary URLs.
+    if matches!(options.command, Command::Operations | Command::Call) {
+        for key in flags.keys() {
+            if !(matches!(
+                key.as_str(),
+                "--json" | "--ascii-json" | "--text" | "--quiet"
+            ) || (options.command == Command::Call
+                && matches!(key.as_str(), "--input-file" | "--output-file")))
+            {
+                return Err(Failure::usage(format!("{key} is not supported for {cmd}")));
+            }
+        }
+        let rest = &positional[1..];
+        if rest.len() > 1 || (options.command == Command::Call && rest.len() != 1) {
+            return Err(Failure::usage("Use operations [OPERATION] or call OPERATION [--input-file PATH] [--output-file PATH]"));
+        }
+        options.action = rest.first().cloned().unwrap_or_default();
+        options.input_file = flags.get("--input-file").cloned();
+        options.output_file = flags.get("--output-file").cloned();
+        options.quiet = flags.contains_key("--quiet");
+        return Ok(options);
+    }
     for key in flags.keys() {
         let allowed = match key.as_str() {
             "--json" | "--ascii-json" | "--text" => options.command != Command::Serve,
             "--variant" => {
-                (options.target.is_qoder() && options.command == Command::Status)
+                ((options.target.is_qoder() || options.target.is_desktop())
+                    && options.command == Command::Status)
                     || matches!(
                         options.command,
                         Command::Accounts
@@ -300,6 +352,7 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
                             | Command::CreditStats
                             | Command::Rewards
                             | Command::Automation
+                            | Command::Login
                     )
             }
             "--target" => matches!(
@@ -314,10 +367,12 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
                     | Command::CreditStats
                     | Command::Rewards
                     | Command::Automation
+                    | Command::Login
             ),
             "--dry-run" => options.command == Command::Switch,
             "--close-running" | "--relaunch" => {
-                options.command == Command::Switch && options.target.is_qoder()
+                options.command == Command::Switch
+                    && (options.target.is_qoder() || options.target.is_desktop())
             }
             "--settings-file" => options.command == Command::Automation,
             "--refresh" => options.command == Command::CreditStats,
@@ -423,18 +478,51 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
             return Err(Failure::usage("automation set requires --variant cn or ai"));
         }
     }
-    if matches!(
-        options.command,
-        Command::TokenStats | Command::CreditStats | Command::Rewards | Command::Automation
-    ) && !options.target.is_qoder()
-    {
+    if matches!(options.command, Command::Automation) && !options.target.is_qoder() {
         return Err(Failure::usage(
             "This command requires --target qoder-cli or qoder-desktop",
         ));
     }
-    if options.relaunch && (options.target != Target::QoderDesktop || !options.close_running) {
+    if options.relaunch
+        && (!(options.target == Target::QoderDesktop || options.target.is_desktop())
+            || !options.close_running)
+    {
         return Err(Failure::usage(
-            "--relaunch requires --target qoder-desktop and --close-running",
+            "--relaunch requires a desktop target and --close-running",
+        ));
+    }
+    if options.target.is_desktop() && options.close_running != options.relaunch {
+        return Err(Failure::usage("Desktop switching uses --close-running --relaunch together (the existing client switch transaction restarts the client)"));
+    }
+    if matches!(options.target, Target::Vscode | Target::Jetbrains)
+        && options.variant == Some(WbVariant::Ai)
+    {
+        return Err(Failure::usage(
+            "This plugin target only supports --variant cn",
+        ));
+    }
+    if options.command == Command::Login
+        && flags.contains_key("--variant")
+        && options.variant.is_none()
+    {
+        return Err(Failure::usage(
+            "This command requires one region: --variant cn or ai",
+        ));
+    }
+    if matches!(options.command, Command::TokenStats | Command::CreditStats)
+        && !options.target.is_qoder()
+        && flags.contains_key("--variant")
+    {
+        return Err(Failure::usage(
+            "WorkBuddy/CodeBuddy statistics are platform-wide; do not pass --variant",
+        ));
+    }
+    if options.command == Command::CreditStats
+        && !options.target.is_qoder()
+        && (flags.contains_key("--timeout") || flags.contains_key("--concurrency"))
+    {
+        return Err(Failure::usage(
+            "Platform credit-stats does not support per-account --timeout or --concurrency",
         ));
     }
     if options.target.is_qoder() && flags.contains_key("--model") {

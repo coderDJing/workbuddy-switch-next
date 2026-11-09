@@ -125,8 +125,17 @@ fn project_at(value: &Value, as_of: i64) -> Value {
                 ],
             )
         };
-        // Retain the alias used by --text and existing callers.
-        compact["codebuddyCli"] = compact["clientStatus"].clone();
+        if !value["target"].as_str().is_some_and(|target| {
+            matches!(
+                target,
+                "workbuddy" | "codebuddy-ide" | "vscode" | "jetbrains"
+            )
+        }) {
+            // Retain the alias used by existing CodeBuddy CLI callers.
+            compact["codebuddyCli"] = compact["clientStatus"].clone();
+        } else {
+            compact["clientStatus"] = value["clientStatus"].clone();
+        }
     }
     compact["accounts"] = json!(value["accounts"]
         .as_array()

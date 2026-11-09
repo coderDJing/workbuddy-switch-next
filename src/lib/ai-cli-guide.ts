@@ -1,20 +1,31 @@
 import { APP_VERSION, GITHUB_REPOSITORY_URL } from "./update";
 
-export type CliTarget = "codebuddy-cli" | "qoder-cli" | "qoder-desktop";
+export type CliTarget = "codebuddy-cli" | "qoder-cli" | "qoder-desktop" | "workbuddy" | "codebuddy-ide" | "vscode" | "jetbrains";
+export const CLI_TARGET_LABELS: Record<CliTarget, string> = {
+  "codebuddy-cli": "CodeBuddy CLI", workbuddy: "WorkBuddy", "codebuddy-ide": "CodeBuddy IDE",
+  vscode: "VS Code CodeBuddy 插件", jetbrains: "JetBrains CodeBuddy 插件", "qoder-cli": "Qoder CLI", "qoder-desktop": "Qoder 桌面端",
+};
 export type CliRegion = "cn" | "ai" | "all";
 export type CliCommand = { title: string; command: string };
 
 export function cliQueryCommands(target: CliTarget, region: CliRegion): CliCommand[] {
+  const qoder = target.startsWith("qoder-");
+  if (target === "vscode" || target === "jetbrains") region = "cn";
   const args = `--target ${target} --variant ${region}`;
   return [
     { title: "账号与额度概览", command: `workbuddy-switch-next inspect ${args} --summary` },
     { title: "查看账号 ID", command: `workbuddy-switch-next accounts ${args}` },
-    ...(target !== "codebuddy-cli" ? [
+    ...(qoder ? [
       { title: "本地 Token 统计", command: `workbuddy-switch-next token-stats ${args}` },
       { title: "本地积分与额度快照", command: `workbuddy-switch-next credit-stats ${args}` },
       { title: "查看自动任务配置", command: `workbuddy-switch-next automation get ${args}` },
-    ] : [{ title: "查看已观察到的模型限额", command: `workbuddy-switch-next limits ${args}` }]),
+    ] : [
+      { title: "平台 Token 统计", command: `workbuddy-switch-next token-stats --target ${target}` },
+      { title: "平台积分统计", command: `workbuddy-switch-next credit-stats --target ${target}` },
+      ...(target === "codebuddy-cli" ? [{ title: "查看已观察到的模型限额", command: `workbuddy-switch-next limits ${args}` }] : []),
+    ]),
     { title: "发现命令与能力", command: "workbuddy-switch-next help --json" },
+    { title: "发现完整管理操作", command: "workbuddy-switch-next operations" },
   ];
 }
 
@@ -24,6 +35,31 @@ export function cliQueryText(target: CliTarget, region: CliRegion): string {
 
 /** Static reference for a Skill author: no local accounts, paths, or credentials. */
 export function cliSkillGuide(target: CliTarget, region: CliRegion): string {
+  if (!["codebuddy-cli", "qoder-cli", "qoder-desktop"].includes(target)) {
+    if (target === "vscode" || target === "jetbrains") region = "cn";
+    return [
+      "请根据以下说明编写 Skill，不执行操作示例。",
+      "# WorkBuddy Switch Next — Skill 接入说明",
+      `来源版本：${APP_VERSION}；默认客户端：${CLI_TARGET_LABELS[target]}；区域：${region}。`,
+      "先运行 version --json、help --json 和 operations，按实际安装版本发现能力。一次性命令无需启动 GUI 或 serve。",
+      "## 查询",
+      "```sh", cliQueryText(target, region), "```",
+      "accounts / inspect 中 activeForTarget 对应账号所在区域的客户端。状态不明时保持未知，不猜测模型可用性。",
+      "token-stats、credit-stats 返回 WorkBuddy/CodeBuddy 平台统计，不接受区域筛选；积分查询可能刷新凭据与缓存。",
+      "## 切换（仅按用户要求调用）",
+      "```sh",
+      `workbuddy-switch-next switch ACCOUNT_ID --target ${target} --dry-run`,
+      `workbuddy-switch-next switch ACCOUNT_ID --target ${target}`,
+      "```",
+      "dry-run 只读预览，不验证凭据。默认拒绝切换运行中的客户端；用户授权关闭并重开时，显式同时加 --close-running --relaunch。两个参数使用现有桌面客户端重启事务，可能中断任务。",
+      "## 账号、会话、自动任务与备份",
+      "operations OPERATION 查看命名操作的参数；call OPERATION --input-file PATH 执行，- 可从 stdin 读取 JSON。参数中的客户端和区域以操作说明为准，call 不接受 --target。",
+      `登录用 login --target ${target} --variant ${region === "all" ? "cn" : region}，命令在同一进程等待官方授权；授权链接写入 stderr。`,
+      "导出凭据必须 --output-file PATH，目标文件不得已存在；普通结果隐藏令牌和密码。会话写入先获取预览，原样使用 previewToken。自动调度仍需桌面端或 serve 常驻。",
+      "stdout 为最终 JSON，stderr 为进度；退出码 0 成功、1 失败、2 参数或能力不支持、3 部分成功、130 中断。中断后先查询状态，避免重复切号或提交。",
+      `完整文档：${GITHUB_REPOSITORY_URL}/blob/main/docs/cli.md`,
+    ].join("\n\n");
+  }
   const qoder = target !== "codebuddy-cli";
   const args = `--target ${target} --variant ${region}`;
   const configRegion = region === "all" ? "REGION" : region;
@@ -93,12 +129,15 @@ export function cliSkillGuide(target: CliTarget, region: CliRegion): string {
       "automation set 必须指定 cn 或 ai，不能使用 all；REGION 占位符须替换为用户指定的区域。先读取配置，仅修改用户要求的字段。qoder-settings.json 是需创建的 JSON 补丁文件，例如：",
       '```json\n{"dailyEnabled":true,"dailyTime":"09:00"}\n```',
       "支持字段：dailyEnabled、dailyTime、alertsEnabled、expiryDays、lowBalance、rotateEnabled、rotateBelow、cooldownMinutes；时间为本机时区，具体约束以 CLI 校验为准。automation run 只检查已启用且到期的任务，可能领取或切号，不启动常驻调度。持续调度需桌面应用或 serve。",
-      "WebDAV 和悬浮窗接入通过平台设置管理，不能编造对应 CLI 命令。",
+      "WebDAV、账号管理和 Qoder CLI Hooks 接入也可运行 operations 发现命名操作，再用 call OPERATION --input-file PATH 调用；桌面悬浮窗窗口仍由桌面宿主管理。",
     ] : [
       "- CodeBuddy 的 clientStatus、activeAccountId、activeForTarget 表示客户端与账号状态；最终状态读取失败时查看 clientStatusError，未知当前账号不作确定判断。",
       "- limits 读取已有模型限制观察，未观察到限制或已到恢复时间都不证明模型可用；不要主动消耗模型调用来探测。",
-      "- 本目标没有 token-stats、credit-stats、rewards、automation 命令，不套用 Qoder 的专属命令。",
+      "- 本目标支持 token-stats、credit-stats（WorkBuddy/CodeBuddy 平台汇总）和 rewards；automation 快捷命令仍为 Qoder 专属，其他自动任务用 operations 发现对应 call 操作。",
     ]),
+    "",
+    "## 完整管理操作",
+    "运行 workbuddy-switch-next operations 发现账号导入导出、会话复制/关联/同步、自动任务配置和 WebDAV；operations OPERATION 查看参数。用 call OPERATION --input-file PATH 执行（支持 - 从标准输入读 JSON）。导出凭据必须 --output-file PATH；普通输出隐藏令牌与密码。login 在同一进程等待官方授权，不能拆成跨进程 start/poll。",
     "",
     "## Skill 编写要求",
     "把能力发现、查询、结果解释和用户授权后的修改分开。按任务选择最少必要命令，优先 inspect --summary 避免重复查询。文档中的参数只是默认值；用户明确指定其他目标或区域时，以用户要求为准。",

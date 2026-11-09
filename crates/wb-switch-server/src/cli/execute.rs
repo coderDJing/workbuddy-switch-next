@@ -104,8 +104,23 @@ async fn execute_inner(
     if options.command == Command::Help {
         let mut value = response("help", options.target);
         value["usage"] = json!(super::HELP);
-        value["supportedTargets"] = json!(["codebuddy-cli", "qoder-cli", "qoder-desktop"]);
+        value["supportedTargets"] = json!([
+            "codebuddy-cli",
+            "qoder-cli",
+            "qoder-desktop",
+            "workbuddy",
+            "codebuddy-ide",
+            "vscode",
+            "jetbrains"
+        ]);
         value["capabilities"] = super::qoder::capabilities();
+        value["operationsCommand"] = json!("operations [OPERATION]");
+        value["desktopHostOnly"] = json!([
+            "companion window lifecycle",
+            "desktop updater download/restart",
+            "launch at login",
+            "native permission/settings dialogs"
+        ]);
         return Ok((value, 0));
     }
     if options.command == Command::Version {
@@ -113,38 +128,63 @@ async fn execute_inner(
         value["version"] = json!(env!("CARGO_PKG_VERSION"));
         return Ok((value, 0));
     }
+    if matches!(
+        options.command,
+        Command::Operations | Command::Call | Command::Login
+    ) {
+        return super::operations::execute(options, started, control).await;
+    }
     if options.target.is_qoder() {
         return super::qoder::execute(options, started, control).await;
+    }
+    if options.target.is_desktop() && options.command == Command::Limits {
+        return Err(Failure {code:"UNSUPPORTED_CAPABILITY", message:"Use call get_rate_limits for the platform ledger; per-client model availability is unknown".into(), exit:2});
     }
     let snapshot_guard = auth_snapshot(options, started, control).await?;
     let selected = select_accounts(load_accounts()?, options)?;
     let cli_status = if matches!(options.command, Command::Accounts | Command::Status) {
-        Some(options.target.status())
+        Some(options.target.status_for(options.variant))
     } else {
         None
     };
     drop(snapshot_guard);
+    if let Some(result) = super::operations::platform_command(options, &selected, control).await? {
+        return Ok(result);
+    }
+    if options.target.is_desktop() && options.command == Command::Switch {
+        return super::operations::desktop_switch(options, &selected[0]).await;
+    }
     let value = match options.command {
         Command::Accounts => {
             let mut value = response("accounts", options.target);
             let current = cli_status.as_ref().unwrap()["activeAccountId"].clone();
             value["activeCliAccountId"] = current.clone();
             value["activeAccountId"] = current.clone();
+            value["clientStatus"] = cli_status.as_ref().unwrap().clone();
             value["accounts"] = json!(selected
                 .iter()
                 .map(|a| {
                     let mut meta = account::account_meta(a);
                     meta["activeCli"] = json!(meta["id"] == current);
-                    meta["activeForTarget"] = meta["activeCli"].clone();
+                    meta["activeForTarget"] = active_for(a, cli_status.as_ref().unwrap());
+                    if options.target.is_desktop() {
+                        meta.as_object_mut().unwrap().remove("activeCli");
+                    }
                     meta
                 })
                 .collect::<Vec<_>>());
+            if options.target.is_desktop() {
+                value.as_object_mut().unwrap().remove("activeCliAccountId");
+            }
             value
         }
         Command::Status => {
             let mut value = response("status", options.target);
             value["clientStatus"] = cli_status.unwrap();
             value["codebuddyCli"] = value["clientStatus"].clone();
+            if options.target.is_desktop() {
+                value.as_object_mut().unwrap().remove("codebuddyCli");
+            }
             value["accountCount"] = json!(selected.len());
             value
         }
@@ -240,7 +280,7 @@ async fn execute_inner(
             let limit_result = limits_response(&selected, options, snapshot);
             let final_snapshot = async {
                 let guard = auth_snapshot(options, started, control).await?;
-                let current = options.target.status();
+                let current = options.target.status_for(options.variant);
                 let latest = load_accounts()?;
                 drop(guard);
                 Ok((current, latest))
@@ -277,6 +317,18 @@ async fn execute_inner(
     Ok((value, 0))
 }
 
+fn active_for(account: &Value, status: &Value) -> Value {
+    if let Some(clients) = status["clients"].as_array() {
+        let variant = wb_switch_core::modules::account::variant_of(account);
+        return clients
+            .iter()
+            .find(|c| c["variant"].as_str() == Some(variant.as_str()))
+            .map(|c| json!(c["activeAccountId"] == account["id"]))
+            .unwrap_or(Value::Null);
+    }
+    json!(status["activeAccountId"] == account["id"])
+}
+
 fn inspect_response(
     selected: &[Value],
     options: &Options,
@@ -300,6 +352,9 @@ fn inspect_response(
     value["ok"] = credit_result["ok"].clone();
     value["summary"] = credit_result["summary"].clone();
     value["codebuddyCli"] = current.clone();
+    if options.target.is_desktop() {
+        value.as_object_mut().unwrap().remove("codebuddyCli");
+    }
     value["clientStatus"] = current.clone();
     value["queryStartedAt"] = json!(query_started_at);
     value["queriedAt"] = json!(config::now_ms());
@@ -326,7 +381,14 @@ fn inspect_response(
             } else {
                 json!(a["id"] == current["activeAccountId"])
             };
-            meta["activeForTarget"] = meta["activeCli"].clone();
+            meta["activeForTarget"] = if current.is_null() {
+                Value::Null
+            } else {
+                active_for(a, &current)
+            };
+            if options.target.is_desktop() {
+                meta.as_object_mut().unwrap().remove("activeCli");
+            }
             meta["credits"] = credit_result["accounts"][index].clone();
             meta["limited"] = limit_result["accounts"][index]["limited"].clone();
             meta["hasObservedLimits"] =

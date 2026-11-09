@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccountsStore } from "@/stores/accounts";
 import { useQoderView } from "@/stores/qoder-view";
 import type { PlatformId } from "@/lib/platforms";
-import { cliQueryCommands, cliQueryText, cliSkillGuide, type CliRegion, type CliTarget } from "@/lib/ai-cli-guide";
+import { CLI_TARGET_LABELS, cliQueryCommands, cliQueryText, cliSkillGuide, type CliRegion, type CliTarget } from "@/lib/ai-cli-guide";
 
 function CommandRow({ title, command }: { title: string; command: string }) {
   const [copied, setCopied] = useState(false);
@@ -39,7 +39,8 @@ export function AiCliDialog({ platform }: { platform: PlatformId }) {
   const [region, setRegion] = useState<CliRegion>(platform === "qoder" ? qoderVariant : codebuddyVariant);
   const [copied, setCopied] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
-  const qoder = target !== "codebuddy-cli";
+  const qoder = target.startsWith("qoder-");
+  const domesticOnly = target === "vscode" || target === "jetbrains";
   const commands = cliQueryCommands(target, region);
   const guide = cliSkillGuide(target, region);
   const queryText = cliQueryText(target, region);
@@ -76,11 +77,11 @@ export function AiCliDialog({ platform }: { platform: PlatformId }) {
         <DialogDescription className="leading-6">一键复制接入说明，交给人或 AI 编写 Skill；也可以单独复制命令在终端使用。</DialogDescription>
       </DialogHeader>
       <div className="flex flex-wrap items-center justify-between gap-3 border-y py-3">
-        <Select value={target} onValueChange={value => { setTarget(value as CliTarget); setCopied(null); }}>
+        <Select value={target} onValueChange={value => { setTarget(value as CliTarget); if (value === "vscode" || value === "jetbrains") setRegion("cn"); setCopied(null); }}>
           <SelectTrigger aria-label="CLI 目标客户端" className="w-full sm:w-48"><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="codebuddy-cli">CodeBuddy CLI</SelectItem><SelectItem value="qoder-cli">Qoder CLI</SelectItem><SelectItem value="qoder-desktop">Qoder 桌面端</SelectItem></SelectContent>
+          <SelectContent>{Object.entries(CLI_TARGET_LABELS).map(([id, label]) => <SelectItem key={id} value={id}>{label}</SelectItem>)}</SelectContent>
         </Select>
-        <Tabs value={region} onValueChange={value => { setRegion(value as CliRegion); setCopied(null); }}><TabsList aria-label="CLI 区域"><TabsTrigger value="cn">国内版</TabsTrigger><TabsTrigger value="ai">国际版</TabsTrigger><TabsTrigger value="all">全部</TabsTrigger></TabsList></Tabs>
+        <Tabs value={region} onValueChange={value => { setRegion(value as CliRegion); setCopied(null); }}><TabsList aria-label="CLI 区域"><TabsTrigger value="cn">国内版</TabsTrigger><TabsTrigger value="ai" disabled={domesticOnly}>国际版</TabsTrigger><TabsTrigger value="all" disabled={domesticOnly}>全部</TabsTrigger></TabsList></Tabs>
       </div>
       <section aria-label="批量复制" className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
         <div><p className="flex items-center gap-2 text-sm font-semibold"><FileText className="size-4 text-primary" />给 Skill 作者的一份完整说明</p><p className="mt-1 text-xs leading-6 text-muted-foreground">包含当前目标与区域、命令示例、参数、JSON 返回与错误处理，以及切号和自动任务的调用约定。</p></div>

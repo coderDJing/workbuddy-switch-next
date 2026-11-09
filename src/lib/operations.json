@@ -1,0 +1,1675 @@
+{
+  "get_status": {
+    "method": "GET",
+    "path": "/api/status",
+    "input": "variantArgs(variant)",
+    "signature": "getStatus(variant?: WbVariant)",
+    "parameters": {
+      "variant": {
+        "type": "\"cn\" | \"ai\"",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      }
+    }
+  },
+  "get_accounts": {
+    "method": "GET",
+    "path": "/api/accounts",
+    "input": "{}",
+    "signature": "getAccounts()",
+    "parameters": {}
+  },
+  "export_all_accounts": {
+    "method": "POST",
+    "path": "/api/accounts/all/export",
+    "input": "{ path: path ?? null }",
+    "signature": "exportAllAccounts(path?: string)",
+    "parameters": {}
+  },
+  "preview_all_accounts": {
+    "method": "POST",
+    "path": "/api/accounts/all/preview",
+    "input": "{ fileText }",
+    "signature": "previewAllAccounts(fileText: string)",
+    "parameters": {
+      "fileText": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "import_all_accounts": {
+    "method": "POST",
+    "path": "/api/accounts/all/import",
+    "input": "{ fileText }",
+    "signature": "importAllAccounts(fileText: string)",
+    "parameters": {
+      "fileText": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "get_codebuddy_cli_status": {
+    "method": "GET",
+    "path": "/api/codebuddy-cli/status",
+    "input": "{}",
+    "signature": "getCodebuddyCliStatus()",
+    "parameters": {}
+  },
+  "install_codebuddy_cli_helper": {
+    "method": "POST",
+    "path": "/api/codebuddy-cli/install-helper",
+    "input": "{}",
+    "signature": "installCodebuddyCliHelper()",
+    "parameters": {}
+  },
+  "switch_codebuddy_cli_account": {
+    "method": "POST",
+    "path": "/api/codebuddy-cli/switch",
+    "input": "{ accountId, closeRunningCli }",
+    "signature": "switchCodebuddyCliAccount(accountId: string, closeRunningCli = false)",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      },
+      "closeRunningCli": {
+        "type": "boolean",
+        "required": false
+      }
+    }
+  },
+  "get_codebuddy_cn_ide_status": {
+    "method": "GET",
+    "path": "/api/codebuddy-cn-ide/status",
+    "input": "{}",
+    "signature": "getCodebuddyCnIdeStatus()",
+    "parameters": {}
+  },
+  "switch_codebuddy_cn_ide_account": {
+    "method": "POST",
+    "path": "/api/codebuddy-cn-ide/switch",
+    "input": "{ accountId, restart, copySessions, syncSelections }",
+    "signature": "switchCodebuddyCnIdeAccount(accountId: string, restart = true, copySessions?: VscodeSessionRef[], syncSelections?: SessionSyncSelection[])",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      },
+      "restart": {
+        "type": "boolean",
+        "required": false
+      },
+      "copySessions": {
+        "type": "VscodeSessionRef[] | undefined",
+        "required": false
+      },
+      "syncSelections": {
+        "type": "SessionSyncSelection[] | undefined",
+        "required": false
+      }
+    }
+  },
+  "detect_codebuddy_cn_ide_account": {
+    "method": "POST",
+    "path": "/api/codebuddy-cn-ide/detect",
+    "input": "{}",
+    "signature": "detectCodebuddyCnIdeAccount()",
+    "parameters": {}
+  },
+  "list_codebuddy_ide_sessions": {
+    "method": "GET",
+    "path": "/api/codebuddy-cn-ide/sessions",
+    "input": "{}",
+    "signature": "listCodebuddyIdeSessions()",
+    "parameters": {}
+  },
+  "codebuddy_ide_session_links_preview": {
+    "method": "POST",
+    "path": "/api/codebuddy-cn-ide/session-links",
+    "input": "{ targetAccountId }",
+    "signature": "codebuddyIdeSessionLinksPreview(targetAccountId: string)",
+    "parameters": {
+      "targetAccountId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "get_vscode_ext_status": {
+    "method": "GET",
+    "path": "/api/vscode-ext/status",
+    "input": "{}",
+    "signature": "getVscodeExtStatus()",
+    "parameters": {}
+  },
+  "get_jetbrains_status": {
+    "method": "GET",
+    "path": "/api/jetbrains/status",
+    "input": "{}",
+    "signature": "getJetbrainsStatus()",
+    "parameters": {}
+  },
+  "switch_jetbrains_account": {
+    "method": "POST",
+    "path": "/api/jetbrains/switch",
+    "input": "{ accountId, restart, configDirs }",
+    "signature": "switchJetbrainsAccount(accountId: string, restart = true, configDirs?: string[])",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      },
+      "restart": {
+        "type": "boolean",
+        "required": false
+      },
+      "configDirs": {
+        "type": "string[] | undefined",
+        "required": false
+      }
+    }
+  },
+  "detect_jetbrains_account": {
+    "method": "POST",
+    "path": "/api/jetbrains/detect",
+    "input": "{}",
+    "signature": "detectJetbrainsAccount()",
+    "parameters": {}
+  },
+  "get_qoder_status": {
+    "method": "GET",
+    "path": "/api/qoder/status",
+    "input": "{}",
+    "signature": "getQoderStatus()",
+    "parameters": {}
+  },
+  "get_qoder_automation": {
+    "method": "GET",
+    "path": "/api/qoder/automation",
+    "input": "{}",
+    "signature": "getQoderAutomation()",
+    "parameters": {}
+  },
+  "save_qoder_automation": {
+    "method": "POST",
+    "path": "/api/qoder/automation",
+    "input": "{ settings }",
+    "signature": "saveQoderAutomation(settings: QoderSettings)",
+    "parameters": {
+      "settings": {
+        "type": "QoderSettings",
+        "required": true
+      }
+    }
+  },
+  "run_qoder_automation": {
+    "method": "POST",
+    "path": "/api/qoder/automation/run",
+    "input": "{}",
+    "signature": "runQoderAutomation()",
+    "parameters": {}
+  },
+  "get_qoder_companion": {
+    "method": "POST",
+    "path": "/api/qoder/companion",
+    "input": "{ global }",
+    "signature": "getQoderCompanion(global: boolean)",
+    "parameters": {
+      "global": {
+        "type": "boolean",
+        "required": false
+      }
+    }
+  },
+  "set_qoder_companion": {
+    "method": "POST",
+    "path": "/api/qoder/companion",
+    "input": "{ global, enabled }",
+    "signature": "setQoderCompanion(global: boolean, enabled: boolean)",
+    "parameters": {
+      "global": {
+        "type": "boolean",
+        "required": true
+      },
+      "enabled": {
+        "type": "true",
+        "required": true
+      }
+    }
+  },
+  "qoder_cloud": {
+    "method": "POST",
+    "path": "/api/qoder/cloud",
+    "input": "{ action, passphrase, indexes, snapshotId }",
+    "signature": "qoderCloud(action: \"backup\" | \"sync\" | \"preview\" | \"restore\", passphrase: string, indexes?: number[], snapshotId?: string)",
+    "parameters": {
+      "action": {
+        "type": "\"backup\" | \"sync\" | \"preview\" | \"restore\"",
+        "required": true,
+        "enum": [
+          "backup",
+          "sync",
+          "preview",
+          "restore"
+        ]
+      },
+      "passphrase": {
+        "type": "string",
+        "required": true
+      },
+      "indexes": {
+        "type": "number[] | undefined",
+        "required": false
+      },
+      "snapshotId": {
+        "type": "string | undefined",
+        "required": false
+      }
+    }
+  },
+  "auto_capture_qoder_accounts": {
+    "method": "POST",
+    "path": "/api/qoder/auto-capture",
+    "input": "{}",
+    "signature": "autoCaptureQoderAccounts()",
+    "parameters": {}
+  },
+  "get_qoder_credits": {
+    "method": "POST",
+    "path": "/api/qoder/credits",
+    "input": "{ bundleIds, liveTarget: liveTarget ?? null }",
+    "signature": "getQoderCredits(bundleIds: string[], liveTarget?: QoderTarget)",
+    "parameters": {
+      "bundleIds": {
+        "type": "string[]",
+        "required": true
+      },
+      "liveTarget": {
+        "type": "QoderTarget | null",
+        "required": true,
+        "enum": [
+          "desktop",
+          "cli",
+          "global_desktop",
+          "global_cli"
+        ]
+      }
+    }
+  },
+  "get_qoder_statistics": {
+    "method": "GET",
+    "path": "/api/qoder/stats",
+    "input": "{}",
+    "signature": "getQoderStatistics()",
+    "parameters": {}
+  },
+  "get_qoder_credit_statistics": {
+    "method": "GET",
+    "path": "/api/qoder/credits/stats",
+    "input": "{ refresh }",
+    "signature": "getQoderCreditStatistics(refresh = false)",
+    "parameters": {
+      "refresh": {
+        "type": "boolean",
+        "required": false
+      }
+    }
+  },
+  "claim_qoder_rewards": {
+    "method": "POST",
+    "path": "/api/qoder/rewards",
+    "input": "{ bundleIds, liveTarget: liveTarget ?? null }",
+    "signature": "claimQoderRewards(bundleIds: string[], liveTarget?: QoderTarget)",
+    "parameters": {
+      "bundleIds": {
+        "type": "string[]",
+        "required": true
+      },
+      "liveTarget": {
+        "type": "QoderTarget | null",
+        "required": true,
+        "enum": [
+          "desktop",
+          "cli",
+          "global_desktop",
+          "global_cli"
+        ]
+      }
+    }
+  },
+  "export_qoder_accounts": {
+    "method": "POST",
+    "path": "/api/qoder/export",
+    "input": "{ bundleIds }",
+    "signature": "exportQoderAccounts(bundleIds: string[])",
+    "parameters": {
+      "bundleIds": {
+        "type": "string[]",
+        "required": true
+      }
+    }
+  },
+  "preview_qoder_backup": {
+    "method": "POST",
+    "path": "/api/qoder/backup/preview",
+    "input": "{ fileText }",
+    "signature": "previewQoderBackup(fileText: string)",
+    "parameters": {
+      "fileText": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "import_qoder_backup": {
+    "method": "POST",
+    "path": "/api/qoder/backup/import",
+    "input": "{ fileText, indexes }",
+    "signature": "importQoderBackup(fileText: string, indexes: number[])",
+    "parameters": {
+      "fileText": {
+        "type": "string",
+        "required": true
+      },
+      "indexes": {
+        "type": "number[]",
+        "required": true
+      }
+    }
+  },
+  "qoder_oauth_start": {
+    "method": "POST",
+    "path": "/api/qoder/oauth/start",
+    "input": "{ target }",
+    "signature": "startQoderLogin(target: QoderTarget)",
+    "parameters": {
+      "target": {
+        "type": "QoderTarget",
+        "required": true,
+        "enum": [
+          "desktop",
+          "cli",
+          "global_desktop",
+          "global_cli"
+        ]
+      }
+    }
+  },
+  "qoder_oauth_poll": {
+    "method": "POST",
+    "path": "/api/qoder/oauth/poll",
+    "input": "{ loginId }",
+    "signature": "pollQoderLogin(loginId: string)",
+    "parameters": {
+      "loginId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "qoder_oauth_cancel": {
+    "method": "POST",
+    "path": "/api/qoder/oauth/cancel",
+    "input": "{ loginId }",
+    "signature": "cancelQoderLogin(loginId: string)",
+    "parameters": {
+      "loginId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "capture_qoder_account": {
+    "method": "POST",
+    "path": "/api/qoder/capture",
+    "input": "{ target, label }",
+    "signature": "captureQoderAccount(target: QoderTarget, label?: string)",
+    "parameters": {
+      "target": {
+        "type": "QoderTarget",
+        "required": true,
+        "enum": [
+          "desktop",
+          "cli",
+          "global_desktop",
+          "global_cli"
+        ]
+      },
+      "label": {
+        "type": "string | undefined",
+        "required": false
+      }
+    }
+  },
+  "rename_qoder_account": {
+    "method": "POST",
+    "path": "/api/qoder/rename",
+    "input": "{ bundleId, label }",
+    "signature": "renameQoderAccount(bundleId: string, label: string)",
+    "parameters": {
+      "bundleId": {
+        "type": "string",
+        "required": true
+      },
+      "label": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "delete_qoder_account": {
+    "method": "POST",
+    "path": "/api/qoder/delete",
+    "input": "{ bundleId }",
+    "signature": "deleteQoderAccount(bundleId: string)",
+    "parameters": {
+      "bundleId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "switch_qoder_account": {
+    "method": "POST",
+    "path": "/api/qoder/switch",
+    "input": "{ bundleId, closeRunning, relaunch }",
+    "signature": "switchQoderAccount(bundleId: string, closeRunning = true, relaunch = true)",
+    "parameters": {
+      "bundleId": {
+        "type": "string",
+        "required": true
+      },
+      "closeRunning": {
+        "type": "boolean",
+        "required": false
+      },
+      "relaunch": {
+        "type": "boolean",
+        "required": false
+      }
+    }
+  },
+  "list_vscode_sessions": {
+    "method": "GET",
+    "path": "/api/vscode-ext/sessions",
+    "input": "{}",
+    "signature": "listVscodeSessions()",
+    "parameters": {}
+  },
+  "switch_vscode_ext_account": {
+    "method": "POST",
+    "path": "/api/vscode-ext/switch",
+    "input": "{ accountId, restart, copySessions, syncSelections }",
+    "signature": "switchVscodeExtAccount(accountId: string, restart = true, copySessions?: VscodeSessionRef[], syncSelections?: SessionSyncSelection[])",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      },
+      "restart": {
+        "type": "boolean",
+        "required": false
+      },
+      "copySessions": {
+        "type": "VscodeSessionRef[] | undefined",
+        "required": false
+      },
+      "syncSelections": {
+        "type": "SessionSyncSelection[] | undefined",
+        "required": false
+      }
+    }
+  },
+  "vscode_session_links_preview": {
+    "method": "POST",
+    "path": "/api/vscode-ext/session-links",
+    "input": "{ targetAccountId }",
+    "signature": "vscodeSessionLinksPreview(targetAccountId: string)",
+    "parameters": {
+      "targetAccountId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "detect_vscode_ext_account": {
+    "method": "POST",
+    "path": "/api/vscode-ext/detect",
+    "input": "{}",
+    "signature": "detectVscodeExtAccount()",
+    "parameters": {}
+  },
+  "get_codebuddy_ide_status": {
+    "method": "GET",
+    "path": "/api/codebuddy-ide/status",
+    "input": "{}",
+    "signature": "getCodebuddyIdeStatus()",
+    "parameters": {}
+  },
+  "switch_codebuddy_ide_account": {
+    "method": "POST",
+    "path": "/api/codebuddy-ide/switch",
+    "input": "{ accountId, restart, copySessions, syncSelections }",
+    "signature": "switchCodebuddyIdeAccount(accountId: string, restart = true, copySessions?: VscodeSessionRef[], syncSelections?: SessionSyncSelection[])",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      },
+      "restart": {
+        "type": "boolean",
+        "required": false
+      },
+      "copySessions": {
+        "type": "VscodeSessionRef[] | undefined",
+        "required": false
+      },
+      "syncSelections": {
+        "type": "SessionSyncSelection[] | undefined",
+        "required": false
+      }
+    }
+  },
+  "detect_codebuddy_ide_account": {
+    "method": "POST",
+    "path": "/api/codebuddy-ide/detect",
+    "input": "{}",
+    "signature": "detectCodebuddyIdeAccount()",
+    "parameters": {}
+  },
+  "list_codebuddy_intl_ide_sessions": {
+    "method": "GET",
+    "path": "/api/codebuddy-ide/sessions",
+    "input": "{}",
+    "signature": "listCodebuddyIntlIdeSessions()",
+    "parameters": {}
+  },
+  "codebuddy_intl_ide_session_links_preview": {
+    "method": "POST",
+    "path": "/api/codebuddy-ide/session-links",
+    "input": "{ targetAccountId }",
+    "signature": "codebuddyIntlIdeSessionLinksPreview(targetAccountId: string)",
+    "parameters": {
+      "targetAccountId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "delete_account": {
+    "method": "POST",
+    "path": "/api/delete",
+    "input": "{ accountId }",
+    "signature": "deleteAccount(accountId: string)",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "update_account_display": {
+    "method": "POST",
+    "path": "/api/update-account-display",
+    "input": "{ accountId, patch }",
+    "signature": "updateAccountDisplay(accountId: string, patch: { note?: string | null; displayField?: DisplayField })",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      },
+      "patch": {
+        "type": "{ note?: string | null | undefined; displayField?: DisplayField | undefined; }",
+        "required": true
+      }
+    }
+  },
+  "oauth_start": {
+    "method": "POST",
+    "path": "/api/oauth/start",
+    "input": "variantArgs(variant)",
+    "signature": "oauthStart(variant?: WbVariant)",
+    "parameters": {
+      "variant": {
+        "type": "\"cn\" | \"ai\"",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      }
+    }
+  },
+  "oauth_status": {
+    "method": "POST",
+    "path": "/api/oauth/status",
+    "input": "{ loginId }",
+    "signature": "oauthStatus(loginId: string)",
+    "parameters": {
+      "loginId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "import_local": {
+    "method": "POST",
+    "path": "/api/import-local",
+    "input": "variantArgs(variant)",
+    "signature": "importLocal(variant?: WbVariant)",
+    "parameters": {
+      "variant": {
+        "type": "\"cn\" | \"ai\"",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      }
+    }
+  },
+  "export_accounts": {
+    "method": "POST",
+    "path": "/api/export-accounts",
+    "input": "{ accountIds }",
+    "signature": "exportAccounts(accountIds: string[])",
+    "parameters": {
+      "accountIds": {
+        "type": "string[]",
+        "required": true
+      }
+    }
+  },
+  "export_accounts_to_path": {
+    "method": "POST",
+    "path": "/api/export-accounts-to-path",
+    "input": "{ accountIds, path }",
+    "signature": "exportAccountsToPath(accountIds: string[], path: string)",
+    "parameters": {
+      "accountIds": {
+        "type": "string[]",
+        "required": true
+      },
+      "path": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "preview_import_accounts": {
+    "method": "POST",
+    "path": "/api/import/preview",
+    "input": "{ fileText }",
+    "signature": "previewImportAccounts(fileText: string)",
+    "parameters": {
+      "fileText": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "import_accounts": {
+    "method": "POST",
+    "path": "/api/import",
+    "input": "{ fileText, indexes }",
+    "signature": "importAccounts(fileText: string, indexes: number[])",
+    "parameters": {
+      "fileText": {
+        "type": "string",
+        "required": true
+      },
+      "indexes": {
+        "type": "number[]",
+        "required": true
+      }
+    }
+  },
+  "switch_account": {
+    "method": "POST",
+    "path": "/api/switch",
+    "input": "args as unknown as Record<string, unknown>",
+    "signature": "switchAccount(args: {\n  accountId: string;\n  restart?: boolean;\n  shareSessions?: boolean;\n  copySessionIds?: string[];\n  syncSelections?: SessionSyncSelection[];\n})",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      },
+      "restart": {
+        "type": "boolean | undefined",
+        "required": false
+      },
+      "shareSessions": {
+        "type": "boolean | undefined",
+        "required": false
+      },
+      "copySessionIds": {
+        "type": "string[] | undefined",
+        "required": false
+      },
+      "syncSelections": {
+        "type": "SessionSyncSelection[] | undefined",
+        "required": false
+      }
+    }
+  },
+  "list_sessions": {
+    "method": "GET",
+    "path": "/api/sessions",
+    "input": "variantArgs(variant)",
+    "signature": "listSessions(variant?: WbVariant)",
+    "parameters": {
+      "variant": {
+        "type": "\"cn\" | \"ai\"",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      }
+    }
+  },
+  "list_account_sessions": {
+    "method": "GET",
+    "path": "/api/sessions/account",
+    "input": "{ accountId, ...(client ? { client } : {}) }",
+    "signature": "listAccountSessions(accountId: string, client?: SessionGroupClient)",
+    "parameters": {
+      "client": {
+        "type": "SessionGroupClient | undefined",
+        "required": false,
+        "enum": [
+          "workbuddy",
+          "codebuddyIde",
+          "vscodeExt"
+        ]
+      },
+      "accountId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "copy_sessions": {
+    "method": "POST",
+    "path": "/api/sessions/copy",
+    "input": "{ targetAccountId, sessionIds }",
+    "signature": "copySessions(targetAccountId: string, sessionIds: string[])",
+    "parameters": {
+      "targetAccountId": {
+        "type": "string",
+        "required": true
+      },
+      "sessionIds": {
+        "type": "string[]",
+        "required": true
+      }
+    }
+  },
+  "copy_sessions_cross": {
+    "method": "POST",
+    "path": "/api/sessions/copy-cross",
+    "input": "{ sourceAccountId, targetAccountId, sessionIds }",
+    "signature": "copySessionsCross(sourceAccountId: string, targetAccountId: string, sessionIds: string[])",
+    "parameters": {
+      "sourceAccountId": {
+        "type": "string",
+        "required": true
+      },
+      "targetAccountId": {
+        "type": "string",
+        "required": true
+      },
+      "sessionIds": {
+        "type": "string[]",
+        "required": true
+      }
+    }
+  },
+  "session_links_preview": {
+    "method": "POST",
+    "path": "/api/session-links/preview",
+    "input": "args",
+    "signature": "sessionLinksPreview(targetAccountId: string, variant?: WbVariant)",
+    "parameters": {
+      "targetAccountId": {
+        "type": "string",
+        "required": true
+      },
+      "variant": {
+        "type": "\"cn\" | \"ai\"",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      }
+    }
+  },
+  "session_links_preview_cross": {
+    "method": "POST",
+    "path": "/api/session-links/preview-cross",
+    "input": "{ sourceAccountId, targetAccountId }",
+    "signature": "sessionLinksPreviewCross(sourceAccountId: string, targetAccountId: string)",
+    "parameters": {
+      "sourceAccountId": {
+        "type": "string",
+        "required": true
+      },
+      "targetAccountId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "session_sync_cross": {
+    "method": "POST",
+    "path": "/api/session-sync/cross",
+    "input": "{ sourceAccountId, targetAccountId, syncSelections }",
+    "signature": "sessionSyncCross(sourceAccountId: string, targetAccountId: string, syncSelections: SessionSyncSelection[])",
+    "parameters": {
+      "sourceAccountId": {
+        "type": "string",
+        "required": true
+      },
+      "targetAccountId": {
+        "type": "string",
+        "required": true
+      },
+      "syncSelections": {
+        "type": "SessionSyncSelection[]",
+        "required": true
+      }
+    }
+  },
+  "list_session_groups": {
+    "method": "POST",
+    "path": "/api/session-groups/list",
+    "input": "{ client, ...(variantScope ? { variantScope } : {}) }",
+    "signature": "listSessionGroups(client: SessionGroupClient, variantScope?: WbVariant)",
+    "parameters": {
+      "variantScope": {
+        "type": "WbVariant | undefined",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      },
+      "client": {
+        "type": "SessionGroupClient",
+        "required": true,
+        "enum": [
+          "workbuddy",
+          "codebuddyIde",
+          "vscodeExt"
+        ]
+      }
+    }
+  },
+  "get_session_group": {
+    "method": "POST",
+    "path": "/api/session-groups/detail",
+    "input": "{ client, groupId, ...(variantScope ? { variantScope } : {}) }",
+    "signature": "getSessionGroup(client: SessionGroupClient, groupId: string, variantScope?: WbVariant)",
+    "parameters": {
+      "variantScope": {
+        "type": "WbVariant | undefined",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      },
+      "client": {
+        "type": "SessionGroupClient",
+        "required": true,
+        "enum": [
+          "workbuddy",
+          "codebuddyIde",
+          "vscodeExt"
+        ]
+      },
+      "groupId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "preview_session_group_pair": {
+    "method": "POST",
+    "path": "/api/session-groups/preview",
+    "input": "args as unknown as Record<string, unknown>",
+    "signature": "previewSessionGroupPair(args: {\n  client: SessionGroupClient;\n  groupId: string;\n  sourceMemberId: string;\n  targetMemberId: string;\n  variantScope?: WbVariant;\n})",
+    "parameters": {
+      "client": {
+        "type": "SessionGroupClient",
+        "required": true,
+        "enum": [
+          "workbuddy",
+          "codebuddyIde",
+          "vscodeExt"
+        ]
+      },
+      "groupId": {
+        "type": "string",
+        "required": true
+      },
+      "sourceMemberId": {
+        "type": "string",
+        "required": true
+      },
+      "targetMemberId": {
+        "type": "string",
+        "required": true
+      },
+      "variantScope": {
+        "type": "WbVariant | undefined",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      }
+    }
+  },
+  "sync_session_group_pair": {
+    "method": "POST",
+    "path": "/api/session-groups/sync",
+    "input": "args as unknown as Record<string, unknown>",
+    "signature": "syncSessionGroupPair(args: {\n  client: SessionGroupClient;\n  groupId: string;\n  sourceMemberId: string;\n  targetMemberId: string;\n  previewToken: string;\n  mode: SessionSyncMode;\n  variantScope?: WbVariant;\n  /** 已获用户授权（确认框）时传 `true`：插件侧运行中允许关闭并重开 VS Code。 */\n  restart?: boolean;\n})",
+    "parameters": {
+      "client": {
+        "type": "SessionGroupClient",
+        "required": true,
+        "enum": [
+          "workbuddy",
+          "codebuddyIde",
+          "vscodeExt"
+        ]
+      },
+      "groupId": {
+        "type": "string",
+        "required": true
+      },
+      "sourceMemberId": {
+        "type": "string",
+        "required": true
+      },
+      "targetMemberId": {
+        "type": "string",
+        "required": true
+      },
+      "previewToken": {
+        "type": "string",
+        "required": true
+      },
+      "mode": {
+        "type": "SessionSyncMode",
+        "required": true,
+        "enum": [
+          "fastForward",
+          "overwrite",
+          "unifyOverwrite",
+          "statusOnly"
+        ]
+      },
+      "variantScope": {
+        "type": "WbVariant | undefined",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      },
+      "restart": {
+        "type": "boolean | undefined",
+        "required": false
+      }
+    }
+  },
+  "sync_session_group_unify": {
+    "method": "POST",
+    "path": "/api/session-groups/unify",
+    "input": "args as unknown as Record<string, unknown>",
+    "signature": "syncSessionGroupUnify(args: {\n  client: \"workbuddy\" | \"vscodeExt\";\n  groupId: string;\n  sourceMemberId: string;\n  targets: { targetMemberId: string; previewToken: string; mode: SessionSyncMode }[];\n  /** 已获用户授权（确认框）时传 `true`：插件侧运行中允许关闭并重开 VS Code。 */\n  restart?: boolean;\n})",
+    "parameters": {
+      "client": {
+        "type": "\"workbuddy\" | \"vscodeExt\"",
+        "required": true,
+        "enum": [
+          "workbuddy",
+          "vscodeExt"
+        ]
+      },
+      "groupId": {
+        "type": "string",
+        "required": true
+      },
+      "sourceMemberId": {
+        "type": "string",
+        "required": true
+      },
+      "targets": {
+        "type": "{ targetMemberId: string; previewToken: string; mode: SessionSyncMode; }[]",
+        "required": true
+      },
+      "restart": {
+        "type": "boolean | undefined",
+        "required": false
+      }
+    }
+  },
+  "sync_session_group_safe_batch": {
+    "method": "POST",
+    "path": "/api/session-groups/sync-safe",
+    "input": "{ client, groupId, ...(variantScope ? { variantScope } : {}), ...(restart ? { restart: true } : {}) }",
+    "signature": "syncSessionGroupSafeBatch(client: SessionGroupClient, groupId: string, variantScope?: WbVariant, restart?: boolean)",
+    "parameters": {
+      "restart": {
+        "type": "boolean | undefined",
+        "required": false
+      },
+      "variantScope": {
+        "type": "WbVariant | undefined",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      },
+      "client": {
+        "type": "SessionGroupClient",
+        "required": true,
+        "enum": [
+          "workbuddy",
+          "codebuddyIde",
+          "vscodeExt"
+        ]
+      },
+      "groupId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "add_session_group_member": {
+    "method": "POST",
+    "path": "/api/session-groups/add",
+    "input": "args as unknown as Record<string, unknown>",
+    "signature": "addSessionGroupMember(args: {\n  client: SessionGroupClient;\n  groupId: string;\n  sourceMemberId: string;\n  targetAccountId: string;\n  variantScope?: WbVariant;\n  /** 已获用户授权（确认框）时传 `true`：插件侧运行中允许关闭并重开 VS Code。 */\n  restart?: boolean;\n})",
+    "parameters": {
+      "client": {
+        "type": "SessionGroupClient",
+        "required": true,
+        "enum": [
+          "workbuddy",
+          "codebuddyIde",
+          "vscodeExt"
+        ]
+      },
+      "groupId": {
+        "type": "string",
+        "required": true
+      },
+      "sourceMemberId": {
+        "type": "string",
+        "required": true
+      },
+      "targetAccountId": {
+        "type": "string",
+        "required": true
+      },
+      "variantScope": {
+        "type": "WbVariant | undefined",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      },
+      "restart": {
+        "type": "boolean | undefined",
+        "required": false
+      }
+    }
+  },
+  "copy_linked_sessions": {
+    "method": "POST",
+    "path": "/api/session-groups/copy-linked",
+    "input": "args as unknown as Record<string, unknown>",
+    "signature": "copyLinkedSessions(args: {\n  client: SessionGroupClient;\n  sourceAccountId: string;\n  targetAccountId: string;\n  sessionIds: string[];\n  /** 已获用户授权（确认框）时传 `true`：运行中允许关闭并重开 VS Code。 */\n  restart?: boolean;\n})",
+    "parameters": {
+      "client": {
+        "type": "SessionGroupClient",
+        "required": true,
+        "enum": [
+          "workbuddy",
+          "codebuddyIde",
+          "vscodeExt"
+        ]
+      },
+      "sourceAccountId": {
+        "type": "string",
+        "required": true
+      },
+      "targetAccountId": {
+        "type": "string",
+        "required": true
+      },
+      "sessionIds": {
+        "type": "string[]",
+        "required": true
+      },
+      "restart": {
+        "type": "boolean | undefined",
+        "required": false
+      }
+    }
+  },
+  "vscode_restart_precheck": {
+    "method": "POST",
+    "path": "/api/vscode-ext/restart-precheck",
+    "input": "{ targetAccountIds }",
+    "signature": "vscodeRestartPrecheck(targetAccountIds: string[])",
+    "parameters": {
+      "targetAccountIds": {
+        "type": "string[]",
+        "required": true
+      }
+    }
+  },
+  "unlink_session_group_member": {
+    "method": "POST",
+    "path": "/api/session-groups/unlink",
+    "input": "args as unknown as Record<string, unknown>",
+    "signature": "unlinkSessionGroupMember(args: {\n  client: SessionGroupClient;\n  groupId: string;\n  memberId: string;\n  variantScope?: WbVariant;\n})",
+    "parameters": {
+      "client": {
+        "type": "SessionGroupClient",
+        "required": true,
+        "enum": [
+          "workbuddy",
+          "codebuddyIde",
+          "vscodeExt"
+        ]
+      },
+      "groupId": {
+        "type": "string",
+        "required": true
+      },
+      "memberId": {
+        "type": "string",
+        "required": true
+      },
+      "variantScope": {
+        "type": "WbVariant | undefined",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      }
+    }
+  },
+  "delete_session_group": {
+    "method": "POST",
+    "path": "/api/session-groups/delete",
+    "input": "args as unknown as Record<string, unknown>",
+    "signature": "deleteSessionGroup(args: {\n  client: SessionGroupClient;\n  groupId: string;\n  variantScope?: WbVariant;\n})",
+    "parameters": {
+      "client": {
+        "type": "SessionGroupClient",
+        "required": true,
+        "enum": [
+          "workbuddy",
+          "codebuddyIde",
+          "vscodeExt"
+        ]
+      },
+      "groupId": {
+        "type": "string",
+        "required": true
+      },
+      "variantScope": {
+        "type": "WbVariant | undefined",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      }
+    }
+  },
+  "get_checkin_status": {
+    "method": "GET",
+    "path": "/api/checkin/status",
+    "input": "{ accountId }",
+    "signature": "getCheckinStatus(accountId: string)",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "get_credit_expiry": {
+    "method": "POST",
+    "path": "/api/credits",
+    "input": "{ accountId }",
+    "signature": "getCreditExpiry(accountId: string)",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "get_credit_statistics": {
+    "method": "GET",
+    "path": "/api/credits/stats",
+    "input": "refresh ? { refresh: true } : undefined",
+    "signature": "getCreditStatistics(refresh = false)",
+    "parameters": {
+      "refresh": {
+        "type": "boolean",
+        "required": true
+      }
+    }
+  },
+  "get_token_statistics": {
+    "method": "GET",
+    "path": "/api/token-stats",
+    "input": "days ? { days } : undefined",
+    "signature": "getTokenStatistics(days?: number)",
+    "parameters": {
+      "days": {
+        "type": "number",
+        "required": false
+      }
+    }
+  },
+  "get_rate_limits": {
+    "method": "GET",
+    "path": "/api/rate-limits",
+    "input": "{}",
+    "signature": "getRateLimits()",
+    "parameters": {}
+  },
+  "get_rate_limit_hook_status": {
+    "method": "GET",
+    "path": "/api/rate-limits/hook-status",
+    "input": "{}",
+    "signature": "getRateLimitHookStatus()",
+    "parameters": {}
+  },
+  "install_rate_limit_hook": {
+    "method": "POST",
+    "path": "/api/rate-limits/install-hook",
+    "input": "{}",
+    "signature": "installRateLimitHook()",
+    "parameters": {}
+  },
+  "uninstall_rate_limit_hook": {
+    "method": "POST",
+    "path": "/api/rate-limits/uninstall-hook",
+    "input": "{}",
+    "signature": "uninstallRateLimitHook()",
+    "parameters": {}
+  },
+  "get_rate_limit_config": {
+    "method": "GET",
+    "path": "/api/rate-limits/config",
+    "input": "{}",
+    "signature": "getRateLimitConfig()",
+    "parameters": {}
+  },
+  "save_rate_limit_config": {
+    "method": "POST",
+    "path": "/api/rate-limits/config",
+    "input": "{\n    config: config as unknown as Record<string, unknown>,\n  }",
+    "signature": "saveRateLimitConfig(config: RateLimitConfig)",
+    "parameters": {
+      "config": {
+        "type": "Record<string, unknown>",
+        "required": true
+      }
+    }
+  },
+  "checkin": {
+    "method": "POST",
+    "path": "/api/checkin",
+    "input": "{ accountId }",
+    "signature": "checkin(accountId: string)",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "checkin_all": {
+    "method": "POST",
+    "path": "/api/checkin/all",
+    "input": "args",
+    "signature": "checkinAll(variant?: WbVariant, respectWindow?: boolean)",
+    "parameters": {
+      "variant": {
+        "type": "\"cn\" | \"ai\"",
+        "required": false,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      },
+      "respectWindow": {
+        "type": "boolean",
+        "required": false
+      }
+    }
+  },
+  "run_daily_tasks": {
+    "method": "POST",
+    "path": "/api/daily/run",
+    "input": "{ variant }",
+    "signature": "runDailyTasks(variant: WbVariant)",
+    "parameters": {
+      "variant": {
+        "type": "WbVariant",
+        "required": true,
+        "enum": [
+          "cn",
+          "ai"
+        ]
+      }
+    }
+  },
+  "get_auto_checkin_config": {
+    "method": "GET",
+    "path": "/api/checkin/config",
+    "input": "{}",
+    "signature": "getAutoCheckinConfig()",
+    "parameters": {}
+  },
+  "save_auto_checkin_config": {
+    "method": "POST",
+    "path": "/api/checkin/config",
+    "input": "{\n    config: config as unknown as Record<string, unknown>,\n  }",
+    "signature": "saveAutoCheckinConfig(config: CheckinConfig)",
+    "parameters": {
+      "config": {
+        "type": "Record<string, unknown>",
+        "required": true
+      }
+    }
+  },
+  "get_checkin_logs": {
+    "method": "GET",
+    "path": "/api/checkin/logs",
+    "input": "{}",
+    "signature": "getCheckinLogs()",
+    "parameters": {}
+  },
+  "list_notifications": {
+    "method": "GET",
+    "path": "/api/notifications",
+    "input": "{}",
+    "signature": "listNotifications()",
+    "parameters": {}
+  },
+  "record_notification": {
+    "method": "POST",
+    "path": "/api/notifications/record",
+    "input": "{ level, title, description }",
+    "signature": "recordNotification(level: AppNotification[\"level\"], title: string, description?: string)",
+    "parameters": {
+      "level": {
+        "type": "\"success\" | \"error\" | \"warning\" | \"info\"",
+        "required": true,
+        "enum": [
+          "success",
+          "error",
+          "warning",
+          "info"
+        ]
+      },
+      "title": {
+        "type": "string",
+        "required": true
+      },
+      "description": {
+        "type": "string | undefined",
+        "required": false
+      }
+    }
+  },
+  "clear_notifications": {
+    "method": "POST",
+    "path": "/api/notifications/clear",
+    "input": "{}",
+    "signature": "clearNotifications()",
+    "parameters": {}
+  },
+  "get_travel_status": {
+    "method": "GET",
+    "path": "/api/travel/status",
+    "input": "{ accountId }",
+    "signature": "getTravelStatus(accountId: string)",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "get_auto_travel_config": {
+    "method": "GET",
+    "path": "/api/travel/config",
+    "input": "{}",
+    "signature": "getAutoTravelConfig()",
+    "parameters": {}
+  },
+  "save_auto_travel_config": {
+    "method": "POST",
+    "path": "/api/travel/config",
+    "input": "{\n    config: config as unknown as Record<string, unknown>,\n  }",
+    "signature": "saveAutoTravelConfig(config: TravelConfig)",
+    "parameters": {
+      "config": {
+        "type": "Record<string, unknown>",
+        "required": true
+      }
+    }
+  },
+  "get_auto_rotate_config": {
+    "method": "GET",
+    "path": "/api/rotate/config",
+    "input": "{}",
+    "signature": "getAutoRotateConfig()",
+    "parameters": {}
+  },
+  "save_auto_rotate_config": {
+    "method": "POST",
+    "path": "/api/rotate/config",
+    "input": "{\n    config: config as unknown as Record<string, unknown>,\n  }",
+    "signature": "saveAutoRotateConfig(config: AutoRotateConfig)",
+    "parameters": {
+      "config": {
+        "type": "Record<string, unknown>",
+        "required": true
+      }
+    }
+  },
+  "rotate_status": {
+    "method": "GET",
+    "path": "/api/rotate/status",
+    "input": "{}",
+    "signature": "getRotateStatus()",
+    "parameters": {}
+  },
+  "run_rotate": {
+    "method": "POST",
+    "path": "/api/rotate/run",
+    "input": "{}",
+    "signature": "runRotate()",
+    "parameters": {}
+  },
+  "get_rotate_logs": {
+    "method": "GET",
+    "path": "/api/rotate/logs",
+    "input": "{}",
+    "signature": "getRotateLogs()",
+    "parameters": {}
+  },
+  "refresh_account_token": {
+    "method": "POST",
+    "path": "/api/refresh-token",
+    "input": "{ accountId }",
+    "signature": "refreshAccountToken(accountId: string)",
+    "parameters": {
+      "accountId": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "get_github_config": {
+    "method": "GET",
+    "path": "/api/update/config",
+    "input": "{}",
+    "signature": "getGithubConfig()",
+    "parameters": {}
+  },
+  "save_github_config": {
+    "method": "POST",
+    "path": "/api/update/config",
+    "input": "{\n    config: config as unknown as Record<string, unknown>,\n  }",
+    "signature": "saveGithubConfig(config: GithubConfig)",
+    "parameters": {
+      "config": {
+        "type": "Record<string, unknown>",
+        "required": true
+      }
+    }
+  },
+  "check_update": {
+    "method": "GET",
+    "path": "/api/update/check",
+    "input": "{ proxy: proxy?.trim() || null, force: force ?? false }",
+    "signature": "checkUpdate(proxy?: string, force?: boolean)",
+    "parameters": {
+      "proxy": {
+        "type": "string | null",
+        "required": true
+      },
+      "force": {
+        "type": "boolean",
+        "required": true
+      }
+    }
+  },
+  "switch_progress": {
+    "method": "GET",
+    "path": "/api/switch/progress",
+    "input": "{}",
+    "signature": "switchProgress()",
+    "parameters": {}
+  },
+  "get_webdav_config": {
+    "method": "GET",
+    "path": "/api/webdav/config",
+    "input": "{}",
+    "signature": "getWebdavConfig()",
+    "parameters": {}
+  },
+  "save_webdav_config": {
+    "method": "POST",
+    "path": "/api/webdav/config",
+    "input": "{\n    config: config as unknown as Record<string, unknown>,\n  }",
+    "signature": "saveWebdavConfig(config: WebdavConfigInput)",
+    "parameters": {
+      "config": {
+        "type": "Record<string, unknown>",
+        "required": true
+      }
+    }
+  },
+  "webdav_test_connection": {
+    "method": "POST",
+    "path": "/api/webdav/test",
+    "input": "{}",
+    "signature": "webdavTestConnection()",
+    "parameters": {}
+  },
+  "webdav_backup": {
+    "method": "POST",
+    "path": "/api/webdav/backup",
+    "input": "{ passphrase }",
+    "signature": "webdavBackup(passphrase: string)",
+    "parameters": {
+      "passphrase": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "webdav_restore_preview": {
+    "method": "POST",
+    "path": "/api/webdav/restore/preview",
+    "input": "{ passphrase }",
+    "signature": "webdavRestorePreview(passphrase: string)",
+    "parameters": {
+      "passphrase": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "webdav_restore": {
+    "method": "POST",
+    "path": "/api/webdav/restore",
+    "input": "{ passphrase, indexes, restoreConfigs, expectedSnapshot }",
+    "signature": "webdavRestore(passphrase: string, indexes: number[], restoreConfigs: boolean, expectedSnapshot: string)",
+    "parameters": {
+      "passphrase": {
+        "type": "string",
+        "required": true
+      },
+      "indexes": {
+        "type": "number[]",
+        "required": true
+      },
+      "restoreConfigs": {
+        "type": "boolean",
+        "required": true
+      },
+      "expectedSnapshot": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "webdav_sync_now": {
+    "method": "POST",
+    "path": "/api/webdav/sync",
+    "input": "{ passphrase }",
+    "signature": "webdavSyncNow(passphrase: string)",
+    "parameters": {
+      "passphrase": {
+        "type": "string",
+        "required": true
+      }
+    }
+  },
+  "webdav_info": {
+    "method": "GET",
+    "path": "/api/webdav/info",
+    "input": "{}",
+    "signature": "webdavInfo()",
+    "parameters": {}
+  }
+}

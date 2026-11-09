@@ -284,11 +284,7 @@ fn json_err(e: String, code: StatusCode) -> Response {
 
 /// 从 query string 解析档位（缺省国内版）。与 Tauri 命令的可选 `variant` 参数同义。
 fn query_variant(query: Option<&str>) -> WbVariant {
-    let raw = query.unwrap_or("").split('&').find_map(|pair| {
-        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-        (key == "variant").then_some(value)
-    });
-    WbVariant::parse(raw)
+    WbVariant::parse(query_param(query, "variant").as_deref())
 }
 
 /// 从请求体解析档位（缺省国内版）。与 Tauri 命令的可选 `variant` 参数同义。
@@ -297,12 +293,10 @@ fn body_variant(body: &Value) -> WbVariant {
 }
 
 /// 从 query string 取指定键的原值（键值均为账号 id 这类 ASCII 串；
-/// 与 `query_variant` 同一解析口径，不做百分号解码）。
+/// 与浏览器 URLSearchParams 和 CLI 一致，解码百分号和加号。
 fn query_param(query: Option<&str>, key: &str) -> Option<String> {
-    query.unwrap_or("").split('&').find_map(|pair| {
-        let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
-        (name == key).then_some(value.to_string())
-    })
+    form_urlencoded::parse(query.unwrap_or("").as_bytes())
+        .find_map(|(name, value)| (name == key).then(|| value.into_owned()))
 }
 
 // ---------------------------------------------------------------------------

@@ -54,6 +54,12 @@ pub(super) fn select_accounts(
     let accounts: Vec<_> = accounts
         .into_iter()
         .filter(|a| options.variant.is_none_or(|v| account::variant_of(a) == v))
+        .filter(|a| {
+            !matches!(
+                options.target,
+                super::target::Target::Vscode | super::target::Target::Jetbrains
+            ) || account::variant_of(a) == wb_switch_core::modules::variant::WbVariant::Cn
+        })
         .collect();
     let Some(id) = &options.account_id else {
         return Ok(accounts);

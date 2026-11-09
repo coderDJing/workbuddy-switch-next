@@ -35,7 +35,7 @@ Next 在上游项目的基础上，持续完善多平台工作台与 Agent 调�
 
 日常使用推荐 [最新正式版](https://github.com/coderDJing/workbuddy-switch-next/releases/latest)。本轮正式版本为 **0.2.2**，变化与兼容说明见 [版本说明](docs/releases/0.2.2.md)；版本与安装包以 Releases 实际产物为准。需要提前体验后续变化时，可使用 [RC 候选版](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview)。也可按 [构建说明](docs/cli.md#构建与维护) 从源码构建。
 
-当前源码为 **0.2.3-rc.202611090934**，更新 WorkBuddy 每日任务组件并优化任务状态识别，支持 Windows x64 与 macOS Apple Silicon（arm64）。具体变化见 [候选版说明](docs/releases/0.2.3-rc.202611090934.md)，安装包与远端验证结果以对应 Release 和 GitHub Actions 实际产物为准。
+当前源码为 **0.2.3-rc.202611091112**，补齐现有平台 CLI 业务管理、登录和能力发现，并保留每日任务组件更新，支持 Windows x64 与 macOS Apple Silicon（arm64）。具体变化见 [候选版说明](docs/releases/0.2.3-rc.202611091112.md)，安装包与远端验证结果以对应 Release 和 GitHub Actions 实际产物为准。
 
 前往 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 下载对应平台的安装包：
 
@@ -80,7 +80,7 @@ xattr -rd com.apple.quarantine "/Applications/WorkBuddy Switch Next.app"
 | WebDAV 备份 / 跨设备同步 | 把完整账号库（含 token 等授权信息）与各功能配置端到端加密备份到私有 WebDAV 服务器；新设备配置同一服务器与加密密码即可恢复；「同步」拉取合并 + 整库回推（同 UID 和客户端类型匹配，仅接受明确更新的凭据，冲突提示；ETag 防并发覆盖） |
 | 自动更新 | 从 GitHub Releases 检查新版本，整包更新经签名校验 |
 | 会话悬浮窗 | 桌面版内置 Agent Companion 悬浮栏，集中显示 Codex / WorkBuddy / CodeBuddy / Codeg 会话状态，也支持接入 Qoder 国内版 / 国际版 CLI Hooks；支持跳转的来源可点击回到原会话 |
-| AI CLI | CodeBuddy CLI 与 Qoder 共用 JSON 输出、能力发现、稳定账号 ID 和错误约定；Qoder 另支持 Token / 积分统计、每日领取及自动任务管理，详见下方调用示例 |
+| AI CLI | 覆盖 WorkBuddy / CodeBuddy 各端及 Qoder；提供状态、切号、统计、领取与登录，命名操作补齐账号、会话、自动任务和备份管理，详见 CLI 文档 |
 | 权限检测 | macOS 授权引导（App 管理 / 完全磁盘访问拖拽授权 + 自动检测） |
 
 ## 支持的工具
