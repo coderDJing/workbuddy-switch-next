@@ -66,6 +66,14 @@ impl Engine {
         StateLock::try_at(&self.paths.store.join("switch.lock"))
             .map_err(|_| "TRAE 账号正在更新，请稍后重试".into())
     }
+    /// 读账号快照时短暂等待。状态刷新会查进程，不能因此让积分查询立刻失败。
+    fn lock_for_read(&self) -> Result<StateLock, String> {
+        StateLock::wait_at(
+            &self.paths.store.join("switch.lock"),
+            std::time::Duration::from_secs(3),
+        )
+        .map_err(|_| "TRAE 账号正在更新，请稍后重试".into())
+    }
     fn load(&self) -> Result<Store, String> {
         let path = self.paths.store.join("accounts.json");
         if !path.exists() {
@@ -141,14 +149,15 @@ impl Engine {
         Ok(keys)
     }
     pub fn status(&self) -> Result<Value, String> {
-        let _guard = self.lock()?;
-        let store = self.load()?;
-        let mut clients = Vec::new();
-        for variant in [Region::Cn, Region::Ai] {
-            {
+        // 进程枚举可能要几秒。先在锁里读完账号和登录身份，再放开锁查进程，
+        // 避免页面刷新状态时把积分查询挡成「正在更新」。
+        let (accounts, rows) = {
+            let _guard = self.lock()?;
+            let store = self.load()?;
+            let mut rows = Vec::new();
+            for variant in [Region::Cn, Region::Ai] {
                 let client = Client::Desktop;
-                let path = self.paths.storage(variant, client);
-                let detected = path.exists();
+                let detected = self.paths.storage(variant, client).exists();
                 let current = if detected {
                     Some(
                         self.storage(variant, client)
@@ -161,22 +170,36 @@ impl Engine {
                 let uid = current
                     .as_ref()
                     .and_then(|v| v.as_ref().ok())
-                    .map(|a| a.uid.as_str());
+                    .map(|a| a.uid.clone());
                 let active = store.accounts.iter().find(|a| {
-                    a.variant == variant && a.client == client && Some(a.uid.as_str()) == uid
+                    a.variant == variant && a.client == client && Some(&a.uid) == uid.as_ref()
                 });
-                let running = if detected || self.paths.executable(variant, client).is_some() {
-                    self.processes.running(variant, client).ok()
-                } else {
-                    Some(false)
-                };
-                clients.push(json!({"variant":variant,"client":client,"name":client.app_name(variant),"detected":detected,"running":running,
-                "configured":uid.is_some(),"activeAccountId":active.map(|a|&a.id),"recognitionError":current.and_then(|v|v.err())}));
+                rows.push((
+                    variant,
+                    client,
+                    detected,
+                    uid.is_some(),
+                    active.map(|a| a.id.clone()),
+                    current.and_then(|v| v.err()),
+                    detected || self.paths.executable(variant, client).is_some(),
+                ));
             }
+            (
+                store.accounts.iter().map(Account::meta).collect::<Vec<_>>(),
+                rows,
+            )
+        };
+        let mut clients = Vec::new();
+        for (variant, client, detected, configured, active_id, recognition_error, probe) in rows {
+            let running = if probe {
+                self.processes.running(variant, client).ok()
+            } else {
+                Some(false)
+            };
+            clients.push(json!({"variant":variant,"client":client,"name":client.app_name(variant),"detected":detected,"running":running,
+                "configured":configured,"activeAccountId":active_id,"recognitionError":recognition_error}));
         }
-        Ok(
-            json!({"accounts":store.accounts.iter().map(Account::meta).collect::<Vec<_>>(),"clients":clients,"nativeCliSupported":false}),
-        )
+        Ok(json!({"accounts":accounts,"clients":clients,"nativeCliSupported":false}))
     }
     fn capture(&self, args: &Args) -> Result<Value, String> {
         let _guard = self.lock()?;
@@ -289,7 +312,7 @@ impl Engine {
         // The official usage query cannot rotate credentials. Keep slow network
         // reads outside the mutation lock so adding/renaming/switching stays usable.
         let (account, auth) = {
-            let _guard = self.lock()?;
+            let _guard = self.lock_for_read()?;
             let store = self.load()?;
             let account = find(&store, args)?.clone();
             let auth = protocol::identity(&self.keys(&account)?)?;
@@ -302,7 +325,7 @@ impl Engine {
     }
     async fn checkin(&self, args: &Args) -> Result<Value, String> {
         let (auth, device) = {
-            let _guard = self.lock()?;
+            let _guard = self.lock_for_read()?;
             let store = self.load()?;
             let account = find(&store, args)?.clone();
             if account.variant != Region::Cn {
@@ -318,7 +341,7 @@ impl Engine {
         Ok(checkin::to_value(&result))
     }
     fn cache_credit(&self, account: &Account, credits: &Value) -> Result<(), String> {
-        let _guard = self.lock()?;
+        let _guard = self.lock_for_read()?;
         let mut store = self.load()?;
         let saved = store
             .accounts

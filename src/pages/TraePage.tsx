@@ -140,7 +140,16 @@ export default function TraePage() {
       querying.current.add(account.id);
       setCreditLoading(values => ({ ...values, [account.id]: true }));
       try {
-        const credit = await api.traeAction("credits", { accountId: account.id }) as api.TraeCredit;
+        let credit: api.TraeCredit;
+        try {
+          credit = await api.traeAction("credits", { accountId: account.id }) as api.TraeCredit;
+        } catch (error) {
+          const message = api.asError(error);
+          // 和状态刷新抢锁时先等一次，不要把瞬时失败留在卡片上。
+          if (!message.includes("正在更新")) throw error;
+          await new Promise(resolve => window.setTimeout(resolve, 400));
+          credit = await api.traeAction("credits", { accountId: account.id }) as api.TraeCredit;
+        }
         setCreditOverrides(values => ({ ...values, [account.id]: credit }));
         setCreditErrors(values => ({ ...values, [account.id]: "" }));
       } catch (error) { setCreditErrors(values => ({ ...values, [account.id]: api.asError(error) })); }
