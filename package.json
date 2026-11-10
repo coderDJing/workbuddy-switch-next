@@ -19,6 +19,7 @@
     "build:app": "node scripts/build-release.mjs --debug --bundles app",
     "build:app:release": "node scripts/build-release.mjs --bundles app",
     "release:check": "node scripts/check-release.mjs",
+    "release:cleanup": "node scripts/cleanup-releases.mjs",
     "version:set": "node scripts/bump-version.mjs",
     "postbuild": "node scripts/clean-build-cache.mjs --auto",
     "clean:build-cache": "node scripts/clean-build-cache.mjs",
