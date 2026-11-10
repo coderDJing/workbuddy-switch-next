@@ -151,6 +151,19 @@ try {
       }
     }
     fs.copyFileSync(path.join(windows, 'icon.png'), path.join(icons, 'icon-windows.png'));
+
+    // macOS never masks a bundled .icns, so an opaque square artwork shows up as a
+    // cream block in Dock/Finder. Bake the platform grid (824 inside 1024, 185.4
+    // corner radius) into transparent corners instead of relying on the system.
+    const macSvg = path.join(scratch, 'macos.svg');
+    fs.writeFileSync(macSvg, `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><defs><clipPath id="mac"><rect x="100" y="100" width="824" height="824" rx="185.4"/></clipPath></defs><image x="100" y="100" width="824" height="824" clip-path="url(#mac)" href="data:image/png;base64,${fs.readFileSync(artwork).toString('base64')}"/></svg>`);
+    const mac = path.join(scratch, 'macos');
+    exportIcons(macSvg, mac);
+    fs.copyFileSync(path.join(mac, 'icon.icns'), path.join(icons, 'icon.icns'));
+    fs.copyFileSync(path.join(mac, 'icon.png'), path.join(icons, 'icon-macos.png'));
+    if (fs.existsSync(path.join(icons, 'icon-macos-dev.png'))) {
+      fs.rmSync(path.join(icons, 'icon-macos-dev.png'));
+    }
   }
 
   const extracted = path.join(scratch, 'extracted');
