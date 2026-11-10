@@ -1,0 +1,67 @@
+name: Retry unacquired macOS jobs
+
+# Hosted macOS capacity shortages cancel jobs before any step runs. The run then
+# reports "The job was not acquired by Runner of type hosted even after multiple
+# attempts", which is indistinguishable from a broken release unless someone
+# reads the annotation. Retry those runs instead of treating them as failures.
+
+on:
+  workflow_run:
+    workflows: ["Build Next"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Build Next run id to retry
+        required: true
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: retry-unacquired
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rerun once more when no macOS runner was ever acquired
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          read -r conclusion attempt < <(gh api "repos/$repo/actions/runs/$RUN_ID" --jq '"\(.conclusion) \(.run_attempt)"')
+
+          if [ "$conclusion" != "failure" ]; then
+            echo "Run $RUN_ID finished as $conclusion; nothing to retry."
+            exit 0
+          fi
+          if [ "$attempt" -ge 6 ]; then
+            echo "Run $RUN_ID already used $attempt attempts; leaving it for a human."
+            exit 0
+          fi
+
+          jobs=$(gh api "repos/$repo/actions/runs/$RUN_ID/jobs?per_page=50&filter=latest")
+
+          # A step that actually failed means the code is broken; do not loop.
+          broken=$(echo "$jobs" | jq -r '[.jobs[] | select(.conclusion == "failure") | .name] | join(", ")')
+          if [ -n "$broken" ]; then
+            echo "Real step failures, not runner starvation: $broken"
+            exit 0
+          fi
+
+          # Cancelled jobs without a failing step never got a runner.
+          unacquired=$(echo "$jobs" | jq -r '[.jobs[] | select(.conclusion == "cancelled")
+            | select([.steps[] | select(.conclusion == "failure")] | length == 0) | .name]')
+          if [ "$(echo "$unacquired" | jq 'length')" -eq 0 ]; then
+            echo "No cancelled job without a failing step; nothing to retry."
+            exit 0
+          fi
+
+          echo "Retrying run $RUN_ID (attempt $attempt); these jobs never started: $(echo "$unacquired" | jq -r 'join(", ")')"
+          gh api --method POST "repos/$repo/actions/runs/$RUN_ID/rerun-failed-jobs"
