@@ -126,9 +126,7 @@ pub(super) fn summarize(payload: &Value) -> Result<Value, String> {
             let cap = p
                 .pointer("/entitlement_base_info/quota/credits_limit")
                 .and_then(Value::as_f64);
-            let spent = p
-                .pointer("/usage/credits_amount")
-                .and_then(Value::as_f64);
+            let spent = p.pointer("/usage/credits_amount").and_then(Value::as_f64);
             match cap {
                 None => continue,
                 Some(-1.0) => {

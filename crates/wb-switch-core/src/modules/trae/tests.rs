@@ -428,7 +428,10 @@ fn credits_keep_fractional_unknown_and_unlimited_distinct() {
         {"status":0,"entitlement_base_info":{"product_type":2,"end_time":future,"quota":{"credits_limit":2000}},"usage":{}},
         {"status":1,"entitlement_base_info":{"product_type":2,"end_time":future,"quota":{"credits_limit":700}},"usage":{"credits_amount":5}}
     ]});
-    assert_eq!(credits::summarize(&missing_used).unwrap()["remaining"], 2695.0);
+    assert_eq!(
+        credits::summarize(&missing_used).unwrap()["remaining"],
+        2695.0
+    );
 }
 #[test]
 fn expired_login_is_rejected_before_closing_a_client() {
