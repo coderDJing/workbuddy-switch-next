@@ -113,23 +113,47 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.select-matrix.outputs.version }}
         run: sh scripts/make-dmg.sh "$RELEASE_VERSION" "$UPDATE_ARCH" "target/$RUST_TARGET/release/bundle/macos/WorkBuddy Switch Next.app"
-      - name: Verify the app inside the macOS image keeps its signature
+      - name: Verify the app keeps its signature inside the macOS image
         if: runner.os == 'macOS' && vars.PUBLISH_APP != 'false'
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          APP="target/$RUST_TARGET/release/bundle/macos/WorkBuddy Switch Next.app"
+          diagnose() {
+            echo "== contents =="
+            ls -la "$1/Contents" 2>&1 | head -20
+            echo "== code signature directory =="
+            ls -la "$1/Contents/_CodeSignature" 2>&1 | head -10
+            echo "== codesign -dv =="
+            codesign -dv --verbose=4 "$1" 2>&1 | head -25
+            echo "== verify without --strict =="
+            codesign --verify --deep --verbose=2 "$1" 2>&1 || true
+          }
+
+          # dmgbuild copies the bundle with ditto; a lost seal or resource
+          # directory would surface to users as "已损坏", so check both stages
+          # to tell a broken build from a broken image.
+          if ! codesign --verify --deep --strict --verbose=2 "$APP"; then
+            diagnose "$APP"
+            echo "::error::The built .app already fails signature verification."
+            exit 1
+          fi
+          echo "Built bundle verifies."
+
           DMG="$(ls workbuddy-switch-next_*.dmg | head -n 1)"
           MNT="$(mktemp -d)"
           hdiutil attach "$DMG" -mountpoint "$MNT" -nobrowse -quiet
           trap 'hdiutil detach "$MNT" -quiet || true' EXIT
-          APP="$MNT/WorkBuddy Switch Next.app"
-          if [ ! -d "$APP" ]; then
-            echo "DMG 内缺少应用包: $APP" >&2
+          IMG_APP="$MNT/WorkBuddy Switch Next.app"
+          if [ ! -d "$IMG_APP" ]; then
+            echo "::error::DMG is missing the app bundle: $IMG_APP"
             exit 1
           fi
-          # dmgbuild copies the bundle; a lost symlink or xattr would surface to
-          # users as "已损坏" even though the built .app was fine.
-          codesign --verify --deep --strict --verbose=2 "$APP"
-          codesign -dv "$APP" 2>&1 | sed -n '1,8p'
+          if ! codesign --verify --deep --strict --verbose=2 "$IMG_APP"; then
+            diagnose "$IMG_APP"
+            echo "::error::The app inside the DMG fails signature verification."
+            exit 1
+          fi
+          echo "Signature intact in the built bundle and inside the DMG."
       - name: Verify Windows desktop installer includes CLI
         if: runner.os == 'Windows' && vars.PUBLISH_APP != 'false'
         run: node scripts/verify-windows-cli-bundle.mjs
