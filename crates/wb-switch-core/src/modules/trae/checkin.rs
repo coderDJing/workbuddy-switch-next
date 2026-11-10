@@ -298,7 +298,7 @@ mod tests {
         .unwrap();
         assert_eq!(device_id(&keys).as_deref(), Some("1711320556112436"));
         let keys = serde_json::from_value(json!({
-            "iCubeAuthInfo://icube-dc:17113205561124365": {}
+            "iCubeAuthInfo://icube-dc:171132055611243678901": {}
         }))
         .unwrap();
         // 21 位不是客户端注册过的号段，不能当成设备号。

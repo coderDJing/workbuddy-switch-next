@@ -1280,7 +1280,7 @@ export function traeAction(action:"capture"|"switch"|"credits"|"checkin"|"rename
 
 export interface TraeSnapshot {accountId:string;name:string;variant:"cn"|"ai";at:number;credit:TraeCredit}
 export interface TraeStatistics {generatedAt:number;retentionDays:number;variant:"cn"|"ai";accounts:TraeAccount[];snapshots:TraeSnapshot[];errors:{accountId:string;message:string}[]}
-export interface TraeRegionSettings {refreshEnabled:boolean;intervalMinutes:number;alertsEnabled:boolean;expiryDays:number;lowBalance:number;rotateEnabled:boolean;rotateBelow:number;cooldownMinutes:number}
+export interface TraeRegionSettings {refreshEnabled:boolean;intervalMinutes:number;dailyEnabled:boolean;dailyTime:string;alertsEnabled:boolean;expiryDays:number;lowBalance:number;rotateEnabled:boolean;rotateBelow:number;cooldownMinutes:number}
 export interface TraeAutomation {settings:{cn:TraeRegionSettings;ai:TraeRegionSettings};logs:{at:number;region:"cn"|"ai";action:string;outcome:string}[]}
 export interface TraeBackupPreview {accounts:{name:string;variant:"cn"|"ai";exists:boolean}[];count:number;snapshotId:string}
 export function getTraeStatistics(variant:"cn"|"ai",refresh=false):Promise<TraeStatistics> {return traeAction("statistics",{variant,refresh}) as Promise<TraeStatistics>;}

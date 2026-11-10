@@ -79,9 +79,14 @@ pub(super) async fn execute(options: &Options, control: &Control) -> Result<(Val
     }
     if !matches!(
         options.command,
-        Command::Accounts | Command::Status | Command::Inspect | Command::Credits | Command::Switch
+        Command::Accounts
+            | Command::Status
+            | Command::Inspect
+            | Command::Credits
+            | Command::Rewards
+            | Command::Switch
     ) {
-        return Err(Failure{code:"UNSUPPORTED_CAPABILITY",message:"TRAE desktop supports accounts/status/inspect/credits/switch. Login in the official client, then use call trae_action with action=capture. Native TRAE CLI is not integrated.".into(),exit:2});
+        return Err(Failure{code:"UNSUPPORTED_CAPABILITY",message:"TRAE desktop supports accounts/status/inspect/credits/rewards/switch. Login in the official client, then use call trae_action with action=capture. Native TRAE CLI is not integrated.".into(),exit:2});
     }
     control.check()?;
     let status = tokio::task::spawn_blocking(trae::status)
@@ -132,6 +137,42 @@ pub(super) async fn execute(options: &Options, control: &Control) -> Result<(Val
         return Ok((value, 0));
     }
     let mut failed = 0;
+    if options.command == Command::Rewards {
+        let mut rewards = Vec::new();
+        for a in &accounts {
+            control.check()?;
+            if a["variant"] != "cn" {
+                failed += 1;
+                rewards.push(json!({"accountId":a["id"],"accountName":a["name"],"variant":a["variant"],"ok":false,
+                    "error":error("UNSUPPORTED_REGION","TRAE daily check-in is only available for the CN build")}));
+                continue;
+            }
+            match trae::action(
+                "checkin",
+                json!({"accountId":a["id"],"timeoutSeconds":options.timeout}),
+            )
+            .await
+            {
+                Ok(result) => {
+                    let ok = result["ok"].as_bool() == Some(true);
+                    if !ok {
+                        failed += 1;
+                    }
+                    let message = result["message"].as_str().unwrap_or("Reward claim failed");
+                    rewards.push(json!({"accountId":a["id"],"accountName":a["name"],"variant":a["variant"],"ok":ok,
+                        "message":result["message"],"state":result["state"],"credits":result["credits"],
+                        "error":if ok {Value::Null}else{error(if result["authInvalid"]==true{"AUTH_RELOGIN_REQUIRED"}else{"REWARD_FAILED"},message)}}));
+                }
+                Err(e) => {
+                    failed += 1;
+                    rewards.push(json!({"accountId":a["id"],"accountName":a["name"],"variant":a["variant"],"ok":false,
+                        "error":error("REWARD_FAILED",&e)}));
+                }
+            }
+        }
+        value["rewards"] = json!(rewards);
+        value["complete"] = json!(failed == 0);
+    }
     if matches!(options.command, Command::Inspect | Command::Credits) {
         let mut credits = Vec::new();
         for a in &accounts {
@@ -162,10 +203,17 @@ pub(super) async fn execute(options: &Options, control: &Control) -> Result<(Val
     value["nativeCliSupported"] = json!(false);
     value["ok"] = json!(failed == 0);
     if failed > 0 {
-        value["error"] = error(
-            "PARTIAL_CREDITS",
-            "Some TRAE credit queries failed; unknown balances are not zero",
-        );
+        value["error"] = if options.command == Command::Rewards {
+            error(
+                "PARTIAL_REWARDS",
+                "Some TRAE reward claims failed; retry later or sign in again",
+            )
+        } else {
+            error(
+                "PARTIAL_CREDITS",
+                "Some TRAE credit queries failed; unknown balances are not zero",
+            )
+        };
     }
     Ok((value, if failed > 0 { 3 } else { 0 }))
 }

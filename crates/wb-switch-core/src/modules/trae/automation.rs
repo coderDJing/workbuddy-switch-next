@@ -13,6 +13,8 @@ pub struct Settings {
 pub struct RegionSettings {
     pub refresh_enabled: bool,
     pub interval_minutes: u32,
+    pub daily_enabled: bool,
+    pub daily_time: String,
     pub alerts_enabled: bool,
     pub expiry_days: u32,
     pub low_balance: f64,
@@ -25,6 +27,8 @@ impl Default for RegionSettings {
         Self {
             refresh_enabled: false,
             interval_minutes: 30,
+            daily_enabled: false,
+            daily_time: "09:00".into(),
             alerts_enabled: false,
             expiry_days: 7,
             low_balance: 20.0,
@@ -44,8 +48,12 @@ impl Settings {
                 || !s.rotate_below.is_finite()
                 || !(0.0..=1_000_000.0).contains(&s.low_balance)
                 || !(0.0..=1_000_000.0).contains(&s.rotate_below)
+                || time_minutes(&s.daily_time).is_none()
             {
-                return Err("TRAE 设置无效：间隔与冷却时间为 5–1440 分钟，阈值为非负数".into());
+                return Err(
+                    "TRAE 设置无效：间隔与冷却时间为 5–1440 分钟，阈值为非负数，签到时间为 HH:mm"
+                        .into(),
+                );
             }
         }
         Ok(())
@@ -53,8 +61,17 @@ impl Settings {
     fn enabled(&self) -> bool {
         [&self.cn, &self.ai]
             .iter()
-            .any(|s| s.refresh_enabled || s.alerts_enabled || s.rotate_enabled)
+            .any(|s| s.refresh_enabled || s.alerts_enabled || s.rotate_enabled || s.daily_enabled)
     }
+}
+/// 本机时区的 HH:mm，换算成当天分钟数。
+fn time_minutes(value: &str) -> Option<u32> {
+    if value.len() != 5 || value.as_bytes().get(2) != Some(&b':') {
+        return None;
+    }
+    let (hour, minute) = value.split_once(':')?;
+    let (hour, minute): (u32, u32) = (hour.parse().ok()?, minute.parse().ok()?);
+    (hour < 24 && minute < 60).then_some(hour * 60 + minute)
 }
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -62,7 +79,38 @@ pub(super) struct State {
     checked: BTreeMap<String, i64>,
     rotated: BTreeMap<String, i64>,
     alerted: BTreeMap<String, i64>,
+    claims: BTreeMap<String, Attempt>,
     logs: Vec<Value>,
+}
+/// 每日签到的当日尝试记录。同一天最多尝试 3 次，间隔 30 分钟。
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct Attempt {
+    day: String,
+    count: u32,
+    at: i64,
+    done: bool,
+}
+fn due(attempt: Option<&Attempt>, day: &str, now: i64) -> bool {
+    attempt.is_none_or(|attempt| {
+        attempt.day != day || (!attempt.done && attempt.count < 3 && now - attempt.at > 30 * 60)
+    })
+}
+/// 签到回执分类。成功以 `ok` 为准：没有 `state` 或 `state` 写错时，也不能记成失败。
+fn classify(result: &Value) -> &'static str {
+    let ok = result["ok"].as_bool() == Some(true);
+    match (ok, result["state"].as_str()) {
+        (true, Some("already")) => "already",
+        (true, _) => "claimed",
+        (false, Some("busy")) => "busy",
+        (false, Some("closed")) => "closed",
+        (false, Some("auth")) => "auth",
+        (false, Some("unconfirmed")) => "unconfirmed",
+        (false, _) => "failed",
+    }
+}
+fn settled(outcome: &str) -> bool {
+    matches!(outcome, "claimed" | "already")
 }
 fn read<T: serde::de::DeserializeOwned + Default>(path: &std::path::Path) -> Result<T, String> {
     match std::fs::read(path) {
@@ -119,6 +167,108 @@ fn log(state: &mut State, region: Region, action: &str, outcome: &str) {
     if state.logs.len() > 200 {
         state.logs.drain(..state.logs.len() - 200);
     }
+}
+/// 同类提醒每天最多一次，避免签到失败时反复打扰。
+fn alert(
+    state: &mut State,
+    notices: &mut Vec<String>,
+    key: String,
+    title: &str,
+    body: &str,
+    now: i64,
+) {
+    if state.alerted.get(&key).is_some_and(|at| now - at < 86400) {
+        return;
+    }
+    if crate::modules::notifications::record("warning", title, Some(body)).is_ok() {
+        state.alerted.insert(key, now);
+        notices.push(title.to_string());
+    }
+}
+/// 国内版每日签到。每个账号用自己快照里的官方设备号。
+async fn daily(
+    engine: &Engine,
+    state: &mut State,
+    c: &RegionSettings,
+    notices: &mut Vec<String>,
+    now: i64,
+) -> Result<(), String> {
+    let local = chrono::Local::now();
+    let day = local.format("%Y-%m-%d").to_string();
+    let current = time_minutes(&local.format("%H:%M").to_string()).unwrap_or(0);
+    if current < time_minutes(&c.daily_time).unwrap_or(540) {
+        return Ok(());
+    }
+    let accounts = {
+        let _lock = engine.lock()?;
+        engine
+            .load()?
+            .accounts
+            .into_iter()
+            .filter(|account| account.variant == Region::Cn)
+            .collect::<Vec<_>>()
+    };
+    state
+        .claims
+        .retain(|id, _| accounts.iter().any(|account| &account.id == id));
+    for account in &accounts {
+        if !due(state.claims.get(&account.id), &day, now) {
+            continue;
+        }
+        // 先落盘计数，进程崩溃也不会立刻重复领取。
+        let count = state
+            .claims
+            .get(&account.id)
+            .filter(|attempt| attempt.day == day)
+            .map_or(0, |attempt| attempt.count);
+        state.claims.insert(
+            account.id.clone(),
+            Attempt {
+                day: day.clone(),
+                count: count + 1,
+                at: now,
+                done: false,
+            },
+        );
+        write(engine, "automation-state.json", state)?;
+        let args: Args = serde_json::from_value(json!({"accountId": account.id}))
+            .map_err(|_| "自动签到参数无效".to_string())?;
+        let (outcome, message) = match engine.checkin(&args).await {
+            Ok(result) => {
+                let outcome = classify(&result);
+                if let Some(attempt) = state.claims.get_mut(&account.id) {
+                    attempt.done = settled(outcome);
+                }
+                if settled(outcome) {
+                    // 签到成功后刷新余额，让页面显示到账后的积分。
+                    let _ = engine.credit(&args).await;
+                }
+                (
+                    outcome.to_string(),
+                    result["message"].as_str().unwrap_or("").to_string(),
+                )
+            }
+            Err(error) => ("failed".to_string(), error),
+        };
+        log(state, Region::Cn, "daily", &outcome);
+        // 限流只是排队，等下一轮补签；其余失败每天提醒一次。
+        if !matches!(outcome.as_str(), "claimed" | "already" | "busy") {
+            alert(
+                state,
+                notices,
+                format!("daily:{}", account.id),
+                &format!("TRAE 每日签到失败 · {}", account.name),
+                &if message.is_empty() {
+                    "请前往 TRAE 账号管理查看详情".to_string()
+                } else {
+                    message.clone()
+                },
+                now,
+            );
+        }
+        write(engine, "automation-state.json", state)?;
+    }
+    Ok(())
 }
 fn finite_balance(account: &Account, now: i64, max_age: i64) -> Option<(f64, String)> {
     if account.expires_at.is_some_and(|t| t <= now) {
@@ -220,11 +370,18 @@ pub(super) async fn run(
         if only.is_some_and(|r| r != region) {
             continue;
         }
-        if !(c.refresh_enabled || c.alerts_enabled || c.rotate_enabled) {
+        if !(c.refresh_enabled || c.alerts_enabled || c.rotate_enabled || c.daily_enabled) {
             continue;
         }
         let now = chrono::Utc::now().timestamp();
         let key = region.text();
+        // 每日签到按自己的时间表执行，签到接口只存在于国内版。
+        if c.daily_enabled && region == Region::Cn {
+            daily(engine, &mut state, c, &mut notices, now).await?;
+        }
+        if !(c.refresh_enabled || c.alerts_enabled || c.rotate_enabled) {
+            continue;
+        }
         if !force
             && state
                 .checked
@@ -333,6 +490,74 @@ mod tests {
         let mut s = Settings::default();
         s.cn.interval_minutes = 0;
         assert!(s.validate().is_err());
+    }
+    #[test]
+    fn daily_settings_are_opt_in_and_require_a_real_time() {
+        let mut s = Settings::default();
+        assert!(!s.enabled());
+        assert_eq!(s.cn.daily_time, "09:00");
+        s.cn.daily_enabled = true;
+        assert!(s.enabled());
+        assert!(s.validate().is_ok());
+        for time in ["24:00", "12:60", "9:00", "09:0", "ab:cd", ""] {
+            s.cn.daily_time = time.to_string();
+            assert!(s.validate().is_err(), "{time} should be rejected");
+        }
+        assert_eq!(time_minutes("09:00"), Some(540));
+        assert_eq!(time_minutes("00:00"), Some(0));
+        assert_eq!(time_minutes("23:59"), Some(1439));
+    }
+    #[test]
+    fn daily_attempts_are_day_scoped_and_bounded() {
+        let attempt = Attempt {
+            day: "today".into(),
+            count: 1,
+            at: 0,
+            done: false,
+        };
+        assert!(due(None, "today", 10));
+        assert!(!due(Some(&attempt), "today", 10));
+        // 间隔超过 30 分钟后才允许再试。
+        assert!(due(Some(&attempt), "today", 1801));
+        assert!(!due(Some(&attempt), "today", 1800));
+        // 已经签到的账号当天不再重复领取。
+        assert!(!due(
+            Some(&Attempt {
+                done: true,
+                ..attempt.clone()
+            }),
+            "today",
+            100_000
+        ));
+        // 当天最多 3 次。
+        assert!(!due(
+            Some(&Attempt {
+                count: 3,
+                ..attempt.clone()
+            }),
+            "today",
+            100_000
+        ));
+        // 换一天重新开始。
+        assert!(due(Some(&attempt), "tomorrow", 100_000));
+    }
+    #[test]
+    fn successful_checkin_is_not_recorded_as_failure() {
+        assert_eq!(
+            classify(&json!({"ok": true, "state": "claimed"})),
+            "claimed"
+        );
+        assert_eq!(
+            classify(&json!({"ok": true, "state": "already"})),
+            "already"
+        );
+        // 回执缺少 state，或把 state 写成失败，成功仍然记为已领取。
+        assert_eq!(classify(&json!({"ok": true})), "claimed");
+        assert_eq!(classify(&json!({"ok": true, "state": "failed"})), "claimed");
+        assert_eq!(classify(&json!({"ok": false, "state": "busy"})), "busy");
+        assert_eq!(classify(&json!({"ok": false})), "failed");
+        assert!(settled("claimed") && settled("already"));
+        assert!(!settled("busy") && !settled("failed"));
     }
     #[test]
     fn rotation_never_compares_currency_or_unknown_balances() {

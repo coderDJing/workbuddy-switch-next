@@ -169,9 +169,10 @@ export default function TraePage() {
     try {
       for (const account of accountsRef.current.filter(item => item.variant === "cn" && !item.needsLogin)) {
         try {
-          const result = await api.traeAction("checkin", { accountId: account.id }) as { ok?: boolean; message?: string };
+          const result = await api.traeAction("checkin", { accountId: account.id }) as { ok?: boolean; message?: string; credits?: number | null };
           if (!result.ok) failed++;
-          outcomes.push(`${account.name}：${result.message || "已处理"}`);
+          const gain = typeof result.credits === "number" && result.credits > 0 ? `（+${result.credits} 积分）` : "";
+          outcomes.push(`${account.name}：${result.message || "已处理"}${gain}`);
         } catch (error) { failed++; outcomes.push(`${account.name}：${api.asError(error)}`); }
       }
       if (!outcomes.length) { toast.warning("没有可签到的国内版账号"); return; }

@@ -1051,7 +1051,7 @@ function demoQoderStatus(): QoderStatus {
 
 function demoTraeManagement(action: string, input?: Record<string, unknown>) {
   const now=Math.floor(Date.now()/1000),variant=input?.variant==="ai"?"ai":"cn";
-  const region={refreshEnabled:false,intervalMinutes:30,alertsEnabled:false,expiryDays:7,lowBalance:20,rotateEnabled:false,rotateBelow:10,cooldownMinutes:30};
+  const region={refreshEnabled:false,intervalMinutes:30,dailyEnabled:false,dailyTime:"09:00",alertsEnabled:false,expiryDays:7,lowBalance:20,rotateEnabled:false,rotateBelow:10,cooldownMinutes:30};
   if(action==="get_settings")return {settings:{cn:region,ai:{...region}},logs:[]};
   const credit=(used:number,at:number)=>({remaining:150-used,total:150,used,available:true,unlimited:false,unit:"credits",checkedAt:at,periodEndAt:now+86400*30,expiresAt:now+86400*30});
   const id="demo-trae-"+variant,name="TRAE 演示账号";

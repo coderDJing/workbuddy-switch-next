@@ -1683,12 +1683,13 @@
     "method": "POST",
     "path": "/api/trae/action",
     "input": "{action,input}",
-    "signature": "traeAction(action:\"capture\"|\"switch\"|\"credits\"|\"rename\"|\"delete\"|\"open\"|\"statistics\"|\"get_settings\"|\"save_settings\"|\"automation_run\"|\"backup_export\"|\"backup_preview\"|\"backup_import\"|\"cloud_backup\"|\"cloud_preview\"|\"cloud_restore\"|\"cloud_sync\", input:TraeInput)",
+    "signature": "traeAction(action:\"capture\"|\"switch\"|\"credits\"|\"checkin\"|\"rename\"|\"delete\"|\"open\"|\"statistics\"|\"get_settings\"|\"save_settings\"|\"automation_run\"|\"backup_export\"|\"backup_preview\"|\"backup_import\"|\"cloud_backup\"|\"cloud_preview\"|\"cloud_restore\"|\"cloud_sync\", input:TraeInput)",
     "parameters": {
       "action": {
-        "type": "\"capture\" | \"switch\" | \"credits\" | \"rename\" | \"delete\" | \"open\" | \"statistics\" | \"get_settings\" | \"save_settings\" | \"automation_run\" | \"backup_export\" | \"backup_preview\" | \"backup_import\" | \"cloud_backup\" | \"cloud_preview\" | \"cloud_restore\" | \"cloud_sync\"",
+        "type": "\"checkin\" | \"capture\" | \"switch\" | \"credits\" | \"rename\" | \"delete\" | \"open\" | \"statistics\" | \"get_settings\" | \"save_settings\" | \"automation_run\" | \"backup_export\" | \"backup_preview\" | ... 4 more ... | \"cloud_sync\"",
         "required": true,
         "enum": [
+          "checkin",
           "capture",
           "switch",
           "credits",
