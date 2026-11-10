@@ -24,7 +24,7 @@ use crate::modules::config::{
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const GITHUB_OWNER: &str = "coderDJing";
 pub const GITHUB_REPO: &str = "workbuddy-switch-next";
-pub const UPDATE_CHANNEL: &str = "stable";
+pub const UPDATE_CHANNEL: &str = "preview";
 
 /// 成功结果缓存有效期（6 小时）。自动轮询（30 分钟）命中缓存，不发网络请求；
 /// 设置页手动检查传 force=true 绕过缓存强制刷新。

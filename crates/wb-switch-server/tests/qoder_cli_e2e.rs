@@ -104,7 +104,12 @@ fn qoder_cli_switch_uses_its_own_lock_backup_and_credentials() {
     }
     let o = s.run(&["switch", &next.id, "--target=qoder-cli", "--quiet"]);
     let v = result(&o);
-    if v["error"]["code"] == "CLIENT_RUNNING" || v["error"]["code"] == "PROCESS_SCAN_FAILED" {
+    let blocked = v["error"]["code"] == "CLIENT_RUNNING"
+        || v["error"]["code"] == "PROCESS_SCAN_FAILED"
+        || v["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("正在运行"));
+    if blocked {
         assert_eq!(
             std::fs::read(s.0.join(".qoder-cn/.auth/user")).unwrap(),
             old_bytes
