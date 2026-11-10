@@ -46,10 +46,28 @@ Next 在上游项目的基础上，持续完善多平台工作台与 Agent 调�
 
 正式版只接收正式版更新，RC 只通过 `preview` 接收 RC 更新。已安装 RC 的用户如需转正式版，请退出应用后手动安装正式版，无需删除 `~/.wb-switch` 账号库。安装包可用同一 Release 中的 `SHA256SUMS` 核对完整性。
 
-macOS 首次启动若提示无法验证开发者，先在 Finder 中按住 Control 点击应用并选择「打开」，或前往「系统设置 → 隐私与安全性」选择「仍要打开」。仅当安装包来自上述官方 Releases、且系统仍提示「已损坏」时，再执行：
+macOS 安装包没有 Apple 公证（项目未购买开发者账号），浏览器下载后系统会给文件加上隔离属性，首次打开常提示「已损坏，无法打开，你应该将它移到废纸篓」。这不是安装包损坏，按下面任一方式处理即可。
+
+**方式一：清理隔离属性（已安装到「应用程序」）**
 
 ```bash
-xattr -rd com.apple.quarantine "/Applications/WorkBuddy Switch Next.app"
+sudo xattr -rd com.apple.quarantine "/Applications/WorkBuddy Switch Next.app"
+open "/Applications/WorkBuddy Switch Next.app"
+```
+
+**方式二：命令行下载安装（不产生隔离属性）**
+
+```bash
+curl -L -o /tmp/wbs.dmg https://github.com/coderDJing/workbuddy-switch-next/releases/latest/download/workbuddy-switch-next-macos-aarch64.dmg
+hdiutil attach /tmp/wbs.dmg -nobrowse
+cp -R "/Volumes/WorkBuddy Switch Next/WorkBuddy Switch Next.app" /Applications/
+hdiutil detach "/Volumes/WorkBuddy Switch Next"
+```
+
+若清理隔离后仍提示「已损坏」，说明应用签名被破坏，重新做一次 ad-hoc 签名后再打开（仅对上述官方 Releases 的安装包这样处理）：
+
+```bash
+sudo codesign --force --deep --sign - "/Applications/WorkBuddy Switch Next.app"
 ```
 
 应用能启动但切换账号时提示无权限，请参阅下方 [macOS 权限说明](#macos-权限说明)。

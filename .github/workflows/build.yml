@@ -113,6 +113,23 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.select-matrix.outputs.version }}
         run: sh scripts/make-dmg.sh "$RELEASE_VERSION" "$UPDATE_ARCH" "target/$RUST_TARGET/release/bundle/macos/WorkBuddy Switch Next.app"
+      - name: Verify the app inside the macOS image keeps its signature
+        if: runner.os == 'macOS' && vars.PUBLISH_APP != 'false'
+        run: |
+          set -euo pipefail
+          DMG="$(ls workbuddy-switch-next_*.dmg | head -n 1)"
+          MNT="$(mktemp -d)"
+          hdiutil attach "$DMG" -mountpoint "$MNT" -nobrowse -quiet
+          trap 'hdiutil detach "$MNT" -quiet || true' EXIT
+          APP="$MNT/WorkBuddy Switch Next.app"
+          if [ ! -d "$APP" ]; then
+            echo "DMG 内缺少应用包: $APP" >&2
+            exit 1
+          fi
+          # dmgbuild copies the bundle; a lost symlink or xattr would surface to
+          # users as "已损坏" even though the built .app was fine.
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv "$APP" 2>&1 | sed -n '1,8p'
       - name: Verify Windows desktop installer includes CLI
         if: runner.os == 'Windows' && vars.PUBLISH_APP != 'false'
         run: node scripts/verify-windows-cli-bundle.mjs

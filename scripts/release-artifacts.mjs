@@ -90,7 +90,7 @@ export function desktopReleaseNotes(notes, release = readRelease()) {
   validateRelease(release);
   const base = `https://github.com/${release.owner}/${release.repo}/releases/download/v${release.version}/`;
   const content = notes.replace(/<!-- desktop-downloads:start -->[\s\S]*?<!-- desktop-downloads:end -->\s*/g, '').trimStart();
-  return `<!-- desktop-downloads:start -->\n[下载 Windows x64 安装包](${base}${release.slug}-windows-x86_64-setup.exe) · [下载 Mac Apple Silicon 安装包](${base}${release.slug}-macos-aarch64.dmg)\n\n桌面安装包已包含 CLI 和每日任务组件，安装后即可使用。\n<!-- desktop-downloads:end -->\n\n${content}`;
+  return `<!-- desktop-downloads:start -->\n[下载 Windows x64 安装包](${base}${release.slug}-windows-x86_64-setup.exe) · [下载 Mac Apple Silicon 安装包](${base}${release.slug}-macos-aarch64.dmg)\n\n桌面安装包已包含 CLI 和每日任务组件，安装后即可使用。\n\n> **macOS 首次打开**：安装包未做 Apple 公证，浏览器下载后系统可能提示「已损坏，无法打开」。把应用拖入「应用程序」后执行 \`sudo xattr -rd com.apple.quarantine "/Applications/WorkBuddy Switch Next.app"\` 再打开即可；也可用 README 中的命令行安装方式，不会产生该隔离属性。\n<!-- desktop-downloads:end -->\n\n${content}`;
 }
 
 export function checksumDirectory(folder) {
