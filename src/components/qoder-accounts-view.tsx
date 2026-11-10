@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Clock3, Columns3, Ellipsis, FileDown, FileUp, Gift, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Clock3, Columns3, Ellipsis, FileDown, FileUp, Gift, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,7 @@ import type { QoderBundle, QoderCredit, QoderTarget, QoderTargetStatus } from "@
 import { cn } from "@/lib/utils";
 import { avatarTone } from "@/lib/avatar-tone";
 import { normalizeVariant, variantLabel } from "@/lib/variant";
-import { groupQoderAccounts, orderQoderAccounts, qoderExpiry, QODER_SORT_OPTIONS, type QoderAccountGroup, type QoderSortKey } from "@/lib/qoder-accounts";
+import { groupQoderAccounts, orderQoderAccounts, QODER_SORT_OPTIONS, type QoderAccountGroup, type QoderSortKey } from "@/lib/qoder-accounts";
 import { qoderTargets, useQoderView } from "@/stores/qoder-view";
 import { useQoderStatus } from "@/stores/qoder-status";
 
@@ -46,9 +46,32 @@ function formatTime(ms?: number | null): string {
 
 type CreditObserver = (id: string, credit: QoderCredit) => void;
 type LoadingObserver = (id: string, loading: boolean) => void;
+type QoderPack = { name: string; remaining: number; total: number; used: number; expiresAt: number | null; expiryKnown: boolean };
 
-function QoderCreditPanel({ bundleIds, liveTarget, compact, creditId, refreshVersion, onCredit, onLoading }: {
-  bundleIds: string[]; liveTarget?: QoderTarget; compact: boolean; creditId: string; refreshVersion: number;
+function qoderPacks(credit: Extract<QoderCredit, { ok: true }>): QoderPack[] {
+  const rows: QoderPack[] = [];
+  if (credit.plan && credit.plan.remaining > 0) rows.push({ name: "套餐积分", ...credit.plan, expiresAt: credit.planExpiresAt ?? null, expiryKnown: credit.planExpiresAt != null });
+  if (credit.addOn && credit.addOn.remaining > 0) rows.push({ name: "额外积分", ...credit.addOn, expiresAt: null, expiryKnown: false });
+  for (const part of credit.dedicated ?? []) {
+    if (part.remaining > 0) rows.push({ name: "专属积分", remaining: part.remaining, total: part.total, used: part.used, expiresAt: part.expiresAt, expiryKnown: part.expiresAt != null });
+  }
+  return rows.sort((a, b) => (a.expiryKnown && a.expiresAt ? a.expiresAt : Number.POSITIVE_INFINITY) - (b.expiryKnown && b.expiresAt ? b.expiresAt : Number.POSITIVE_INFINITY));
+}
+function formatQoderExpiry(ms: number | null, known: boolean) {
+  if (!known || !ms) return known ? "长期有效" : "未提供";
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return "未提供";
+  return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+function formatQoderDateTime(ms: number) {
+  return new Date(ms).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+function soonPack(pack: QoderPack) {
+  return pack.expiryKnown && pack.expiresAt != null && pack.expiresAt > Date.now() && pack.expiresAt - Date.now() <= 7 * 86400000;
+}
+
+function QoderCreditPanel({ bundleIds, liveTarget, compact, creditId, refreshVersion, accountName, onCredit, onLoading }: {
+  bundleIds: string[]; liveTarget?: QoderTarget; compact: boolean; creditId: string; refreshVersion: number; accountName: string;
   onCredit: CreditObserver; onLoading: LoadingObserver;
 }) {
   const [credit, setCredit] = useState<QoderCredit | null>(null);
@@ -77,29 +100,46 @@ function QoderCreditPanel({ bundleIds, liveTarget, compact, creditId, refreshVer
     const timer = window.setInterval(() => void load(), 5 * 60 * 1000);
     return () => { stopped = true; window.clearInterval(timer); };
   }, [idsKey, liveTarget, refreshVersion, creditId, onCredit, onLoading]);
+  const [packsOpen, setPacksOpen] = useState(false);
   const format = (value: number) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
   if (loading && !credit) return <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />积分查询中…</div>;
   if (!credit?.ok) return <div className="py-3 text-sm text-destructive">{credit?.error ?? "等待积分数据…"}</div>;
-  const ratio = credit.total > 0 ? Math.min(100, Math.max(0, credit.remaining / credit.total * 100)) : 0;
-  const expires = qoderExpiry(credit);
+  const packs = qoderPacks(credit);
+  const nearest = packs.find(pack => pack.expiryKnown && pack.expiresAt)?.expiresAt;
+  const soonAmount = packs.filter(soonPack).reduce((sum, pack) => sum + pack.remaining, 0);
+  const clockTitle = soonAmount > 0 ? `${format(soonAmount)} 积分将在 7 天内到期` : nearest ? `最近到期 ${formatQoderExpiry(nearest, true)}` : packs.some(pack => !pack.expiryKnown) ? "部分积分未提供到期时间" : "当前积分长期有效";
   return <div className="min-w-0">
-    {expires && expires - Date.now() <= 7 * 86400000 ? <div className="mb-3 rounded-lg bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-300">有积分将在 {Math.max(1, Math.ceil((expires - Date.now()) / 86400000))} 天内到期，建议优先使用</div> : null}
-    <div className="flex items-baseline gap-x-3 gap-y-1">
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
       <span className="flex items-center gap-1.5"><Sparkles className="size-4 shrink-0 stroke-[1.75] text-muted-foreground" aria-hidden="true" /><strong className={cn("font-semibold leading-none tabular-nums tracking-[-0.025em] text-foreground", compact ? "text-[20px]" : "text-[22px]")} style={{ fontFamily: '"Bricolage Grotesque Variable", "SF Pro Display", ui-sans-serif, sans-serif' }}>{format(credit.remaining)}</strong></span>
-      <span className={cn("text-muted-foreground", compact ? "text-[11px]" : "text-xs")}>剩余积分</span>
-      <div className={cn("ml-auto flex items-center gap-1.5 text-muted-foreground", compact ? "text-[11px]" : "text-xs")}><Clock3 className="size-3.5 shrink-0" /><span className="whitespace-nowrap tabular-nums">{loading ? "更新中…" : updatedAt ? `${new Date(updatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })} 更新` : "—"}</span></div>
+      <span className={cn("text-muted-foreground", compact ? "text-[11px]" : "text-xs")}>{packs.length} 个积分包</span>
+      <div className={cn("ml-auto flex items-center gap-1.5 text-muted-foreground", compact ? "text-[11px]" : "text-xs")} title={clockTitle}><Clock3 className="size-3.5 shrink-0" /><span className="whitespace-nowrap tabular-nums">{loading ? "更新中…" : updatedAt ? `${new Date(updatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })} 更新` : "—"}</span></div>
     </div>
-    <div className={cn("text-[11px] font-medium text-muted-foreground", compact ? "mt-3" : "mt-4")}>积分总览</div>
-    <div className={cn("space-y-2", compact ? "mt-3" : "mt-4")}>
-      <div className="flex items-center justify-between gap-3 text-[11px]"><span className="rounded-lg bg-muted/80 px-1.5 py-0.5 font-medium tabular-nums text-foreground">{format(credit.remaining)} 积分</span><span className="tabular-nums">总计 {format(credit.total)}</span></div>
-      <div className="h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${ratio}%` }} /></div>
-      <div className="text-[11px] tabular-nums text-muted-foreground">已用 {format(credit.used)} 积分</div>
-      {(credit.plan?.total || credit.addOn?.total || credit.planExpiresAt || credit.dedicated?.length) ? <div className="space-y-1.5 border-t border-border/60 pt-2">
-        {credit.plan?.total ? <div className="flex items-center justify-between gap-2"><span>套餐积分 · 剩余 {format(credit.plan.remaining)}</span><span className="shrink-0 tabular-nums">{credit.planExpiresAt ? `套餐 ${new Date(credit.planExpiresAt).toLocaleDateString("zh-CN")} 到期` : "套餐到期时间未提供"}</span></div> : credit.planExpiresAt ? <div className="flex items-center justify-between gap-2"><span>套餐</span><span className="shrink-0 tabular-nums">{new Date(credit.planExpiresAt).toLocaleDateString("zh-CN")} 到期</span></div> : null}
-        {credit.addOn?.total ? <div className="flex items-center justify-between gap-2"><span>额外积分 · 剩余 {format(credit.addOn.remaining)}</span><span className="shrink-0">到期时间未提供</span></div> : null}
-        {credit.dedicated?.filter((part) => part.total > 0).map((part, index) => <div key={`${part.expiresAt}-${index}`} className="flex items-center justify-between gap-2"><span>专属积分 · 剩余 {format(part.remaining)}</span><span className="shrink-0 tabular-nums">{part.expiresAt ? `${new Date(part.expiresAt).toLocaleDateString("zh-CN")} 到期` : "到期时间未提供"}</span></div>)}
-      </div> : null}
+    <div className={cn("flex items-center justify-between gap-2", compact ? "mt-3" : "mt-4")}>
+      <span className="text-[11px] font-medium text-muted-foreground">近期到期</span>
+      {packs.length > 2 && <button type="button" className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-[11px] font-medium text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" onClick={() => setPacksOpen(true)}>查看全部积分包<ArrowRight className="size-3.5" /></button>}
     </div>
+    <div className={cn(compact ? "mt-3 space-y-2" : "mt-4 space-y-2.5")}>
+      {packs.length === 0 ? <div className="py-1 text-[11px] text-muted-foreground">暂无可用积分</div> : [0, 1].map(index => {
+        const pack = packs[index];
+        if (!pack) return <div key="empty-pack" className="min-w-0"><div className={cn("py-1 text-muted-foreground", compact ? "text-[11px]" : "text-xs")}>暂无其他积分包</div><div className={cn("h-1", compact ? "mt-1" : "mt-1.5")} aria-hidden /></div>;
+        const expiry = formatQoderExpiry(pack.expiresAt, pack.expiryKnown);
+        const ratio = pack.total > 0 ? Math.min(100, Math.max(0, pack.remaining / pack.total * 100)) : 0;
+        return <div key={`${pack.name}-${pack.expiresAt ?? "none"}-${index}`} className="min-w-0" title={`${pack.name} · 剩余 ${format(pack.remaining)} / ${format(pack.total)} · ${pack.expiryKnown && pack.expiresAt ? `${expiry} 到期` : "到期时间未提供"}`}>
+          <div className={cn("grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3", compact ? "text-[11px]" : "text-xs")}>
+            <span className={cn("rounded-lg bg-muted/80 font-medium tabular-nums text-foreground", compact ? "px-1.5 py-0.5" : "px-2 py-1")}>{format(pack.remaining)} 积分</span>
+            <span className="truncate text-muted-foreground">{pack.name}</span>
+            <span className={cn("whitespace-nowrap tabular-nums", soonPack(pack) ? "text-orange-600" : "text-muted-foreground")}>{expiry}</span>
+          </div>
+          <div className={cn("h-1 overflow-hidden rounded-full bg-muted", compact ? "mt-1" : "mt-1.5")} aria-hidden><div className={cn("h-full rounded-full", soonPack(pack) ? "bg-orange-500" : "bg-primary")} style={{ width: `${ratio}%` }} /></div>
+        </div>;
+      })}
+    </div>
+    <Dialog open={packsOpen} onOpenChange={setPacksOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>全部积分包</DialogTitle><DialogDescription>{accountName} · 共 {packs.length} 个积分包</DialogDescription></DialogHeader>
+      <div className="max-h-[60vh] min-w-0 overflow-y-auto divide-y divide-border/60">{packs.map((pack, index) => {
+        const ratio = pack.total > 0 ? Math.min(100, Math.max(0, pack.remaining / pack.total * 100)) : 0;
+        return <div key={`${pack.name}-${pack.expiresAt ?? "none"}-${index}`} className="min-w-0 py-3 first:pt-0 last:pb-0"><div className="flex min-w-0 items-start justify-between gap-3"><div className="min-w-0"><div className="truncate text-sm font-medium">{pack.name}</div><div className="mt-1 text-[11px] text-muted-foreground">{pack.expiryKnown && pack.expiresAt ? `到期 ${formatQoderDateTime(pack.expiresAt)}` : "到期时间未提供"}</div></div><div className="shrink-0 text-right text-xs"><div className="font-medium">{format(pack.remaining)} / {format(pack.total)}</div><div className="mt-1 text-[11px] text-muted-foreground">已用 {format(pack.used)}</div></div></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden><div className={cn("h-full rounded-full", soonPack(pack) ? "bg-orange-500/80" : "bg-primary/75")} style={{ width: `${ratio}%` }} /></div></div>;
+      })}</div>
+    </DialogContent></Dialog>
   </div>;
 }
 
@@ -232,7 +272,7 @@ function QoderAccountCard({ group, targets, targetStatus, compact, busy, busyKey
         </DropdownMenu>
       </header>
       <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}>
-        <QoderCreditPanel bundleIds={group.bundles.map((bundle) => bundle.id)} liveTarget={liveTarget} compact={compact} creditId={group.key} refreshVersion={refreshVersion + localRefresh} onCredit={onCredit} onLoading={onLoading} />
+        <QoderCreditPanel bundleIds={group.bundles.map((bundle) => bundle.id)} liveTarget={liveTarget} compact={compact} creditId={group.key} refreshVersion={refreshVersion + localRefresh} accountName={group.label} onCredit={onCredit} onLoading={onLoading} />
       </div>
       {!compact && <footer className="flex items-center gap-2 border-t border-border px-5 py-2.5">{switchControls}{active && <span className="text-xs text-muted-foreground">当前使用</span>}</footer>}
       <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
@@ -257,7 +297,7 @@ function CurrentLoginCard({ status, compact, busy, saving, onSave, needsAuthoriz
         <Badge variant="secondary" className="shrink-0 gap-1"><Check className="size-3" />当前</Badge>
       </header>
       <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}>
-        <QoderCreditPanel bundleIds={[]} liveTarget={status.target} compact={compact} creditId={`live:${status.target}`} refreshVersion={refreshVersion} onCredit={onCredit} onLoading={onLoading} />
+        <QoderCreditPanel bundleIds={[]} liveTarget={status.target} compact={compact} creditId={`live:${status.target}`} refreshVersion={refreshVersion} accountName={status.echoName || "当前登录"} onCredit={onCredit} onLoading={onLoading} />
         <p className="mt-3">{needsAuthorization ? "已检测到本机登录，请授权访问系统密钥后识别账号。" : "已检测到本机登录，但自动识别未完成，请重试。"}</p>
       </div>
       <footer className={cn("border-t border-border", compact ? "px-3.5 py-2" : "px-5 py-2.5")}>

@@ -54,29 +54,20 @@ export function manifestFromEnvironment(env = process.env, config = readRelease(
   return output;
 }
 
-function bundleRoot(target) {
+function bundleRoot(target, workspace = root) {
   if (!/^[a-z0-9_-]+$/.test(target)) throw new Error('Invalid Rust target');
-  const targetRoot = path.resolve(root, 'target');
+  const targetRoot = path.resolve(workspace, 'target');
   const bundle = path.resolve(targetRoot, target, 'release/bundle');
   if (!bundle.startsWith(targetRoot + path.sep) || path.basename(bundle) !== 'bundle') throw new Error('Unsafe bundle path');
   return bundle;
 }
 
-function collect(env = process.env) {
-  const release = readRelease(), target = env.RUST_TARGET, platform = env.PLATFORM_TAG;
+export function collect(env = process.env, { workspace = root, release = readRelease() } = {}) {
+  const target = env.RUST_TARGET, platform = env.PLATFORM_TAG;
   if (!['darwin-arm64', 'win32-x64'].includes(platform)) throw new Error('Unsupported platform tag');
-  const bundle = bundleRoot(target), destination = path.join(root, 'dist-bin');
+  if (env.PUBLISH_APP === 'false') throw new Error('Desktop packaging is required');
+  const bundle = bundleRoot(target, workspace), destination = path.join(workspace, 'dist-bin');
   fs.mkdirSync(destination, { recursive: true });
-  const suffix = platform.startsWith('win32') ? '.exe' : '';
-  const binary = path.join(root, 'target', target, 'release', `wb-switch${suffix}`);
-  fs.copyFileSync(binary, path.join(destination, `${release.slug}-cli-${platform}${suffix}`));
-  const pkgBin = path.join(root, 'npm/platform', `${release.slug}-${platform}`, 'bin');
-  fs.mkdirSync(pkgBin, { recursive: true });
-  fs.copyFileSync(binary, path.join(pkgBin, `wb-switch-${platform}${suffix}`));
-  const daily = path.join(root, 'src-tauri/binaries', `daily-runner-${target}${suffix}`);
-  fs.copyFileSync(daily, path.join(destination, `${release.slug}-daily-runner-${platform}${suffix}`));
-  fs.copyFileSync(daily, path.join(pkgBin, `daily-runner${suffix}`));
-  if (env.PUBLISH_APP === 'false') return;
   const os = env.UPDATE_OS, arch = env.UPDATE_ARCH;
   const variants = [''];
   for (const variant of variants) {
@@ -90,7 +81,7 @@ function collect(env = process.env) {
     fs.writeFileSync(path.join(destination, spec.json), JSON.stringify(data, null, 2) + '\n');
   }
   if (os === 'macos') {
-    fs.copyFileSync(path.join(root, `${release.slug}_${release.version}_${arch}.dmg`),
+    fs.copyFileSync(path.join(workspace, `${release.slug}_${release.version}_${arch}.dmg`),
       path.join(destination, `${release.slug}-${os}-${arch}.dmg`));
   }
 }
@@ -110,6 +101,8 @@ export function checksumDirectory(folder) {
 
 export function validateArtifacts(folder, release = readRelease()) {
   validateRelease(release);
+  const standalone = fs.readdirSync(folder).filter(name => name.startsWith(`${release.slug}-cli-`) || name.startsWith(`${release.slug}-daily-runner-`));
+  if (standalone.length) throw new Error('Standalone CLI and Daily task components must stay inside desktop packages');
   const manifests = fs.readdirSync(folder).filter(name => /^latest.*\.json$/.test(name));
   if (!manifests.includes('latest.json')) throw new Error('Missing merged updater manifest');
   const prefix = `https://github.com/${release.owner}/${release.repo}/releases/download/v${release.version}/`;

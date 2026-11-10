@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Clock3, Columns3, Ellipsis, ExternalLink, FileDown, FileUp, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Clock3, Columns3, Ellipsis, ExternalLink, FileDown, FileUp, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { TraeBackupDialog } from "@/components/trae-backup-dialog";
 import { DemoAction } from "@/components/demo-action";
@@ -27,20 +27,74 @@ const format = (value: number) => new Intl.NumberFormat("zh-CN", { maximumFracti
 const formatTime = (seconds?: number | null) => seconds ? new Date(seconds * 1000).toLocaleString("zh-CN", { hour12: false }) : "—";
 const clientLabel = (_client: api.TraeClient) => "TRAE 桌面端";
 
-function CreditPanel({ credit, loading, error, compact }: { credit?: api.TraeCredit | null; loading: boolean; error?: string; compact: boolean }) {
+function formatPackExpiry(seconds?: number | null) {
+  if (!seconds) return "长期有效";
+  const date = new Date(seconds * 1000);
+  if (Number.isNaN(date.getTime())) return "长期有效";
+  return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+function formatPackDateTime(seconds?: number | null) {
+  if (!seconds) return "—";
+  const date = new Date(seconds * 1000);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+function visiblePacks(credit?: api.TraeCredit | null): api.TraeCreditPack[] {
   const known = credit?.available === true && (credit.unlimited || credit.remaining != null);
-  const number = credit?.unlimited ? "∞" : known && credit?.remaining != null ? `${credit.unit === "usd" ? "$" : ""}${format(credit.remaining)}` : "—";
-  const ratio = known && !credit?.unlimited && credit?.total && credit.total > 0 && credit.remaining != null ? Math.min(100, Math.max(0, credit.remaining / credit.total * 100)) : undefined;
+  const packs = (credit?.packs ?? []).filter(pack => pack.remaining > 0);
+  const rows = packs.length || !known || credit?.unlimited || credit?.remaining == null || credit.remaining <= 0 ? packs : [{
+    name: credit.unit === "usd" ? "美元额度" : "积分包",
+    remaining: credit.remaining,
+    total: credit.total ?? credit.remaining,
+    used: credit.used ?? Math.max(0, (credit.total ?? credit.remaining) - credit.remaining),
+    expiresAt: credit.expiresAt,
+  }];
+  return [...rows].sort((a, b) => (a.expiresAt ?? Number.POSITIVE_INFINITY) - (b.expiresAt ?? Number.POSITIVE_INFINITY));
+}
+function PackRow({ pack, compact, unit, placeholder }: { pack?: api.TraeCreditPack; compact: boolean; unit: string; placeholder?: string }) {
+  if (!pack) return <div className="min-w-0"><div className={cn("grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 text-muted-foreground", compact ? "text-[11px]" : "text-xs")}><span className={compact ? "py-0.5" : "py-1"}>{placeholder}</span><span className="invisible">{"\u00a0"}</span><span className="invisible">{"\u00a0"}</span></div><div className={cn("h-1", compact ? "mt-1" : "mt-1.5")} aria-hidden /></div>;
+  const soon = pack.expiresAt != null && pack.expiresAt * 1000 > Date.now() && pack.expiresAt * 1000 - Date.now() <= 7 * 86400000;
+  const ratio = pack.total > 0 ? Math.min(100, Math.max(0, pack.remaining / pack.total * 100)) : 0;
+  const amount = `${format(pack.remaining)} ${unit}`;
+  const expiry = formatPackExpiry(pack.expiresAt);
+  return <div className="min-w-0" title={`${pack.name} · 剩余 ${format(pack.remaining)} / ${format(pack.total)} · ${pack.expiresAt ? `${expiry} 到期` : expiry}`}>
+    <div className={cn("grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3", compact ? "text-[11px]" : "text-xs")}>
+      <span className={cn("rounded-lg bg-muted/80 font-medium tabular-nums text-foreground", compact ? "px-1.5 py-0.5" : "px-2 py-1")}>{amount}</span>
+      <span className="truncate text-muted-foreground">{pack.name}</span>
+      <span className={cn("whitespace-nowrap tabular-nums", soon ? "text-orange-600" : "text-muted-foreground")}>{expiry}</span>
+    </div>
+    <div className={cn("h-1 overflow-hidden rounded-full bg-muted", compact ? "mt-1" : "mt-1.5")} aria-hidden><div className={cn("h-full rounded-full", soon ? "bg-orange-500" : "bg-primary")} style={{ width: `${ratio}%` }} /></div>
+  </div>;
+}
+function CreditPanel({ credit, loading, error, compact, accountName }: { credit?: api.TraeCredit | null; loading: boolean; error?: string; compact: boolean; accountName: string }) {
+  const [packsOpen, setPacksOpen] = useState(false);
+  const known = credit?.available === true && (credit.unlimited || credit.remaining != null);
+  const number = credit?.unlimited ? "不限量" : known && credit?.remaining != null ? `${credit.unit === "usd" ? "$" : ""}${format(credit.remaining)}` : "—";
+  const packs = visiblePacks(credit);
+  const unit = credit?.unit === "usd" ? "美元" : "积分";
+  const nearest = packs.find(pack => pack.expiresAt)?.expiresAt;
+  const soonAmount = packs.filter(pack => pack.expiresAt != null && pack.expiresAt * 1000 > Date.now() && pack.expiresAt * 1000 - Date.now() <= 7 * 86400000).reduce((sum, pack) => sum + pack.remaining, 0);
   return <div className="min-w-0">
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
       <span className="flex items-center gap-1.5"><Sparkles className="size-4 shrink-0 stroke-[1.75] text-muted-foreground" aria-hidden />
         <strong className={cn("font-semibold leading-none tabular-nums tracking-[-0.025em] text-foreground", compact ? "text-[20px]" : "text-[22px]")} style={{ fontFamily: '"Bricolage Grotesque Variable", "SF Pro Display", ui-sans-serif, sans-serif' }}>{number}</strong>
       </span>
-      <span className={compact ? "text-[11px]" : "text-xs"}>{known ? credit?.unit === "usd" ? "剩余美元额度" : "剩余积分" : loading ? "查询中…" : credit ? "额度未知" : "待查询"}</span>
-      <span className="ml-auto inline-flex items-center gap-1.5 text-[11px]"><Clock3 className="size-3.5 shrink-0" />{loading ? "更新中…" : credit?.checkedAt ? `${new Date(credit.checkedAt * 1000).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })} 更新` : "—"}</span>
+      <span className={compact ? "text-[11px]" : "text-xs"}>{known ? credit?.unlimited ? "不限量额度" : `${packs.length} 个${unit === "美元" ? "额度包" : "积分包"}` : loading ? "查询中…" : credit ? "额度未知" : "待查询"}</span>
+      <span className="ml-auto inline-flex items-center gap-1.5 text-[11px]" title={soonAmount > 0 ? `${format(soonAmount)} ${unit}将在 7 天内到期` : nearest ? `最近到期 ${formatPackExpiry(nearest)}` : known ? `当前${unit}长期有效` : undefined}><Clock3 className="size-3.5 shrink-0" />{loading ? "更新中…" : credit?.checkedAt ? `${new Date(credit.checkedAt * 1000).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })} 更新` : "—"}</span>
     </div>
-    {ratio !== undefined && <div className={cn("h-1 overflow-hidden rounded-full bg-muted", compact ? "mt-3" : "mt-4")} aria-hidden><div className="h-full rounded-full bg-primary" style={{ width: `${ratio}%` }} /></div>}
+    {known && !credit?.unlimited && <div className={cn("flex items-center justify-between gap-2", compact ? "mt-3" : "mt-4")}><span className="text-[11px] font-medium text-muted-foreground">近期到期</span>{packs.length > 2 && <button type="button" className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-[11px] font-medium text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" onClick={() => setPacksOpen(true)}>查看全部积分包<ArrowRight className="size-3.5" /></button>}</div>}
+    {known && !credit?.unlimited && <div className={cn(compact ? "mt-3 space-y-2" : "mt-4 space-y-2.5")}>{packs.length === 0 ? <div className="py-1 text-[11px] text-muted-foreground">暂无可用积分</div> : [0, 1].map(index => {
+      const pack = packs[index];
+      return <PackRow key={pack ? `${pack.name}-${pack.expiresAt ?? "none"}-${index}` : "empty-pack"} pack={pack} compact={compact} unit={unit} placeholder="暂无其他积分包" />;
+    })}</div>}
     {error ? <p className="mt-3 text-xs text-destructive">{error}</p> : !known && !loading ? <p className="mt-3 text-[11px]">{credit ? "官方暂未提供可识别的额度，未知余额不会按零计算。" : "点击刷新积分，查询官方可用额度。"}</p> : null}
+    <Dialog open={packsOpen} onOpenChange={setPacksOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>全部积分包</DialogTitle><DialogDescription>{accountName} · 共 {packs.length} 个{unit === "美元" ? "额度包" : "积分包"}</DialogDescription></DialogHeader>
+      {packs.length === 0 ? <div className="px-1 py-6 text-center text-sm text-muted-foreground">当前没有可展示的积分包。</div> : <div className="max-h-[60vh] min-w-0 overflow-y-auto divide-y divide-border/60">{packs.map((pack, index) => {
+        const ratio = pack.total > 0 ? Math.min(100, Math.max(0, pack.remaining / pack.total * 100)) : 0;
+        const soon = pack.expiresAt != null && pack.expiresAt * 1000 > Date.now() && pack.expiresAt * 1000 - Date.now() <= 7 * 86400000;
+        return <div key={`${pack.name}-${pack.expiresAt ?? "none"}-${index}`} className="min-w-0 py-3 first:pt-0 last:pb-0"><div className="flex min-w-0 items-start justify-between gap-3"><div className="min-w-0"><div className="truncate text-sm font-medium">{pack.name}</div><div className="mt-1 text-[11px] text-muted-foreground">{pack.expiresAt ? `到期 ${formatPackDateTime(pack.expiresAt)}` : "长期有效"}</div></div><div className="shrink-0 text-right text-xs"><div className="font-medium">{format(pack.remaining)} / {format(pack.total)}</div><div className="mt-1 text-[11px] text-muted-foreground">已用 {format(pack.used)}</div></div></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden><div className={cn("h-full rounded-full", soon ? "bg-orange-500/80" : "bg-primary/75")} style={{ width: `${ratio}%` }} /></div></div>;
+      })}</div>}
+    </DialogContent></Dialog>
   </div>;
 }
 
@@ -195,7 +249,7 @@ export default function TraePage() {
                   {!api.isDemoMode() && <><DropdownMenuItem onSelect={() => { cancelRename.current = false; setDraft(group.name); setEditing(group.key); }}><Pencil />重命名</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:bg-destructive/5 focus:text-destructive" onSelect={() => setPending({ kind: "delete", group })}><Trash2 />删除账号</DropdownMenuItem></>}
                 </DropdownMenuContent></DropdownMenu>
               </header>
-              <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}><CreditPanel credit={groupCredit(group)} loading={group.accounts.some(a => creditLoading[a.id])} error={groupError} compact={compact} />{needsLogin && <div className="mt-3 flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300"><span>登录已过期</span><DemoAction><Button size="sm" variant="ghost" disabled={busy} onClick={() => { setLoginOpen(true); }}>重新登录</Button></DemoAction></div>}</div>
+              <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}><CreditPanel credit={groupCredit(group)} loading={group.accounts.some(a => creditLoading[a.id])} error={groupError} compact={compact} accountName={group.name} />{needsLogin && <div className="mt-3 flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300"><span>登录已过期</span><DemoAction><Button size="sm" variant="ghost" disabled={busy} onClick={() => { setLoginOpen(true); }}>重新登录</Button></DemoAction></div>}</div>
               {!compact && <footer className="flex items-center gap-2 border-t border-border px-5 py-2.5">{switchControls(group)}{active && <span className="text-xs text-muted-foreground">当前使用</span>}</footer>}
             </article>;
           })}

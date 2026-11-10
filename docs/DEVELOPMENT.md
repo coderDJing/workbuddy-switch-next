@@ -4,7 +4,7 @@ Next 的发布身份与版本入口是 `release-config.json`。账号库与认�
 
 ## 环境与构建
 
-Node.js 22、Rust stable（至少 1.89）及对应平台的 Tauri 构建依赖。桌面构建还需要 Python 3.9+ 和 venv：构建脚本在 `target/` 下安装固定版本的 requests 与 PyInstaller，打包每日任务组件，应用运行时不需要另行安装 Python。macOS 可用 universal2 Python 交叉构建 Intel / Apple Silicon，其他平台需要匹配的目标架构。
+Node.js 22、Rust stable（至少 1.89）及对应平台的 Tauri 构建依赖。桌面构建还需要 Python 3.9+ 和 venv：构建脚本在 `target/` 下安装固定版本的 requests 与 PyInstaller，打包每日任务组件，应用运行时不需要另行安装 Python。构建环境需要匹配目标架构。
 
 ```bash
 npm ci
@@ -48,7 +48,7 @@ npm run build:app:release
 2. 运行 `npm run version:set -- stable`，将当前 RC 的基础版本转为正式版；用 `cargo check -p wb-switch-core` 更新 Cargo.lock。
 3. 新建 `docs/releases/<版本>.md`。发布工作流直接读取此文件，必须写明本版变化、安装迁移、更新通道和验证边界。
 4. 运行 `npm run release:check`、前端测试与生产构建、发布脚本测试、Rust 测试和格式检查。核对 Cargo.lock 中三个项目包的版本，以及 Tauri 和 core 的正式版更新地址。
-5. 检查通过后，按「提交 → push main → 打对应版本 tag → push tag」执行。准备阶段可以停在本地；只有推送 tag 才触发正式发布。四平台构建与签名成功后，才以 Release 的实际产物作为发布完成依据。
+5. 检查通过后，按「提交 → push main → 打对应版本 tag → push tag」执行。准备阶段可以停在本地；只有推送 tag 才触发正式发布。两个支持平台构建与签名成功后，才以 Release 的实际产物作为发布完成依据。
 
 从正式版开始新 RC 周期时，用 `npm run version:set -- rc`，脚本将补丁位加一并按十进位进位，例如 `1.1.9 → 1.2.0`；已有 RC 保持基础版本不变。RC 用户转正式版需手动安装；正式版发布不改写 `preview` 更新入口。
 
@@ -77,13 +77,11 @@ Next 使用自己的 Tauri updater 签名。当前机器的签名材料在用户
 
 macOS DMG 由固定版本 dmgbuild 制作，支持无 Finder 的 CI。Windows 安装包按实际 productName 与版本定位；清理旧产物通过 Node 原生文件操作限定在当前 target 的 bundle 目录。
 
-## npm 发布
+## 桌面分发
 
-仓库变量 `PUBLISH_NPM` 必须显式设为 `true`，并提供有效 `NPM_TOKEN`，才会在 tag 构建中发布。当前为 false；桌面发布独立继续。平台包全部成功后才发布主包，RC 使用 npm dist-tag `next`，正式版使用 `latest`。
+CLI 与每日任务组件由桌面安装包内置，发布流程只上传桌面安装包、自动更新包、签名、更新清单与校验和。Windows 和 macOS 的打包校验会检查内置组件。
 
-本地可用 `npm pack --dry-run --json` 检查 npm 主包内容。安装脚本只从 Next 平台包复制 CLI 与每日任务组件，不会回退到原作者的 npm 包。单独下载 CLI 二进制时，还需将同平台的每日任务组件放在 CLI 同目录并命名为 `daily-runner`（Windows 为 `daily-runner.exe`）。`WB_SWITCH_BINARY` 本地覆盖入口保留。
-
-旧 npm 包与 Next 的兼容别名会占用相同全局命令路径。用户迁移时先正常卸载旧 npm 包再装 Next，账号库不需要移动或删除。
+发布说明由 `release-artifacts.mjs notes` 添加顶部两个安装包直达链接，版本 Release 与 preview 共用不可变版本 tag 的下载地址。更新清单与兼容地址继续保留。
 
 ## 数据与配置兼容
 

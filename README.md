@@ -44,7 +44,7 @@ Next 在上游项目的基础上，持续完善多平台工作台与 Agent 调�
 | macOS Apple Silicon（M 系列，arm64） | `workbuddy-switch-next-macos-aarch64.dmg` | 打开 DMG，将 `WorkBuddy Switch Next.app` 拖入「应用程序」 |
 | Windows x64 | `workbuddy-switch-next-windows-x86_64-setup.exe` | 运行安装程序并按提示完成安装 |
 
-正式版只接收正式版更新，RC 只通过 `preview` 接收 RC 更新。已安装 RC 的用户如需转正式版，请退出应用后手动安装正式版，无需删除 `~/.wb-switch` 账号库。安装包与独立 CLI 可用同一 Release 中的 `SHA256SUMS` 核对完整性。
+正式版只接收正式版更新，RC 只通过 `preview` 接收 RC 更新。已安装 RC 的用户如需转正式版，请退出应用后手动安装正式版，无需删除 `~/.wb-switch` 账号库。安装包可用同一 Release 中的 `SHA256SUMS` 核对完整性。
 
 macOS 首次启动若提示无法验证开发者，先在 Finder 中按住 Control 点击应用并选择「打开」，或前往「系统设置 → 隐私与安全性」选择「仍要打开」。仅当安装包来自上述官方 Releases、且系统仍提示「已损坏」时，再执行：
 
@@ -223,8 +223,6 @@ Token 统计页按来源展示 Token 总览与趋势、构成占比、活跃热�
 ## CLI 与 webui
 
 桌面安装包已自带同版本的 `workbuddy-switch-next` 命令。Windows 安装后请新开终端；macOS 首次启动应用后请新开终端。详细的 PATH 与冲突处理见 [CLI 文档](docs/cli.md)。
-
-不安装桌面版时，也可从 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 下载对应平台的独立 CLI，按完整路径运行。
 
 ```bash
 workbuddy-switch-next              # 启动本地服务 + 自动打开浏览器

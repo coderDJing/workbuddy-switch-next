@@ -2,7 +2,7 @@
 
 基于 [WorkBuddy Switch](https://github.com/changexbc/workbuddy-switch) 的社区维护版本，提供桌面 GUI、浏览器 webui 和一次性 CLI。支持 WorkBuddy / CodeBuddy 各端、JetBrains 插件与 Qoder 国内版 / 国际版的账号管理与切换。
 
-从 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 获取桌面安装包或独立 CLI；桌面安装包已自带同版本命令。完整功能、截图和平台限制见 [项目 README](https://github.com/coderDJing/workbuddy-switch-next#readme)。
+从 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 获取桌面安装包；桌面安装包已自带同版本命令。完整功能、截图和平台限制见 [项目 README](https://github.com/coderDJing/workbuddy-switch-next#readme)。
 
 ## 安装与启动
 
@@ -11,7 +11,7 @@ workbuddy-switch-next              # 启动本地服务 + 自动打开浏览器
 workbuddy-switch-next version      # 查看版本
 ```
 
-支持 Windows x64、macOS Apple Silicon（arm64）。桌面安装后请新开终端；macOS 需先启动桌面应用完成命令注册。独立 CLI 可按完整路径运行。
+支持 Windows x64、macOS Apple Silicon（arm64）。桌面安装后请新开终端；macOS 需先启动桌面应用完成命令注册。
 
 Next 继续使用 `~/.wb-switch` 账号库，无需删除或迁移账号数据；使用前退出不支持共享认证锁的旧版 GUI。
 
@@ -50,7 +50,7 @@ workbuddy-switch-next switch <ACCOUNT_ID>            # 实际切号
 
 ## 升级与权限
 
-桌面版使用 Next 签名更新源：正式版走 `latest`，RC 走 `preview`，不互相自动迁移；RC 转正式版请手动安装正式版。独立 CLI 可从 Release 下载新版替换。
+桌面版使用 Next 签名更新源：正式版走 `latest`，RC 走 `preview`，不互相自动迁移；RC 转正式版请手动安装正式版。
 
 macOS webui 的文件权限由启动服务的终端决定，切换账号遇到权限错误时按提示授权终端。桌面安装与 macOS 授权步骤见 [项目 README](https://github.com/coderDJing/workbuddy-switch-next#macos-权限说明)。
 

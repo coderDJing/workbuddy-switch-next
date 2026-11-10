@@ -1270,7 +1270,8 @@ export function revealErrorLog(): Promise<void> {
 }
 
 export type TraeClient = "desktop";
-export interface TraeCredit {remaining:number|null;total?:number|null;used?:number|null;unlimited:boolean;available:boolean;checkedAt:number;unit:"usd"|"credits"|"unknown";expiresAt?:number|null;periodEndAt?:number|null}
+export interface TraeCreditPack { name: string; remaining: number; total: number; used: number; expiresAt?: number | null }
+export interface TraeCredit {remaining:number|null;total?:number|null;used?:number|null;unlimited:boolean;available:boolean;checkedAt:number;unit:"usd"|"credits"|"unknown";expiresAt?:number|null;periodEndAt?:number|null;packs?:TraeCreditPack[]}
 export interface TraeAccount { id:string;uid:string;name:string;email:string|null;variant:"cn"|"ai";client:TraeClient;capturedAt:number;expiresAt:number|null;needsLogin:boolean;credits?:TraeCredit|null }
 export interface TraeStatus { accounts:TraeAccount[];clients:{variant:"cn"|"ai";client:TraeClient;name:string;detected:boolean;configured:boolean;running:boolean|null;activeAccountId:string|null;recognitionError:string|null}[];nativeCliSupported:false }
 export interface TraeInput {variant?:"cn"|"ai";client?:TraeClient;accountId?:string;name?:string;closeRunning?:boolean;relaunch?:boolean;dryRun?:boolean;timeoutSeconds?:number;refresh?:boolean;settings?:TraeAutomation["settings"];passphrase?:string;data?:string;snapshotId?:string;path?:string}

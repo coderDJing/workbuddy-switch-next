@@ -36,14 +36,14 @@ workbuddy-switch-next switch ACCOUNT_ID --target trae-desktop --close-running --
 - `~/.wb-switch/trae/accounts.json` 中登录快照以 Windows DPAPI 或 macOS 独立 Keychain 密钥加密；绑定当前系统用户。查询状态不会读取 Keychain，显式保存、切换和额度查询可能触发系统授权。
 - 切换前保存现场账号与加密回滚备份 `~/.wb-switch/trae/last-switch-backup.enc`。写入后读取核验，失败恢复原文件。文件写入使用同目录临时文件，macOS 权限为 `0600`。
 - 不自行实施 OAuth 或刷新令牌；过期时在官方客户端重新登录并保存。额度只访问固定官方域名，禁止跟随重定向，不向快照中的任意主机发送凭据。
-- 额度接口按明确的积分或美元计费证据解析，保留小数，排除隐藏、过期和加速包。旧格式或无法确定计费类型时返回未知，不将零填充字段当作可用额度。
+- 国内版额度请求官方 v2 `ide_user_ent_usage`（`require_usage` 与桌面 IDE 的 `req_source=1`）。v1 会省略计费标志，并只返回全 0 的旧字段。国际版仍使用 v1。解析保留小数，把 `credits_limit > 0` 的积分包相加（含 status 为 0 的未消耗包），排除隐藏、过期和加速包。旧格式或无法确定计费类型时返回未知，不将零填充字段当作可用额度。
 - 不推断 TRAE / 豆包 / 原生 CLI 额度共享。
 
 ## 成熟项目参考与验证
 
 协议与路径交叉参考 [cockpit-tools](https://github.com/jlcodes99/cockpit-tools/tree/02498ace91832248f0c6d43f6ea3894a2514aed7) 的 `trae_account_core_platform_storage`、`trae_account_core_import`、`trae_account_core_refresh` 和额度用例，以及 MIT 项目 [TraeWorkAssistant](https://github.com/smart-open/TraeWorkAssistant/tree/2b87e1ad81316696fdd7858e6f40aa466e68bfd2) 的客户端定位、Profile 和 TRAE 应用管理逻辑。这里只参考格式、常量和行为，独立实现适配层，没有整体复制第三方模块。
 
-本机 Windows TRAE CN 3.4.15 已做只读验证：登录信封解码、摘要验证、JWT / 本地用户 ID 一致，官方额度接口返回成功。该账号的计费证据不足以确定可用余额，结果保留未知。隔离测试覆盖保存、切换、回滚、运行进程拒绝、关闭拒绝、跨区域拒绝、项目保留、损坏存储、凭据隐藏和管理 CLI 路由隔离。未在真实账号上执行切换；macOS 与国际版尚需对应客户端验收。
+本机 Windows TRAE CN 已做只读验证：登录信封解码、摘要验证、JWT / 本地用户 ID 一致。国内版 v2 额度与官方客户端菜单一致，会计入 status 为 0 但仍有剩余的积分包；v1 的全 0 字段不能单独当成余额。隔离测试覆盖保存、切换、回滚、运行进程拒绝、关闭拒绝、跨区域拒绝、项目保留、损坏存储、凭据隐藏和管理 CLI 路由隔离。未在真实账号上执行切换；macOS 与国际版尚需对应客户端验收。
 
 可在已登录 TRAE CN 的开发机显式运行只读检查（不保存账号、不切换客户端）：
 

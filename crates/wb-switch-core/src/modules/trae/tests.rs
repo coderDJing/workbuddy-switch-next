@@ -405,6 +405,30 @@ fn credits_keep_fractional_unknown_and_unlimited_distinct() {
         credits::summarize(&payload(vec![pack(0.0, 0.0, 0)])).unwrap()["remaining"],
         0.0
     );
+    // 国内版菜单余额包含 status 0 的正数积分包，加速包仍然排除。
+    let future = chrono::Utc::now().timestamp() + 86_400;
+    let cn = json!({"is_credits_billing":true,"is_dollar_usage_billing":false,"user_entitlement_pack_list":[
+        {"status":0,"display_desc":"新用户福利","entitlement_base_info":{"product_type":2,"end_time":future,"quota":{"credits_limit":2000.0}},"usage":{"credits_amount":0.0}},
+        {"status":1,"display_desc":"每月登录赠送","entitlement_base_info":{"product_type":2,"end_time":future,"quota":{"credits_limit":700.0}},"usage":{"credits_amount":5.0}},
+        {"status":1,"display_desc":"免费","entitlement_base_info":{"product_type":0,"end_time":future,"quota":{"credits_limit":0.0}},"usage":{"credits_amount":0.0}},
+        {"status":1,"display_desc":"<script>","entitlement_base_info":{"product_type":3,"end_time":future,"quota":{"credits_limit":999.0}},"usage":{"credits_amount":0.0}}
+    ]});
+    let menu = credits::summarize(&cn).unwrap();
+    assert_eq!(menu["available"], true);
+    assert_eq!(menu["unit"], "credits");
+    assert_eq!(menu["remaining"], 2695.0);
+    assert_eq!(menu["total"], 2700.0);
+    assert_eq!(menu["packs"][0]["name"], "新用户福利");
+    assert_eq!(menu["packs"][0]["remaining"], 2000.0);
+    assert_eq!(menu["packs"][1]["name"], "每月登录赠送");
+    assert_eq!(menu["packs"][1]["remaining"], 695.0);
+    assert_eq!(menu["packs"].as_array().unwrap().len(), 2);
+    // 未消耗包可以没有 credits_amount，按 0 计算，不能把同账号的其他余额变成未知。
+    let missing_used = json!({"is_credits_billing":true,"is_dollar_usage_billing":false,"user_entitlement_pack_list":[
+        {"status":0,"entitlement_base_info":{"product_type":2,"end_time":future,"quota":{"credits_limit":2000}},"usage":{}},
+        {"status":1,"entitlement_base_info":{"product_type":2,"end_time":future,"quota":{"credits_limit":700}},"usage":{"credits_amount":5}}
+    ]});
+    assert_eq!(credits::summarize(&missing_used).unwrap()["remaining"], 2695.0);
 }
 #[test]
 fn expired_login_is_rejected_before_closing_a_client() {

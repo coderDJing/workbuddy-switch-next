@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildManifest, desktopReleaseNotes, manifestFromEnvironment, platformSpec, validateArtifacts } from './release-artifacts.mjs';
+import { buildManifest, collect, desktopReleaseNotes, manifestFromEnvironment, platformSpec, validateArtifacts } from './release-artifacts.mjs';
 
-const release = { owner: 'coderDJing', repo: 'workbuddy-switch-next', version: '0.2.0-rc.1', channel: 'preview' };
+const release = { owner: 'coderDJing', repo: 'workbuddy-switch-next', slug: 'workbuddy-switch-next', version: '0.2.0-rc.1', channel: 'preview' };
 test('release notes lead with two immutable desktop downloads and are idempotent', () => {
   for (const config of [release, { ...release, version: '0.2.0', channel: 'stable' }]) {
     const data = { ...config, slug: 'workbuddy-switch-next' };
@@ -19,6 +19,30 @@ test('release notes lead with two immutable desktop downloads and are idempotent
   }
 });
 
+test('collection publishes desktop archives and signatures without standalone components', t => {
+  const base = path.resolve(import.meta.dirname, '../target');
+  fs.mkdirSync(base, { recursive: true });
+  const workspace = fs.mkdtempSync(path.join(base, 'release-collect-test-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const data = { ...release, slug: 'workbuddy-switch-next' };
+  for (const [target, platform, os, arch, folder, name] of [
+    ['x86_64-pc-windows-msvc', 'win32-x64', 'windows', 'x86_64', 'nsis', `WorkBuddy Switch Next_${release.version}_x64-setup.exe`],
+    ['aarch64-apple-darwin', 'darwin-arm64', 'macos', 'aarch64', 'macos', 'WorkBuddy Switch Next.app.tar.gz'],
+  ]) {
+    const bundle = path.join(workspace, 'target', target, 'release/bundle', folder);
+    fs.mkdirSync(bundle, { recursive: true });
+    fs.writeFileSync(path.join(bundle, name), 'desktop fixture');
+    fs.writeFileSync(path.join(bundle, name + '.sig'), 'signature fixture');
+    if (os === 'macos') fs.writeFileSync(path.join(workspace, `${data.slug}_${data.version}_${arch}.dmg`), 'disk image fixture');
+    collect({ RUST_TARGET: target, PLATFORM_TAG: platform, UPDATE_OS: os, UPDATE_ARCH: arch }, { workspace, release: data });
+  }
+  const files = fs.readdirSync(path.join(workspace, 'dist-bin'));
+  assert.equal(files.length, 7);
+  assert.equal(files.filter(name => name.includes('-cli-') || name.includes('-daily-runner-')).length, 0);
+  assert.ok(files.includes('workbuddy-switch-next-windows-x86_64-setup.exe'));
+  assert.ok(files.includes('workbuddy-switch-next-macos-aarch64.dmg'));
+  assert.equal(fs.existsSync(path.join(workspace, 'npm')), false);
+});
 test('RC manifests pin immutable signed archives and safely encode filenames', () => {
   const data = buildManifest({ release, archiveName: 'WorkBuddy Switch Next_0.2.0-rc.1_x64-setup.exe', signature: 'fixture\n', keys: ['windows-x86_64-nsis'] });
   assert.equal(data.version, release.version);
@@ -73,6 +97,10 @@ test('publication rejects mismatched versions, missing archives and substituted 
   const manifest = path.join(folder, 'latest.json');
   fs.writeFileSync(manifest, JSON.stringify(data));
   assert.equal(validateArtifacts(folder, release), 1);
+  const standalone = path.join(folder, `${release.slug}-daily-runner-win32-x64.exe`);
+  fs.writeFileSync(standalone, 'standalone fixture');
+  assert.throws(() => validateArtifacts(folder, release), /must stay inside desktop packages/);
+  fs.unlinkSync(standalone);
   data.version = '0.2.0-rc.2'; fs.writeFileSync(manifest, JSON.stringify(data));
   assert.throws(() => validateArtifacts(folder, release), /Version mismatch/);
   data.version = release.version; data.platforms['windows-x86_64'].signature = 'other';

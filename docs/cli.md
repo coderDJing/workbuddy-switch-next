@@ -240,11 +240,11 @@ CLI 模块位于 crates/wb-switch-server/src/cli/，客户端操作集中在 Tar
 
 桌面安装包自带同版本 CLI，命令为 `workbuddy-switch-next`，与桌面程序共用账号库。
 
-安装包和独立 CLI 从 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 下载；RC 位于 [preview 入口](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview)。正式版与 RC 的桌面自动更新通道隔离，RC 转正式版需退出应用后手动安装，账号库继续沿用。
+桌面安装包从 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 下载；RC 位于 [preview 入口](https://github.com/coderDJing/workbuddy-switch-next/releases/tag/preview)。正式版与 RC 的桌面自动更新通道隔离，RC 转正式版需退出应用后手动安装，账号库继续沿用。
 
 - Windows：安装器将安装目录追加到当前用户 PATH，卸载时只移除自己添加的条目。安装或更新后请新开终端。
 - macOS：首次打开桌面应用时，将 CLI 保存到 `~/.local/share/workbuddy-switch-next/cli/`，并在 `~/.local/bin` 创建命令入口；为常见 shell 的用户配置添加带标记的 PATH 片段。请新开终端，应用更新后再次启动会同步 CLI。不会覆盖该目录里已有的同名命令。
 
-如命令不可用，先用 Windows 的 `where.exe workbuddy-switch-next` 或 macOS 的 `command -v workbuddy-switch-next` 检查 PATH 和同名命令；安装器不会覆盖已有命令。桌面安装目录里的程序也可按完整路径调用，独立 CLI 可从 Release 下载。
+如命令不可用，先用 Windows 的 `where.exe workbuddy-switch-next` 或 macOS 的 `command -v workbuddy-switch-next` 检查 PATH 和同名命令；安装器不会覆盖已有命令。桌面安装目录里的程序也可按完整路径调用。
 
 遇到旧版本命令占用路径时，先确认命令来源并正常卸载旧版本，再使用 Next 的命令入口，不需要删除 `~/.wb-switch`。
