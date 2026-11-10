@@ -269,7 +269,7 @@ fn apply_macos_app_icon() {
     // `tauri dev` has no `.app` bundle; keep the PNG fallback so Dock is not "exec".
     const APP_ICON_PNG: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/icons/icon-macos-dev.png"
+        "/icons/icon-macos.png"
     ));
     let data = NSData::with_bytes(APP_ICON_PNG);
     let Some(icon) = NSImage::initWithData(NSImage::alloc(), &data) else {

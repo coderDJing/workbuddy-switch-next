@@ -43,4 +43,21 @@ for (const [constant, value] of [['GITHUB_OWNER', release.owner], ['GITHUB_REPO'
 if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== release.previewTag) {
   assert.equal(process.env.GITHUB_REF_NAME, `v${release.version}`, 'Tag must match every shipped manifest');
 }
+// Platform-gated include_bytes! paths are invisible to a Windows checkout, so a
+// renamed icon would only surface on the macOS build. Resolve them here instead.
+const embedded = new Set();
+const walk = dir => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) walk(file);
+    else if (entry.name.endsWith('.rs')) {
+      for (const match of read(path.relative(root, file)).matchAll(/env!\("CARGO_MANIFEST_DIR"\),\s*\n?\s*"([^"]+)"/g)) embedded.add(match[1]);
+    }
+  }
+};
+walk(path.join(root, 'src-tauri/src'));
+assert.ok(embedded.size > 0, 'Expected embedded icon assets referenced from src-tauri');
+for (const relative of embedded) {
+  assert.ok(fs.existsSync(path.join(root, 'src-tauri', relative)), `Missing embedded asset: src-tauri${relative}`);
+}
 console.log(`Release identity and version check passed: ${release.productName} ${release.version} (${release.channel === 'preview' ? 'RC' : 'stable'}).`);
