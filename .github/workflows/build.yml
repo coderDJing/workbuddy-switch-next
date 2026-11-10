@@ -108,6 +108,23 @@ jobs:
           AGENT_COMPANION_TARGET: ${{ matrix.target }}
           DAILY_RUNNER_PREPARED: '1'
         run: node scripts/build-release.mjs --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      # Apple Silicon links every binary with an ad-hoc signature that declares a
+      # resource seal, but Tauri only signs the bundle itself when a signing
+      # identity is configured. `signingIdentity: "-"` in tauri.conf.json covers
+      # that and the updater archive; verify here, and repair before packaging
+      # if the setting ever stops applying.
+      - name: Ensure the macOS bundle is signed
+        if: runner.os == 'macOS' && vars.PUBLISH_APP != 'false'
+        run: |
+          set -euo pipefail
+          APP="target/$RUST_TARGET/release/bundle/macos/WorkBuddy Switch Next.app"
+          if ! codesign --verify --deep --strict --verbose=2 "$APP"; then
+            echo "::warning::Tauri left the bundle unsigned; signing it before packaging."
+            codesign --force --deep --sign - "$APP"
+            codesign --verify --deep --strict --verbose=2 "$APP"
+          fi
+          test -f "$APP/Contents/_CodeSignature/CodeResources"
+          echo "Bundle signature verified; _CodeSignature/CodeResources is present."
       - name: macOS drag-to-Applications image
         if: runner.os == 'macOS' && vars.PUBLISH_APP != 'false'
         env:
