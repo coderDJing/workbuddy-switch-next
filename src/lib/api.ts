@@ -1276,7 +1276,7 @@ export interface TraeAccount { id:string;uid:string;name:string;email:string|nul
 export interface TraeStatus { accounts:TraeAccount[];clients:{variant:"cn"|"ai";client:TraeClient;name:string;detected:boolean;configured:boolean;running:boolean|null;activeAccountId:string|null;recognitionError:string|null}[];nativeCliSupported:false }
 export interface TraeInput {variant?:"cn"|"ai";client?:TraeClient;accountId?:string;name?:string;closeRunning?:boolean;relaunch?:boolean;dryRun?:boolean;timeoutSeconds?:number;refresh?:boolean;settings?:TraeAutomation["settings"];passphrase?:string;data?:string;snapshotId?:string;path?:string}
 export function getTraeStatus():Promise<TraeStatus> {return call("get_trae_status");}
-export function traeAction(action:"capture"|"switch"|"credits"|"rename"|"delete"|"open"|"statistics"|"get_settings"|"save_settings"|"automation_run"|"backup_export"|"backup_preview"|"backup_import"|"cloud_backup"|"cloud_preview"|"cloud_restore"|"cloud_sync",input:TraeInput):Promise<unknown> {return call("trae_action",{action,input});}
+export function traeAction(action:"capture"|"switch"|"credits"|"checkin"|"rename"|"delete"|"open"|"statistics"|"get_settings"|"save_settings"|"automation_run"|"backup_export"|"backup_preview"|"backup_import"|"cloud_backup"|"cloud_preview"|"cloud_restore"|"cloud_sync",input:TraeInput):Promise<unknown> {return call("trae_action",{action,input});}
 
 export interface TraeSnapshot {accountId:string;name:string;variant:"cn"|"ai";at:number;credit:TraeCredit}
 export interface TraeStatistics {generatedAt:number;retentionDays:number;variant:"cn"|"ai";accounts:TraeAccount[];snapshots:TraeSnapshot[];errors:{accountId:string;message:string}[]}

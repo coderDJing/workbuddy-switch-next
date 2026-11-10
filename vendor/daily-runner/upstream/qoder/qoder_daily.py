@@ -5,16 +5,22 @@
 
 📌 功能
    Qoder 每日签到（活动领取制，中国版 / 国际版）：
-   1. GET  /sash/api/v1/me/campaigns?forceRefresh=true  拉实时活动列表
-   2. 找 actionType=CLAIM_BENEFIT 且 claimStatus=CLAIMABLE 的活动
+   1. GET  /sash/api/v1/me/campaigns  拉活动列表（官方客户端不发送 forceRefresh）
+   2. 按 CLAIM_BENEFIT / CREDITS / 标题 / modelScope 识别唯一的每日签到活动
    3. POST /sash/api/v1/me/campaigns/{campaignId}/claim  领取 credits
-   4. 已领取（CLAIMED / replayed / 409 ALREADY_CLAIMED）识别为今日已领，不算失败
-    5. Pro 升级包：GET eligibility → eligible 时 POST claim，一次性 +1800
+   4. 活跃每日行的 CLAIMED 只作候选；幂等重发 claim，由 replayed 区分已领与本次真领
+   5. claim 使用最小鉴权头和空 body，避免完整设备头触发 503 风控
+   6. Pro 升级包：从 campaigns 中发现，GET /reward 只读核实面值后再 claim
 
-   国际版（每日 100 Credits）的活动只下发给带设备风控头的请求
+   中国版和国际版（每日 100 Credits）的活动只下发给带对应官方设备身份的请求
    （Cosy-MachineToken / Cosy-MachineCode / Cosy-MachineType，由本机 UMID
-   组件生成）。脚本会先找本机组件；Linux 容器里找不到时会从官方
-   qodercli 包提取一份（sha512 校验，可用 QODER_UMID_NO_INSTALL=1 关闭）。
+   组件生成）。中国版使用 Qoder CN 的 runtime-info / qoderclicn 与 UMID 环境 0，
+   国际版客户端组件使用 UMID 环境 3，qodercli / 下载组件使用环境 4。脚本先
+   无风控头读取活动列表顶层 uid，再用该 uid 生成身份并二次拉取；随后按地区
+   查找组件，Linux 容器里找不到时会从对应官方 npm 包提取（sha512 校验，可用
+   QODER_UMID_NO_INSTALL=1 关闭）。
+   中国版活动列表若在完整设备头下返回 HTTP 200 空表，会按上游实测形态改用
+   最小鉴权四件套复取一次；国际版不做该降级。
    官方活动窗口每天 10:00（UTC+8）开启，没到点或未下发时按中性文案说明。
 
 🔑 环境变量
@@ -23,10 +29,11 @@
        access_token|refresh_token
        备注|access_token|refresh_token
    QODER_GLOBAL_TOKENS 【国际版】同上，第 4 段可选填 uid（备注|access|refresh|uid）
-   # 国际版风控身份分层（任选其一）：
+   # 中国版 / 国际版风控身份分层（任选其一）：
    #   1) QODER_MACHINE_TOKEN / QODER_MACHINE_CODE / QODER_MACHINE_TYPE 三件套；
-   #   2) QODER_UMID_PATH 指向 runtime-info 组件；
-   #   3) 本机 Qoder 客户端 / qodercli（找不到时自动从官方包提取，QODER_UMID_NO_INSTALL=1 可关闭）。
+   #   2) QODERCN_RUNTIME_INFO（中国版）或 QODER_RUNTIME_INFO（国际版）；
+   #   3) QODER_UMID_PATH 指向通用 runtime-info 组件；
+   #   4) 本机对应地区客户端 / CLI（找不到时自动从官方包提取，QODER_UMID_NO_INSTALL=1 可关闭）。
        access_token 形如 dt-xxxx；refresh_token 形如 drt-xxxx（可选，配了可自动续期）
 
    PUSHPLUS_TOKEN    微信推送通道（可选）
@@ -34,6 +41,7 @@
    WECOM_WEBHOOK   企微群机器人地址或 key（可选）
    DINGTALK_WEBHOOK  钉钉机器人 webhook（可选）
    DINGTALK_SECRET   钉钉加签密钥（可选）
+QODER_WINDOW_RETRY  【可选】10:00-11:00 CST 内暂未下发时按 10 分钟重试（默认 1）
 
 ⌨️ 命令
    python qoder_daily.py                 正常签到
@@ -48,15 +56,17 @@ import hashlib
 import hmac
 import io
 import json
+import math
 import os
 import platform
 import re
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
-from datetime import datetime, timedelta, timezone
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -74,41 +84,34 @@ REGIONS = {
     "global": {"base": "https://openapi.qoder.sh", "label": "国际版"},
 }
 CAMPAIGNS_PATH = "/sash/api/v1/me/campaigns"
-CAMPAIGNS_QUERY = "?forceRefresh=true"
-PRO_ELIGIBILITY_PATH = "/sash/api/v1/me/pro-upgrade/eligibility"
-PRO_CLAIM_PATH = "/sash/api/v1/me/pro-upgrade/claim"
+CAMPAIGN_REWARD_PATH = "/sash/api/v1/me/campaigns/%s/reward"
+QUOTA_USAGE_PATH = "/api/v2/quota/usage"
 DEVICE_REFRESH_PATH = "/api/v1/deviceToken/refresh"
 JOB_REFRESH_PATH = "/api/v1/jobToken/refresh"
 SASH_CLIENT_TYPE = "10"
 SASH_USER_AGENT = "Qoder"
 STORE_FILE = os.path.join(SCRIPT_DIR, "qoder_tokens.json")
+CN_TZ = timezone(timedelta(hours=8))
+ONE_DAY_MS = 24 * 60 * 60 * 1000
+CLAIM_FAILURE_TEXT = {
+    "REDEMPTION_CODE_OUT_OF_STOCK": "今日名额已发完，等待下一轮",
+    "SAME_PERSON_ALREADY_CLAIMED": "同一设备身份下的其他账号已领取",
+    "CAMPAIGN_NOT_ACTIVE": "活动尚未开放或已结束",
+    "ACHIEVEMENT_NOT_COMPLETED": "活动条件尚未完成",
+    "RISK_BLOCKED": "设备风控未通过",
+    "RISK_DEPENDENCY_UNAVAILABLE": "设备风控依赖暂不可用",
+}
+QUOTA_112_COOLDOWN = 30 * 60
+QUOTA_110_MAX_COOLDOWN = 6 * 60 * 60
+QUOTA_110_MIN_COOLDOWN = 60
 
 ONLY = None
 REFRESH_ONLY = False
 NO_NOTIFY = False
-INSPECT = False
-PRIVATE_VALUES = set()
-
-
-def protect(value):
-    value = str(value or "")
-    if value and value not in PRIVATE_VALUES:
-        PRIVATE_VALUES.add(value)
-        if os.environ.get("GITHUB_ACTIONS") == "true":
-            print("::add-mask::" + value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"), flush=True)
-    return value
-
-
-def safe(value):
-    value = str(value)
-    for secret in sorted(PRIVATE_VALUES, key=len, reverse=True):
-        value = value.replace(secret, "[redacted]")
-    value = re.sub(r"\b(?:pt|dt|drt|jt|jrt)-[A-Za-z0-9._~+/=-]+", "[redacted]", value)
-    return re.sub(r"(?<!\d)(1\d{2})\d{4}(\d{4})(?!\d)", r"\1****\2", value)
 
 
 def log(msg):
-    print("%s %s" % (time.strftime("[%H:%M:%S]"), safe(msg)), flush=True)
+    print("%s %s" % (time.strftime("[%H:%M:%S]"), msg), flush=True)
 
 
 def mask(text, keep=6):
@@ -127,7 +130,7 @@ def split_accounts(raw):
     return out
 
 
-def request(method, url, headers=None, body=None, timeout=20, retries=3):
+def request(method, url, headers=None, body=None, timeout=20, retries=3, form=None):
     last = None
     for attempt in range(retries):
         try:
@@ -136,7 +139,8 @@ def request(method, url, headers=None, body=None, timeout=20, retries=3):
             return session.request(
                 method, url,
                 headers=headers or {},
-                json=body if body is not None else None,
+                json=body if body is not None and form is None else None,
+                data=form,
                 timeout=timeout, verify=False,
             )
         except Exception as error:
@@ -151,6 +155,20 @@ def json_of(response):
         return response.json()
     except Exception:
         return {}
+
+
+def response_text(response):
+    """Return a bounded response body for media-type diagnostics."""
+    try:
+        text = response.text
+    except Exception:
+        text = ""
+    if text:
+        return str(text)[:2000]
+    payload = json_of(response)
+    if payload:
+        return json.dumps(payload, ensure_ascii=False)[:2000]
+    return ""
 
 
 def first_text(*values):
@@ -178,18 +196,39 @@ def load_store():
 
 
 def save_store(store):
+    """Atomically replace the token store and surface write failures."""
+    directory = os.path.dirname(os.path.abspath(STORE_FILE))
+    os.makedirs(directory, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(
+        prefix=".qoder-store-", suffix=".tmp", dir=directory)
     try:
-        with open(STORE_FILE, "w", encoding="utf-8") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(store, handle, ensure_ascii=False, indent=2)
-    except Exception as error:
-        log("⚠️ token 存储写入失败: %s" % error)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, STORE_FILE)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def _remember_store_keys(account):
+    """Keep fingerprints of the configured credentials before restore/rotation."""
+    keys = account.setdefault("_store_keys", [])
+    for token in (account.get("refresh"), account.get("access")):
+        if token:
+            key = token_fp(token)
+            if key not in keys:
+                keys.append(key)
+    return keys
 
 
 def apply_store(account):
     store = load_store()
-    keys = [token_fp(account["refresh"])] if account.get("refresh") else []
-    keys.append(token_fp(account["access"]))
-    account["store_keys"] = list(keys)
+    keys = _remember_store_keys(account)
     for key in keys:
         saved = store.get(key)
         if not isinstance(saved, dict):
@@ -197,8 +236,6 @@ def apply_store(account):
         if saved.get("access"):
             account["access"] = saved["access"]
             account["refresh"] = saved.get("refresh", account.get("refresh", ""))
-            protect(account["access"])
-            protect(account["refresh"])
             return True
     return False
 
@@ -211,25 +248,31 @@ def persist(account):
         "note": account.get("note", ""),
         "at": int(time.time()),
     }
-    # 原 Secret 不变时也能找到轮换后的令牌；保留原始凭据指纹作为稳定索引。
-    keys = set(account.get("store_keys") or [])
-    keys.add(token_fp(account.get("refresh") or account["access"]))
-    for key in keys:
+    # The next process still starts with the original environment/Secret values.
+    # Update those aliases as well as the current fingerprints, without storing
+    # the original credential strings in the payload.
+    for key in _remember_store_keys(account):
         store[key] = value
     save_store(store)
 
 
 # ---------- 上游协议 ----------
 
-# ---------- 设备风控身份（国际版签到依赖） ----------
+# ---------- 设备风控身份（中国版 / 国际版签到依赖） ----------
 
 UMID_DIR = os.path.join(SCRIPT_DIR, "qoder_umid")
 MACHINE_ID_FILE = os.path.join(SCRIPT_DIR, "qoder_machine_id")
 RISK_TTL = 50 * 60
-DEFAULT_CLIENT_VERSION = "0.2.5"
+DEFAULT_CLIENT_VERSION = "1.1.83"
 NPM_PACKAGES = ("https://registry.npmmirror.com", "https://registry.npmjs.org")
 NPM_AUTHORITY = "https://registry.npmjs.org"
-NPM_PACKAGE_PATH = "@qoder-ai%2fqodercli"
+NPM_PACKAGE_PATHS = {
+    "cn": "@qodercn-ai%2fqoderclicn",
+    "global": "@qoder-ai%2fqodercli",
+}
+UMID_RUNTIME_ENV = {"cn": 0, "global": 3}
+UMID_CLI_RUNTIME_ENV = {"cn": 0, "global": 4}
+UMID_OVERRIDE_ENV = {"cn": "QODERCN_RUNTIME_INFO", "global": "QODER_RUNTIME_INFO"}
 RISK_CACHE = {}
 
 
@@ -283,6 +326,16 @@ def machine_id(account):
     return value
 
 
+def region_key(region):
+    return "global" if str(region or "").lower() in ("global", "intl", "international") else "cn"
+
+
+def region_names(region):
+    if region_key(region) == "global":
+        return ("Qoder",)
+    return ("Qoder CN", "QoderCN")
+
+
 def resource_dirs(region, names):
     dirs = []
     for name in names:
@@ -314,12 +367,14 @@ def resource_dirs(region, names):
             dirs.append("/opt/%s/resources" % slug)
             dirs.append("/usr/lib/%s/resources" % slug)
             dirs.append("/snap/%s/current/resources" % slug)
+    if not sys.platform.startswith("win") and sys.platform != "darwin" \
+            and region_key(region) == "cn":
+        dirs.extend(("/opt/Qoder-CN/resources", "/opt/QoderCN/resources"))
     return dirs
 
 
 def client_version(region):
-    names = ("Qoder", "Qoder CN") if region == "global" else ("Qoder CN", "Qoder")
-    for resources in resource_dirs(region, names):
+    for resources in resource_dirs(region, region_names(region)):
         try:
             with open(os.path.join(resources, "build-manifest.json"), encoding="utf-8") as handle:
                 value = json.load(handle).get("productVersion")
@@ -330,33 +385,53 @@ def client_version(region):
     return DEFAULT_CLIENT_VERSION
 
 
+def umid_directory(region):
+    return os.path.join(UMID_DIR, region_key(region))
+
+
+def cli_runtime_cache_dirs(region):
+    key = region_key(region)
+    prefix = "QODERCN_" if key == "cn" else "QODER_"
+    default_name = ".qoder-cn" if key == "cn" else ".qoder"
+    explicit = _env(prefix + "CONFIG_DIR")
+    if explicit:
+        return [explicit]
+    home = _env(prefix + "CLI_HOME") or _env("GEMINI_CLI_HOME") or os.path.expanduser("~")
+    config_name = _env(prefix + "CONFIG_DIR_NAME") or default_name
+    return [os.path.join(home, config_name)]
+
+
 def find_umid_component(region):
-    names = ("Qoder", "Qoder CN") if region == "global" else ("Qoder CN", "Qoder")
+    key = region_key(region)
     exe_name = "runtime-info.exe" if sys.platform.startswith("win") else "runtime-info"
-    app_env = 3 if region == "global" else 0
-    custom = _env("QODER_UMID_PATH")
+    runtime_env = UMID_RUNTIME_ENV[key]
+    cli_runtime_env = UMID_CLI_RUNTIME_ENV[key]
+    custom = _env(UMID_OVERRIDE_ENV[key]) or _env("QODER_UMID_PATH")
     if custom and os.path.isfile(custom):
-        return custom, (4 if region == "global" else 0), "env"
-    for resources in resource_dirs(region, names):
+        return custom, runtime_env, "env"
+    for resources in resource_dirs(key, region_names(key)):
         path = os.path.join(resources, "umid", exe_name)
         if os.path.isfile(path):
-            return path, app_env, "app"
-    cli_env = 4 if region == "global" else 0
-    home = os.path.expanduser("~")
-    for base in (os.path.join(home, ".qoder", ".bin"), os.path.join(home, ".qoder-cn", ".bin")):
+            return path, runtime_env, "app"
+    for config in cli_runtime_cache_dirs(key):
+        base = os.path.join(config, ".bin")
         try:
             entries = sorted(os.listdir(base), reverse=True)
         except Exception:
             continue
         for entry in entries:
-            if not entry.startswith("umid-"):
+            candidate = os.path.join(base, entry)
+            if os.path.isdir(candidate) and entry.startswith("umid-"):
+                path = os.path.join(candidate, exe_name)
+            elif not os.path.isdir(candidate) and entry.startswith("runtime-info"):
+                path = candidate
+            else:
                 continue
-            path = os.path.join(base, entry, exe_name)
             if os.path.isfile(path):
-                return path, cli_env, "cli"
-    data = os.path.join(UMID_DIR, exe_name)
+                return path, cli_runtime_env, "cli"
+    data = os.path.join(umid_directory(key), exe_name)
     if os.path.isfile(data):
-        return data, 4, "data"
+        return data, cli_runtime_env, "data"
     return None
 
 
@@ -391,8 +466,9 @@ def http_get_bytes(url, timeout=60):
     return response.content
 
 
-def npm_meta(registry):
-    body = http_get_bytes("%s/%s/latest" % (registry, NPM_PACKAGE_PATH), timeout=20)
+def npm_meta(registry, region):
+    package_path = NPM_PACKAGE_PATHS[region_key(region)]
+    body = http_get_bytes("%s/%s/latest" % (registry, package_path), timeout=20)
     payload = json.loads(body.decode("utf-8"))
     dist = payload.get("dist") if isinstance(payload.get("dist"), dict) else {}
     tarball = first_text(dist.get("tarball"))
@@ -426,19 +502,20 @@ def extract_elf(bundle, machine):
         position = end + 1
 
 
-def install_umid_component():
+def install_umid_component(region):
+    key = region_key(region)
     arch = machine_os().rsplit("_", 1)[0]
     machine = {"x86_64": 62, "aarch64": 183}.get(arch)
     if not machine:
         raise RuntimeError("当前 CPU 架构不受支持")
     try:
-        authority = npm_meta(NPM_AUTHORITY)
+        authority = npm_meta(NPM_AUTHORITY, key)
     except Exception:
         authority = None
     errors = []
     for registry in NPM_PACKAGES:
         try:
-            meta = npm_meta(registry)
+            meta = npm_meta(registry, key)
         except Exception as error:
             errors.append("%s：%s" % (registry, error))
             continue
@@ -461,8 +538,17 @@ def install_umid_component():
                 continue
         try:
             with tarfile.open(fileobj=io.BytesIO(body), mode="r:gz") as archive:
-                handle = archive.extractfile("package/bundle/qodercli.js")
-                bundle = handle.read().decode("utf-8", "replace") if handle else ""
+                bundle = ""
+                for member in ("package/bundle/qoder-worker-runtime.mjs",
+                               "package/bundle/qodercli.js"):
+                    try:
+                        handle = archive.extractfile(member)
+                    except KeyError:
+                        handle = None
+                    if handle:
+                        bundle = handle.read().decode("utf-8", "replace")
+                        if bundle:
+                            break
         except Exception as error:
             errors.append("%s：解包失败 %s" % (registry, error))
             continue
@@ -470,20 +556,24 @@ def install_umid_component():
         if not elf:
             errors.append("%s：包里没有本机架构的 UMID 程序" % registry)
             continue
-        os.makedirs(UMID_DIR, exist_ok=True)
-        path = os.path.join(UMID_DIR, "runtime-info")
+        target_dir = umid_directory(key)
+        os.makedirs(target_dir, exist_ok=True)
+        path = os.path.join(target_dir, "runtime-info")
         with open(path, "wb") as output:
             output.write(elf)
         try:
             os.chmod(path, 0o755)
         except Exception:
             pass
-        log("   ✅ 已从官方 qodercli %s 提取 UMID 组件" % (meta["version"] or "?"))
+        package_name = "qoderclicn" if key == "cn" else "qodercli"
+        log("   ✅ 已从官方 %s %s 提取 UMID 组件" % (
+            package_name, meta["version"] or "?"))
         return path
     raise RuntimeError("；".join(errors) if errors else "没有可用来源")
 
 
 def risk_identity(region, uid):
+    region = region_key(region)
     key = "%s:%s" % (region, uid)
     cached = RISK_CACHE.get(key)
     if cached and time.time() - cached[0] < RISK_TTL:
@@ -498,16 +588,21 @@ def risk_identity(region, uid):
             return values, None
         return None, ("设备风控环境变量不完整（需要 QODER_MACHINE_TOKEN / "
                       "QODER_MACHINE_CODE / QODER_MACHINE_TYPE 三件套）")
+    if region == "global" and not first_text(uid):
+        return None, "活动列表没有返回账号 UID，无法生成国际版设备身份"
     component = find_umid_component(region)
-    if component is None and region == "global" and not _env("QODER_UMID_NO_INSTALL"):
+    if component is None and not _env("QODER_UMID_NO_INSTALL"):
         try:
-            log("   📦 未找到本机 UMID 组件，尝试从官方 qodercli 包提取（sha512 校验）")
-            install_umid_component()
+            package_name = "qoderclicn" if region == "cn" else "qodercli"
+            log("   📦 未找到本机 UMID 组件，尝试从官方 %s 包提取（sha512 校验）" %
+                package_name)
+            install_umid_component(region)
         except Exception as error:
             return None, "设备风控组件安装失败：%s" % error
         component = find_umid_component(region)
     if component is None:
-        return None, "本机没有 Qoder 客户端 / qodercli 的 UMID 组件"
+        label = "Qoder CN / qoderclicn" if region == "cn" else "Qoder / qodercli"
+        return None, "本机没有 %s 的 UMID 组件" % label
     try:
         values = run_umid_component(component, uid)
     except Exception as error:
@@ -542,16 +637,46 @@ def sash_headers(token):
     }
 
 
+def minimal_sash_headers(token):
+    """中国版空表复取使用上游实测的最小鉴权四件套。"""
+    return {
+        "authorization": "Bearer %s" % token,
+        "cosy-clienttype": SASH_CLIENT_TYPE,
+        "user-agent": SASH_USER_AGENT,
+        "content-type": "application/json",
+    }
+
+
 def refresh_account(account):
     refresh = account.get("refresh", "")
     if not refresh:
         raise RuntimeError("账号没有 refresh_token，无法续期")
+    _remember_store_keys(account)
     path = JOB_REFRESH_PATH if refresh.startswith("jrt-") else DEVICE_REFRESH_PATH
+    json_headers = {
+        "User-Agent": "qoder-local-proxy",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
     response = request("POST", account["base"] + path,
-                       headers={"User-Agent": "qoder-local-proxy"},
+                       headers=json_headers,
                        body={"refresh_token": refresh})
+    if refresh.startswith("drt-") and refresh_media_type_rejected(response):
+        log("   🔄 续期媒体类型不被接受，改用 form 再试一次")
+        response = request(
+            "POST", account["base"] + path,
+            headers={
+                "User-Agent": "qoder-local-proxy",
+                "Accept": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            form={"refresh_token": refresh},
+        )
     if response.status_code in (401, 403):
         raise RuntimeError("刷新令牌已失效或与地区不符，请重新登录")
+    if response.status_code >= 400:
+        raise RuntimeError("刷新令牌失败: HTTP %s %s" % (
+            response.status_code, response_text(response)[:160]))
     payload = json_of(response)
     data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
     token = first_text(data.get("device_token"), data.get("deviceToken"),
@@ -559,224 +684,633 @@ def refresh_account(account):
     if not token:
         raise RuntimeError("续期响应缺少 access token（HTTP %s）" % response.status_code)
     new_refresh = first_text(data.get("refresh_token"), data.get("refreshToken")) or refresh
+    old_access = account.get("access", "")
     account["access"] = token
     account["refresh"] = new_refresh
-    protect(token)
-    protect(new_refresh)
-    persist(account)
+    try:
+        persist(account)
+    except Exception as error:
+        account["access"] = old_access
+        account["refresh"] = refresh
+        raise RuntimeError(
+            "token 已续期但状态写入失败，未报告刷新成功: %s" % error)
     log("   🔄 token 已续期并保存")
     return True
 
 
-def quota_error(response):
-    """Distinguish quota 403 from invalid credentials before refreshing."""
-    if response.status_code != 403:
-        return ""
+def refresh_media_type_rejected(response):
+    """Detect direct 415 and wrapped HTTP 400 code=415 media errors."""
+    if response.status_code == 415:
+        return True
+    if response.status_code != 400:
+        return False
+    text = response_text(response).lower().replace(" ", "")
+    return (
+        "unsupportedmediatype" in text
+        and (
+            "code=415" in text
+            or '"code":415' in text
+            or '"code":"415"' in text
+        )
+    )
+
+
+def quota_cooldown(response, now=None):
+    """额度类 403 的 (病因, 冷却秒数)；不是额度问题返回 ("", 0)。
+
+    上游对「额度耗尽」和「每日计费次数上限」也回 403，与凭证被拒同码不同因：
+    112 / pricingUrl -> 30 分钟；110 / Billing daily count exceeded -> 到本地
+    零点，封顶 6 小时。响应体可能被日志转义，先去掉反斜杠再匹配。
+    """
     payload = json_of(response)
-    text = (json.dumps(payload, ensure_ascii=False) + " " + str(getattr(response, "text", "") or "")).replace("\\", "")
+    text = json.dumps(payload, ensure_ascii=False) if isinstance(payload, (dict, list)) else ""
+    text = (text + " " + str(getattr(response, "text", "") or "")).replace("\\", "")
     if "pricingUrl" in text or re.search(r'"code"\s*:\s*"?112\b', text):
-        return "额度已耗尽（112），请稍后重试"
+        return "exhausted", QUOTA_112_COOLDOWN
     if "Billing daily count exceeded" in text or re.search(r'"code"\s*:\s*"?110\b', text):
-        return "每日计费次数已达上限（110），请稍后重试"
+        current = time.time() if now is None else float(now)
+        local = datetime.fromtimestamp(current)
+        midnight = datetime(local.year, local.month, local.day) + timedelta(days=1)
+        seconds = int((midnight - local).total_seconds())
+        return "daily", max(QUOTA_110_MIN_COOLDOWN,
+                            min(QUOTA_110_MAX_COOLDOWN, seconds))
+    return "", 0
+
+
+def quota_cooldown_message(kind, seconds):
+    if kind == "exhausted":
+        return "额度已耗尽（112 / pricingUrl），账号冷却 30 分钟；请充值或更换账号"
+    until = time.strftime("%m-%d %H:%M", time.localtime(time.time() + seconds))
+    return "每日计费次数已达上限（110），账号冷却至 %s（最长 6 小时）；请稍后或更换账号" % until
+
+
+def auth_dead_response(response):
+    """HTTP 401/403 或已知业务码表示会话已失效，需要立即强制续期。"""
+    if response.status_code in (401, 403):
+        return quota_cooldown(response)[0] == ""
+    payload = json_of(response)
+    if not isinstance(payload, dict):
+        return False
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    codes = (
+        first_text(payload.get("code"), payload.get("Code")),
+        first_text(data.get("code"), data.get("Code")),
+    )
+    return any(code in ("105", "10019901001") for code in codes)
+
+
+def campaign_response_is_empty(response):
+    """仅在成功且明确为空/未展示活动列表时返回 True。"""
+    if response.status_code != 200 or auth_dead_response(response):
+        return False
+    payload = json_of(response)
+    if not isinstance(payload, dict):
+        return False
+    bodies = [payload]
+    data = payload.get("data")
+    if isinstance(data, dict):
+        bodies.append(data)
+    for body in bodies:
+        campaigns = body.get("campaigns")
+        if isinstance(campaigns, list):
+            return not campaigns
+        if campaigns is None and body.get("showCampaign") is False:
+            return True
+    return False
+
+
+def campaign_uid_from_payload(payload):
+    """读取活动列表顶层的账号 uid，用于生成国际版设备风控身份。"""
+    if not isinstance(payload, dict):
+        return ""
+    bodies = [payload]
+    data = payload.get("data")
+    if isinstance(data, dict):
+        bodies.append(data)
+    for body in bodies:
+        uid = first_text(body.get("uid"), body.get("userId"), body.get("user_id"))
+        if uid:
+            return uid
     return ""
 
 
-def fetch_campaigns(account):
-    headers, risk_note = risky_sash_headers(account, account.get("uid", ""))
-    response = request("GET", account["base"] + CAMPAIGNS_PATH + CAMPAIGNS_QUERY,
+def _fetch_campaigns_once(account, headers):
+    response = request("GET", account["base"] + CAMPAIGNS_PATH,
                        headers=headers)
-    if response.status_code in (401, 403) and not quota_error(response) and account.get("refresh"):
+    if (region_key(account.get("region", "cn")) == "cn"
+            and campaign_response_is_empty(response)):
+        original = response
+        response = request(
+            "GET", account["base"] + CAMPAIGNS_PATH,
+            headers=minimal_sash_headers(account["access"]),
+            retries=1,
+        )
+        if campaign_response_is_empty(response):
+            return original
+    return response
+
+
+def fetch_campaigns(account):
+    if region_key(account.get("region", "cn")) == "global":
+        response = None
+        for attempt in range(2):
+            # 国际版的 UMID 身份按账号 UID 生成；UID 又只在无风控头的
+            # 首次活动列表响应顶层出现。顺序必须与官方客户端一致。
+            response = _fetch_campaigns_once(account, sash_headers(account["access"]))
+            if auth_dead_response(response) and account.get("refresh") and attempt == 0:
+                refresh_account(account)
+                continue
+            if response.status_code != 200 or auth_dead_response(response):
+                return response, None
+
+            uid = campaign_uid_from_payload(json_of(response)) or first_text(account.get("uid"))
+            if uid:
+                account["uid"] = uid
+            headers, risk_note = risky_sash_headers(account, uid)
+            if not uid:
+                return response, risk_note
+            response = _fetch_campaigns_once(account, headers)
+            if auth_dead_response(response) and account.get("refresh") and attempt == 0:
+                refresh_account(account)
+                continue
+            return response, risk_note
+        return response, None
+
+    headers, risk_note = risky_sash_headers(account, account.get("uid", ""))
+    response = _fetch_campaigns_once(account, headers)
+    if auth_dead_response(response) and account.get("refresh"):
         refresh_account(account)
         headers, risk_note = risky_sash_headers(account, account.get("uid", ""))
-        response = request("GET", account["base"] + CAMPAIGNS_PATH + CAMPAIGNS_QUERY,
-                           headers=headers)
+        response = _fetch_campaigns_once(account, headers)
     return response, risk_note
 
 
-def claim_campaign(account, campaign_id):
-    headers, _note = risky_sash_headers(account, account.get("uid", ""))
-    headers["content-type"] = "application/json"
+def campaign_rows_from_payload(payload):
+    if not isinstance(payload, dict):
+        return []
+    direct = payload.get("campaigns")
+    if isinstance(direct, list):
+        return direct
+    data = payload.get("data")
+    rows = data.get("campaigns") if isinstance(data, dict) else None
+    return rows if isinstance(rows, list) else []
+
+
+def campaign_id_of(row):
+    return first_text(row.get("campaignId"), row.get("id"))
+
+
+def amount_of(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def campaign_benefit(row):
+    benefit = row.get("benefit") if isinstance(row, dict) else None
+    if not isinstance(benefit, dict):
+        return "", 0.0
+    return first_text(benefit.get("kind")).upper(), amount_of(benefit.get("amount"))
+
+
+def campaign_title(row):
+    parts = []
+    placements = row.get("placements") if isinstance(row, dict) else None
+    for locale in ("zh", "en"):
+        text = ""
+        if isinstance(placements, list):
+            for kind in ("POPUP", "USAGE"):
+                for item in placements:
+                    if not isinstance(item, dict) or item.get("type") != kind:
+                        continue
+                    content = item.get("content")
+                    localized = content.get(locale) if isinstance(content, dict) else None
+                    value = localized.get("title") if isinstance(localized, dict) else None
+                    if isinstance(value, str) and value.strip():
+                        text = value.strip()
+                        break
+                if text:
+                    break
+        parts.append(text or first_text(row.get("title") if isinstance(row, dict) else ""))
+    return " ".join(parts).lower()
+
+
+def campaign_time_ms(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            number = float(text)
+        except ValueError:
+            try:
+                parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=CN_TZ)
+            return int(parsed.timestamp() * 1000)
+    else:
+        return None
+    if not math.isfinite(number) or number <= 0:
+        return None
+    return int(number * 1000) if number < 100_000_000_000 else int(number)
+
+
+def campaign_scope_is_limited(row):
+    benefit = row.get("benefit") if isinstance(row, dict) else None
+    scope = benefit.get("modelScope") if isinstance(benefit, dict) else None
+    series = scope.get("modelSeries") if isinstance(scope, dict) else None
+    if isinstance(series, dict) and series.get("key") == "ALL_MODELS":
+        return False
+    if scope is None:
+        return False
+    if isinstance(scope, dict) and not scope:
+        return False
+    return True
+
+
+def campaign_is_daily(row):
+    if not isinstance(row, dict):
+        return False
+    benefit = row.get("benefit")
+    campaign_id = row.get("campaignId")
+    if not (
+        row.get("actionType") == "CLAIM_BENEFIT"
+        and isinstance(benefit, dict)
+        and benefit.get("kind") == "CREDITS"
+        and isinstance(campaign_id, str)
+        and campaign_id.strip()
+    ):
+        return False
+    title = campaign_title(row)
+    if campaign_scope_is_limited(row) or "sonus" in title or "sota" in title:
+        return False
+    if any(word in title for word in ("每日", "每天", "daily", "every day")):
+        return True
+    start = campaign_time_ms(row.get("startAt"))
+    end = campaign_time_ms(row.get("endAt"))
+    validity = benefit.get("validity")
+    return (
+        start is not None
+        and end is not None
+        and start < end <= start + ONE_DAY_MS
+        and amount_of(benefit.get("amount")) == 100.0
+        and isinstance(validity, dict)
+        and amount_of(validity.get("days")) == 30.0
+    )
+
+
+def campaign_is_active(row, now=None):
+    current = time.time() * 1000 if now is None else float(now)
+    start = campaign_time_ms(row.get("startAt")) if isinstance(row, dict) else None
+    end = campaign_time_ms(row.get("endAt")) if isinstance(row, dict) else None
+    if start is not None and start > current:
+        return False
+    if end is not None and end <= current:
+        return False
+    return True
+
+
+def campaign_looks_like_pro_upgrade(row):
+    if campaign_scope_is_limited(row):
+        return False
+    title = campaign_title(row)
+    if "sonus" in title or "sota" in title:
+        return False
+    for key in ("campaignKey", "title", "name", "campaignName"):
+        value = str(row.get(key) or "").lower()
+        if "upgrade" in value or re.search(r"(^|[\s_-])pro($|[\s_-])", value):
+            return True
+    kind, amount = campaign_benefit(row)
+    return kind == "CREDITS" and amount >= 1000
+
+
+def fetch_campaign_reward(account, campaign_id):
+    """只读读取活动真实面值；官方活动页使用浏览器头，不带 Cosy-Machine*。"""
+    headers = sash_headers(account["access"])
     headers["origin"] = account["base"]
-    return request("POST", "%s%s/%s/claim" % (account["base"], CAMPAIGNS_PATH, campaign_id),
-                   headers=headers, body={}, retries=1)
-
-
-def campaign_reward(account, campaign_id):
-    if not re.fullmatch(r"[A-Za-z0-9._:-]+", campaign_id):
-        return {}
-    headers, _ = risky_sash_headers(account, account.get("uid", ""))
-    response = request("GET", "%s%s/%s/reward" % (account["base"], CAMPAIGNS_PATH, campaign_id),
+    response = request("GET", account["base"] + CAMPAIGN_REWARD_PATH % campaign_id,
                        headers=headers, retries=1)
-    return json_of(response) if response.status_code == 200 else {}
-
-
-def fetch_balance(account):
-    response = request("GET", account["base"] + "/api/v2/quota/usage",
-                       headers=sash_headers(account["access"]), retries=1)
-    if response.status_code in (401, 403) and not quota_error(response) and account.get("refresh"):
-        refresh_account(account)
-        response = request("GET", account["base"] + "/api/v2/quota/usage",
-                           headers=sash_headers(account["access"]), retries=1)
     if response.status_code != 200:
-        raise RuntimeError("余额查询 HTTP %s" % response.status_code)
+        return None
     payload = json_of(response)
-    values = [payload.get("userQuota"), payload.get("addOnQuota")]
-    if not all(isinstance(value, dict) and "remaining" in value for value in values):
-        raise RuntimeError("余额响应缺少可核验额度")
-    return sum(float(value["remaining"]) for value in values)
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    benefit = data.get("benefit") if isinstance(data, dict) else None
+    kind = first_text(data.get("kind") if isinstance(data, dict) else "",
+                      benefit.get("kind") if isinstance(benefit, dict) else "").upper()
+    amount = amount_of(benefit.get("amount") if isinstance(benefit, dict) else
+                       (data.get("amount") if isinstance(data, dict) else None))
+    return {"kind": kind, "amount": amount}
+
+
+def quota_total_remaining(account):
+    """读取账户总剩余额度，用于 claim 前后核对真实增量。"""
+    headers, _note = risky_sash_headers(account, account.get("uid", ""))
+    response = request("GET", account["base"] + QUOTA_USAGE_PATH,
+                       headers=headers, retries=1)
+    if response.status_code != 200:
+        return None
+    payload = json_of(response)
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    if not isinstance(data, dict):
+        return None
+    total = 0.0
+    seen = False
+    for key in ("userQuota", "addOnQuota"):
+        pool = data.get(key)
+        if isinstance(pool, dict) and pool.get("remaining") is not None:
+            total += amount_of(pool.get("remaining"))
+            seen = True
+    for pool in data.get("dedicatedResourcePackages") or []:
+        if isinstance(pool, dict) and pool.get("remaining") is not None:
+            total += amount_of(pool.get("remaining"))
+            seen = True
+    org = data.get("orgResourcePackage")
+    if isinstance(org, dict) and org.get("remaining") is not None:
+        total += amount_of(org.get("remaining"))
+        seen = True
+    return total if seen else None
+
+
+def claim_response_verdict(response):
+    """把 campaigns claim 响应归一为 claimed / already / blocked / error。"""
+    payload = json_of(response)
+    body = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    if not isinstance(body, dict):
+        body = {}
+    status = first_text(body.get("status"), payload.get("status")).upper()
+    failure = first_text(body.get("failureCode"), payload.get("failureCode"),
+                         body.get("errorCode"), payload.get("errorCode")).upper()
+    result = first_text(body.get("result"), payload.get("result")).upper()
+    message = first_text(body.get("message"), body.get("msg"),
+                         payload.get("message"), payload.get("msg"))
+    replayed = body.get("replayed") is True or payload.get("replayed") is True
+    if "ALREADY" in result or "REPLAYED" in result:
+        return "already", 0.0, "活动已领取"
+    if response.status_code == 409:
+        if "ALREADY" in failure or "REPLAYED" in failure or replayed:
+            return "already", 0.0, "活动已领取"
+        return "error", 0.0, message or ("HTTP 409 %s" % (failure or "领取冲突"))
+    if status in ("CLAIMED", "GRANTED", "SUCCESS"):
+        if replayed:
+            return "already", 0.0, "活动已领取"
+        redemption = first_text(body.get("redemptionCode"))
+        amount = amount_of((body.get("benefit") or {}).get("amount")
+                           if isinstance(body.get("benefit"), dict) else None)
+        if redemption:
+            return "claimed", 0.0, "已领取兑换券：" + redemption
+        return "claimed", amount, message or "领取成功"
+    if status == "BLOCKED" or failure == "SAME_PERSON_ALREADY_CLAIMED":
+        return "blocked", 0.0, CLAIM_FAILURE_TEXT.get(failure) or message or "领取被阻塞"
+    if failure in CLAIM_FAILURE_TEXT:
+        return "error", 0.0, CLAIM_FAILURE_TEXT[failure]
+    if 200 <= response.status_code < 300:
+        return "error", 0.0, message or "上游未确认成功"
+    return "error", 0.0, message or ("HTTP %s" % response.status_code)
+
+
+def daily_window_retry_enabled():
+    raw = _env("QODER_WINDOW_RETRY")
+    if not raw:
+        return True
+    return raw.lower() not in ("0", "false", "no", "off")
+
+
+def daily_window_active():
+    now = datetime.now(CN_TZ)
+    # 官方窗口 10:00 开启；上游可能延迟到 11:00 前才下发，重试窗口同步放宽到 1 小时。
+    return now.hour == 10
+
+
+def daily_before_reset():
+    """Today's Qoder reward instance starts at 10:00 UTC+8."""
+    return datetime.now(CN_TZ).hour < 10
+
+
+def validate_campaign_rows(rows):
+    ids = set()
+    for row in rows:
+        campaign_id = row.get("campaignId") if isinstance(row, dict) else None
+        if not isinstance(campaign_id, str) or not campaign_id.strip():
+            return "活动清单格式异常，未确认领取状态"
+        campaign_id = campaign_id.strip()
+        if campaign_id in ids:
+            return "活动清单存在重复 campaignId，未确认领取状态"
+        ids.add(campaign_id)
+    return ""
+
+
+def fetch_campaign_rows(account):
+    response, risk_note = fetch_campaigns(account)
+    quota_kind, quota_seconds = quota_cooldown(response)
+    if quota_kind:
+        return [], response, risk_note, quota_cooldown_message(quota_kind, quota_seconds)
+    if response.status_code in (401, 403):
+        return [], response, risk_note, "签到活动查询失败（HTTP %s），请确认凭证有效且地区选择正确" % response.status_code
+    if auth_dead_response(response):
+        return [], response, risk_note, (
+            "签到活动查询失败（业务码 105 / 10019901001，续期后仍无效），"
+            "请重新登录或稍后重试"
+        )
+    if response.status_code == 429:
+        return [], response, risk_note, "签到活动查询失败（HTTP 429），请稍后重试"
+    if response.status_code != 200:
+        return [], response, risk_note, "活动列表返回 HTTP %s" % response.status_code
+    rows = campaign_rows_from_payload(json_of(response))
+    error = validate_campaign_rows(rows)
+    if error:
+        return [], response, risk_note, error
+    return rows, response, risk_note, ""
+
+
+def pick_daily_campaign(rows):
+    target = None
+    claimed_target = None
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if not campaign_is_daily(row) or not campaign_is_active(row):
+            continue
+        status = first_text(row.get("claimStatus")).upper()
+        if status == "CLAIMABLE" and target is None:
+            target = row
+        elif status == "CLAIMED" and claimed_target is None:
+            claimed_target = row
+    if target is not None:
+        return target, False
+    # campaignId 可能覆盖多日；批次内旧 CLAIMED 不能直接判今日已领。
+    # 保留该行并重发一次幂等 claim，由服务端 replayed 字段裁决。
+    return claimed_target, claimed_target is not None
+
+
+def claim_campaign(account, campaign_id):
+    headers = minimal_sash_headers(account["access"])
+    return request("POST", "%s%s/%s/claim" % (account["base"], CAMPAIGNS_PATH, campaign_id),
+                   headers=headers, body=None)
 
 
 def do_checkin(account):
-    account["failed"] = True
-    response, risk_note = fetch_campaigns(account)
-    if quota_error(response):
-        return False, quota_error(response)
-    if response.status_code in (401, 403):
-        return False, "签到活动查询失败（HTTP %s），请确认凭证有效且地区选择正确" % response.status_code
-    if response.status_code == 429:
-        return False, "签到活动查询失败（HTTP 429），请稍后重试"
-    payload = json_of(response)
-    if response.status_code != 200:
-        return False, "活动列表返回 HTTP %s" % response.status_code
+    if daily_before_reset():
+        return False, (
+            "Qoder 今日奖励实例 10:00（UTC+8）才刷新，"
+            "当前不会请求上一实例；请在 10:05 后重跑"
+        )
+    rows, response, risk_note, error = fetch_campaign_rows(account)
+    if error:
+        return False, error
+    target, claimed = pick_daily_campaign(rows)
 
-    rows = payload.get("campaigns")
-    if not isinstance(rows, list):
-        data = payload.get("data")
-        rows = data.get("campaigns") if isinstance(data, dict) else None
-    if not isinstance(rows, list):
-        return False, "活动列表格式无效"
-
-    def select_daily(campaigns):
-        target, claimed = None, None
-        for row in campaigns:
-            if not isinstance(row, dict) or row.get("actionType") != "CLAIM_BENEFIT":
-                continue
-            if (row.get("benefit") or {}).get("kind") != "CREDITS":
-                continue
-            if row.get("claimStatus") == "CLAIMABLE" and target is None:
-                target = row
-            elif row.get("claimStatus") == "CLAIMED":
-                claimed = row
-        return target, claimed
-
-    target, claimed = select_daily(rows)
-    # Limit waiting to 30 minutes so the existing 45-minute Actions job can
-    # still persist any rotated credentials. Inspection must remain read-only.
-    enabled = os.getenv("QODER_WINDOW_RETRY", "1").strip().lower() not in ("0", "false", "no", "off")
-    for _ in range(3):
-        if INSPECT or not enabled or target is not None or claimed or datetime.now(timezone(timedelta(hours=8))).hour != 10:
-            break
-        log("   ⏳ 活动未下发，10 分钟后复查")
-        time.sleep(600)
-        if datetime.now(timezone(timedelta(hours=8))).hour != 10:
-            break
-        response, risk_note = fetch_campaigns(account)
-        if response.status_code != 200:
-            return False, quota_error(response) or "重查活动失败（HTTP %s）" % response.status_code
-        payload = json_of(response)
-        rows = payload.get("campaigns")
-        if not isinstance(rows, list):
-            data = payload.get("data")
-            rows = data.get("campaigns") if isinstance(data, dict) else None
-        if not isinstance(rows, list):
-            return False, "重查活动列表格式无效"
-        target, claimed = select_daily(rows)
+    if (target is None and not claimed and daily_window_retry_enabled()
+            and daily_window_active()):
+        try:
+            max_attempts = min(6, max(1, int(_env("QODER_WINDOW_RETRY_MAX") or "6")))
+        except ValueError:
+            max_attempts = 6
+        try:
+            gap = max(1, int(_env("QODER_WINDOW_RETRY_GAP") or "600"))
+        except ValueError:
+            gap = 600
+        for _attempt in range(max_attempts):
+            if not daily_window_active():
+                break
+            log("   ⏳ 10:00 开窗延迟，%d 秒后重试活动列表" % gap)
+            time.sleep(gap)
+            rows, response, risk_note, error = fetch_campaign_rows(account)
+            if error:
+                return False, error
+            target, claimed = pick_daily_campaign(rows)
+            if target is not None or claimed:
+                break
 
     if target is None:
         if claimed:
-            account["failed"] = False
-            receipt = campaign_reward(account, str(claimed.get("campaignId") or ""))
-            if receipt.get("grantId"):
-                account["receipt"] = {"previous_credit": (receipt.get("benefit") or {}).get("amount"),
-                    "granted_at": receipt.get("grantedAt"), "new_credit": 0}
-                return False, "今日已领取；发放回执已确认，本轮新增 0"
-            return False, "服务端标记已领取；发放回执尚未核实，本轮新增 0"
-        if account.get("region") == "global":
-            if risk_note:
-                return False, "未领取：%s。国际版签到需要本机 Qoder 客户端或 qodercli 的 UMID 组件" % risk_note
-            account["failed"] = False
-            return False, "上游暂未给该账号下发每日积分活动（官方活动窗口每天 10:00 UTC+8 开启；若今天已在客户端领过则活动行会消失），稍后再试"
-        account["failed"] = False
-        return False, "当前没有可领取的签到活动"
+            return False, "今日已领取"
+        if risk_note:
+            region_label = "中国版" if region_key(account.get("region")) == "cn" else "国际版"
+            return False, (
+                "未领取：%s。%s签到需要对应地区的官方设备身份（UMID）；"
+                "请安装并登录对应客户端，或配置地区 runtime-info 覆盖变量"
+            ) % (risk_note, region_label)
+        return False, (
+            "上游暂未给该账号下发每日积分活动（官方活动窗口每天 10:00 UTC+8 "
+            "开启；若今天已在客户端领过则活动行会消失），稍后再试"
+        )
 
-    campaign_id = first_text(target.get("campaignId"), target.get("campaignKey"))
-    if not re.fullmatch(r"[A-Za-z0-9._:-]+", campaign_id):
+    campaign_id = campaign_id_of(target)
+    if not campaign_id:
         return False, "活动数据里没有 campaignId，无法领取"
-    if INSPECT:
-        account["failed"] = False
-        return False, "可以领取，本轮仅查询"
 
     claim = claim_campaign(account, campaign_id)
-    body = json_of(claim)
-    if claim.status_code == 409 or body.get("result") == "ALREADY_CLAIMED" or body.get("replayed") is True:
-        account["failed"] = False
+    verdict, amount, verdict_message = claim_response_verdict(claim)
+    if verdict == "already":
         return False, "今日已领取"
-    if body.get("failureCode") == "SAME_PERSON_ALREADY_CLAIMED" or body.get("status") == "BLOCKED":
-        account["failed"] = False
-        return False, "同人限制：已领取，本轮新增 0"
-    if claim.status_code not in (200, 201):
-        message = first_text(body.get("errorMessage"), body.get("message"), body.get("msg"))
-        if claim.status_code in (401, 403):
-            return False, "领取失败（HTTP %s），请确认凭证有效且地区选择正确 %s" % (claim.status_code, message)
-        if claim.status_code == 429:
-            return False, "领取失败（HTTP 429），请稍后重试 %s" % message
-        return False, "领取失败 HTTP %s %s" % (claim.status_code, message)
-    if first_text(body.get("status")) != "CLAIMED":
-        return False, "签到未完成（上游状态 %s）" % (first_text(body.get("status")) or "未知")
+    if verdict != "claimed":
+        return False, "领取失败：%s" % verdict_message
 
-    receipt = campaign_reward(account, campaign_id)
-    if not (body.get("grantId") or receipt.get("grantId")):
-        return False, "领取接口已受理；尚无积分发放回执，待确认"
-    benefit = receipt.get("benefit") or body.get("benefit") or {}
-    amount = benefit.get("amount")
-    account["receipt"] = {"new_credit": amount, "granted_at": receipt.get("grantedAt")}
-    account["failed"] = False
+    if amount <= 0:
+        _kind, amount = campaign_benefit(target)
     days = None
+    payload = json_of(claim)
+    body = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    benefit = body.get("benefit") if isinstance(body, dict) and isinstance(body.get("benefit"), dict) else {}
     validity = benefit.get("validity") if isinstance(benefit.get("validity"), dict) else {}
     if validity.get("days") is not None:
         days = validity.get("days")
-    text = "获得 %s credits" % (amount if amount is not None else "?")
+    if amount > 0:
+        text = "获得 %s credits" % int(amount)
+    elif verdict_message.startswith("已领取兑换券"):
+        text = verdict_message
+    else:
+        text = "领取已确认，积分回读稍后刷新"
     if days:
         text += "，%s 天有效" % days
     return True, text
 
 
-def do_pro_upgrade(account):
-    """领取一次性 Pro 升级包。返回 (ok, newly_claimed, message)。"""
-    headers, _note = risky_sash_headers(account, account.get("uid", ""))
-    eligibility = request("GET", account["base"] + PRO_ELIGIBILITY_PATH,
-                          headers=headers, retries=1)
-    if eligibility.status_code == 401:
-        return False, False, "Pro 资格查询鉴权失败"
-    if eligibility.status_code in (403, 404, 410):
-        return True, False, "Pro 升级包未开放或已领取"
-    payload = json_of(eligibility)
-    if eligibility.status_code != 200:
-        return False, False, "Pro 资格查询失败 HTTP %s" % eligibility.status_code
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-    eligible = payload.get("eligible")
-    if eligible is None:
-        eligible = data.get("eligible")
-    if not eligible:
-        return True, False, "Pro 升级包不可领取（已领或活动未开放）"
-    if INSPECT:
-        return True, False, "Pro 升级包有资格，本轮仅查询"
+def discover_pro_campaign(account, rows):
+    """从 campaigns 中找 Pro 升级包；隐藏面值用只读 /reward 核实。"""
+    claimed = None
+    candidates = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        status = first_text(row.get("claimStatus")).upper()
+        if status == "CLAIMED" and campaign_looks_like_pro_upgrade(row) and claimed is None:
+            claimed = row
+        if status == "CLAIMABLE" and campaign_looks_like_pro_upgrade(row):
+            candidates.append(row)
+    if candidates:
+        return candidates[0], claimed, []
 
-    headers["content-type"] = "application/json"
-    headers["origin"] = account["base"]
-    response = request("POST", account["base"] + PRO_CLAIM_PATH,
-                       headers=headers, body={}, retries=1)
-    body = json_of(response)
-    text = json.dumps(body, ensure_ascii=False).upper()
-    if response.status_code == 409 or "ALREADY" in text:
+    probes = []
+    for row in rows:
+        if len(probes) >= 5:
+            break
+        if not isinstance(row, dict) or first_text(row.get("claimStatus")).upper() != "CLAIMABLE":
+            continue
+        if campaign_scope_is_limited(row):
+            continue
+        title = campaign_title(row)
+        if "sonus" in title or "sota" in title:
+            continue
+        campaign_id = campaign_id_of(row)
+        if not campaign_id:
+            continue
+        reward = fetch_campaign_reward(account, campaign_id)
+        if not reward:
+            probes.append("%s:面值不可读" % (campaign_id or "?"))
+            continue
+        kind = str(reward.get("kind") or "").upper()
+        amount = amount_of(reward.get("amount"))
+        probes.append("%s:%s %.0f" % (campaign_id, kind or "?", amount))
+        if kind == "CREDITS" and amount >= 1000:
+            return row, claimed, probes
+    return None, claimed, probes
+
+
+def do_pro_upgrade(account):
+    """从 campaigns 领取一次性 Pro 升级包，并用额度回读核对增量。"""
+    if account.get("region") != "cn":
+        return True, False, "国际版暂无 Pro 升级活动"
+    rows, response, _risk_note, error = fetch_campaign_rows(account)
+    if error:
+        return False, False, "Pro 活动查询失败：%s" % error
+    target, claimed, probes = discover_pro_campaign(account, rows)
+    if target is None:
+        if claimed is not None:
+            return True, False, "Pro 升级包已领取过（campaigns 状态 CLAIMED）"
+        detail = "；已核实 " + "、".join(probes) if probes else ""
+        return True, False, "当前未发现 Pro 升级活动（官方已不再常规投放）" + detail
+    campaign_id = campaign_id_of(target)
+    if not campaign_id:
+        return False, False, "Pro 活动缺少 campaignId"
+
+    before = quota_total_remaining(account)
+    claim = claim_campaign(account, campaign_id)
+    verdict, amount, message = claim_response_verdict(claim)
+    if verdict == "already":
         return True, False, "Pro 升级包已领取过，本次不计新增"
-    if response.status_code != 200:
-        return False, False, "Pro 升级包领取失败 HTTP %s" % response.status_code
-    if body.get("success") is False:
-        return False, False, "Pro 升级包领取失败：%s" % first_text(
-            body.get("message"), body.get("msg"), "上游返回失败")
-    account["failed"] = True
-    return False, False, "Pro 领取接口已受理；金额与到账待核验，不默认计入 1800"
+    if verdict != "claimed":
+        return False, False, "Pro 升级包领取失败：%s" % message
+
+    time.sleep(2)
+    after = quota_total_remaining(account)
+    delta = None
+    if before is not None and after is not None:
+        delta = after - before
+    if delta is not None and delta > 0:
+        return True, True, "Pro 升级包领取成功，额度回读 +%d" % int(delta)
+    if delta is not None:
+        return True, True, "Pro 领取已受理，额度回读暂未增加（%.0f → %.0f）" % (before, after)
+    if amount > 0:
+        return True, True, "Pro 升级包领取已受理，活动面值 %.0f（余额回读暂不可用）" % amount
+    return True, True, "Pro 升级包领取已受理，积分到账待回读确认"
 
 
 # ---------- 推送 ----------
@@ -911,13 +1445,12 @@ def parse_accounts(raw, region="cn"):
 
 
 def main():
-    global ONLY, REFRESH_ONLY, NO_NOTIFY, INSPECT
+    global ONLY, REFRESH_ONLY, NO_NOTIFY
     args = sys.argv[1:]
     if "--refresh-only" in args:
         REFRESH_ONLY = True
     if "--no-notify" in args:
         NO_NOTIFY = True
-    INSPECT = "--inspect" in args
     if "--only" in args:
         try:
             ONLY = int(args[args.index("--only") + 1])
@@ -928,11 +1461,7 @@ def main():
     accounts += parse_accounts(os.environ.get("QODER_GLOBAL_TOKENS", ""), "global")
     if not accounts:
         log("❌ 未配置 QODER_TOKENS / QODER_GLOBAL_TOKENS（多条用换行或 & 分隔；每条: access_token 或 access_token|refresh_token）")
-        return 2
-
-    for account in accounts:
-        protect(account["access"])
-        protect(account["refresh"])
+        return
 
     log("╔════════════════════════════════════╗")
     log("║ 🧭 Qoder 每日签到（中国版 / 国际版）║")
@@ -941,63 +1470,38 @@ def main():
     log("👥 账号数: %d（中国版 %d / 国际版 %d）" % (len(accounts), cn_total, len(accounts) - cn_total))
 
     report = []
-    results = []
-    seen = set()
-    failed = False
     for index, account in enumerate(accounts, 1):
         if ONLY and index != ONLY:
             continue
-        if apply_store(account):
-            log("   🔄 已恢复原生续期状态")
-        identity = (account["region"], account.get("refresh") or account["access"])
-        if identity in seen:
-            log("账号%d：重复配置，跳过" % index)
-            continue
-        seen.add(identity)
-        log("👤 [%d] %s [%s]" % (index, account["note"], REGIONS[account["region"]]["label"]))
+        apply_store(account)
+        log("👤 [%d] %s [%s] token=%s" % (index, account["note"],
+            REGIONS[account["region"]]["label"], mask(account["access"])))
         if REFRESH_ONLY:
             try:
                 refresh_account(account)
                 report.append("账号%d %s: ✅ token 续期成功" % (index, account["note"]))
             except Exception as error:
-                failed = True
-                report.append("账号%d %s: ❌ token 续期失败: %s" % (index, account["note"], type(error).__name__))
+                report.append("账号%d %s: ❌ token 续期失败: %s" % (index, account["note"], error))
             continue
-        result = {"account": account["note"]}
         try:
-            result["balance_before"] = fetch_balance(account)
             success, message = do_checkin(account)
             icon = "✅" if success else "ℹ️"
             log("   %s %s" % (icon, message))
             report.append("账号%d %s: %s %s" % (index, account["note"], icon, message))
-            result["daily"] = message
-            result["receipt"] = account.get("receipt", {})
             pro_ok, pro_new, pro_message = do_pro_upgrade(account)
             pro_icon = "✅" if pro_ok and pro_new else ("ℹ️" if pro_ok else "❌")
             log("   %s %s" % (pro_icon, pro_message))
             report.append("账号%d %s: %s %s" % (index, account["note"], pro_icon, pro_message))
-            result["pro"] = pro_message
-            result["balance_after"] = fetch_balance(account)
-            failed = failed or account.get("failed", False) or not pro_ok
         except Exception as error:
-            failed = True
-            log("   ❌ 异常: %s" % type(error).__name__)
-            result["error"] = type(error).__name__
-            report.append("账号%d %s: ❌ %s" % (index, account["note"], type(error).__name__))
-        results.append(result)
+            log("   ❌ 异常: %s" % error)
+            report.append("账号%d %s: ❌ %s" % (index, account["note"], error))
         time.sleep(1.5)
 
     summary = "🧭 Qoder 签到报告\n" + "\n".join(report) + "\n🕐 " + time.strftime("%Y-%m-%d %H:%M")
     log(summary)
-    details = safe(json.dumps(results, ensure_ascii=False, indent=2))
-    log(details)
-    if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
-            handle.write("## Qoder Daily\n\n```json\n" + details.replace("```", "") + "\n```\n")
     if not NO_NOTIFY and not REFRESH_ONLY:
         notify_all("🧭 Qoder 签到报告", summary)
-    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

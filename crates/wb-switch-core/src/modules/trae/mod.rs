@@ -2,6 +2,7 @@
 //! restoring an account touches only client authentication keys.
 pub mod automation;
 pub(crate) mod backup;
+mod checkin;
 mod credits;
 mod insights;
 mod paths;
@@ -299,6 +300,23 @@ impl Engine {
         self.cache_credit(&account, &credits)?;
         Ok(credits)
     }
+    async fn checkin(&self, args: &Args) -> Result<Value, String> {
+        let (auth, device) = {
+            let _guard = self.lock()?;
+            let store = self.load()?;
+            let account = find(&store, args)?.clone();
+            if account.variant != Region::Cn {
+                return Err("当前只支持国内版 TRAE 每日签到".into());
+            }
+            let keys = self.keys(&account)?;
+            let auth = protocol::identity(&keys)?;
+            let device = checkin::device_id(&keys)
+                .ok_or("账号快照里没有官方注册的设备号，请在 TRAE 客户端登录后重新识别保存")?;
+            (auth, device)
+        };
+        let result = checkin::claim(&auth, &device, args.timeout_seconds.unwrap_or(30)).await?;
+        Ok(checkin::to_value(&result))
+    }
     fn cache_credit(&self, account: &Account, credits: &Value) -> Result<(), String> {
         let _guard = self.lock()?;
         let mut store = self.load()?;
@@ -348,6 +366,7 @@ impl Engine {
             "capture" => self.capture(&args),
             "switch" => self.switch(&args),
             "credits" => self.credit(&args).await,
+            "checkin" => self.checkin(&args).await,
             "open" => {
                 self.processes
                     .launch(&self.paths, args.variant, args.client)?;

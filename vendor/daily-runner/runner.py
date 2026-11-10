@@ -173,8 +173,10 @@ def qoder(token, uid, global_region, state):
     region = "global" if global_region else "cn"
     account = {"access": token, "refresh": "", "uid": uid, "region": region,
                "base": daily.REGIONS[region]["base"]}
-    _, daily_note = daily.do_checkin(account)
-    daily_ok = not account.get("failed", False)
+    daily_ok, daily_note = daily.do_checkin(account)
+    # 上游把“今日已领取”返回成失败布尔值，对本工具来说这是成功。
+    if daily_note == "今日已领取":
+        daily_ok = True
     pro_ok, _, pro_note = daily.do_pro_upgrade(account)
     return {"ok": daily_ok and pro_ok, "message": "%s；%s" % (daily_note, pro_note),
             "authInvalid": "鉴权失败" in daily_note or "HTTP 401" in daily_note}

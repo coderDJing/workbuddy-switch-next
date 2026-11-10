@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Clock3, Columns3, Ellipsis, ExternalLink, FileDown, FileUp, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Clock3, Columns3, Ellipsis, ExternalLink, FileDown, FileUp, Gift, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { TraeBackupDialog } from "@/components/trae-backup-dialog";
 import { DemoAction } from "@/components/demo-action";
@@ -115,6 +115,7 @@ export default function TraePage() {
   const [creditOverrides, setCreditOverrides] = useState<Record<string, api.TraeCredit>>({});
   const [creditErrors, setCreditErrors] = useState<Record<string, string>>({});
   const [creditLoading, setCreditLoading] = useState<Record<string, boolean>>({});
+  const [claiming, setClaiming] = useState(false);
   const querying = useRef(new Set<string>());
   const busy = busyKey !== null;
   const clients = (status?.clients ?? []).filter(c => c.variant === variant);
@@ -159,6 +160,24 @@ export default function TraePage() {
     try { await action(); toast.success(message); }
     catch (error) { toast.error(api.asError(error)); }
     finally { await refresh(true); mutationRunning.current = false; setBusyKey(null); }
+  }
+  async function claimCheckins() {
+    if (claiming || variant !== "cn") return;
+    setClaiming(true);
+    const outcomes: string[] = [];
+    let failed = 0;
+    try {
+      for (const account of accountsRef.current.filter(item => item.variant === "cn" && !item.needsLogin)) {
+        try {
+          const result = await api.traeAction("checkin", { accountId: account.id }) as { ok?: boolean; message?: string };
+          if (!result.ok) failed++;
+          outcomes.push(`${account.name}：${result.message || "已处理"}`);
+        } catch (error) { failed++; outcomes.push(`${account.name}：${api.asError(error)}`); }
+      }
+      if (!outcomes.length) { toast.warning("没有可签到的国内版账号"); return; }
+      (failed ? toast.warning : toast.success)("签到处理完成", { description: outcomes.join("；"), duration: 10000 });
+      await queryCredits(accountsRef.current.filter(item => item.variant === "cn"));
+    } finally { setClaiming(false); }
   }
   function capture(client: api.TraeClient) {
     void run(`capture:${client}`, async () => { await api.traeAction("capture", { variant, client }); setLoginOpen(false); }, "当前登录账号已添加");
@@ -223,6 +242,7 @@ export default function TraePage() {
           <Select value={sortKey} onValueChange={value => { setSortKey(value as TraeSortKey); try { localStorage.setItem("wb-switch.trae.sort", value); } catch { /* 本次选择有效。 */ } }}><SelectTrigger size="sm" className="w-auto min-w-32 gap-1.5 border-0 bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground" aria-label="账号排序方式"><SlidersHorizontal className="size-4" /><SelectValue /></SelectTrigger><SelectContent>{TRAE_SORT_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select>
           <Button variant="ghost" size="icon" className={cn("size-9 rounded-lg", compact && "bg-accent text-accent-foreground")} onClick={toggleCompact} aria-label={compact ? "切换为宽松模式" : "切换为紧凑模式"} title={compact ? "切换为宽松模式" : "切换为紧凑模式"}>{compact ? <Rows3 /> : <Columns3 />}</Button>
           <DemoAction><Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || accounts.length === 0 || accounts.some(a => creditLoading[a.id])} onClick={() => void queryCredits(accounts)} aria-label="刷新积分" title="查询当前档位所有账号的官方额度"><RefreshCw className={accounts.some(a => creditLoading[a.id]) ? "animate-spin" : undefined} />刷新积分</Button></DemoAction>
+          <DemoAction><Button variant="outline" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || claiming || variant !== "cn" || accounts.length === 0} onClick={() => void claimCheckins()} aria-label="领取积分" title={variant === "cn" ? "领取国内版每日签到积分。同一官方设备每天只能签一个账号" : "国际版签到暂未接入"}>{claiming ? <Loader2 className="animate-spin" /> : <Gift />}领取积分</Button></DemoAction>
         </div>
       </div>
       {!status && !loadError ? <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />加载账号…</div>

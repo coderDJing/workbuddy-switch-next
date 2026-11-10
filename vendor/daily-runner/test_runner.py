@@ -185,5 +185,15 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("每日已领", result["message"])
         self.assertIn("Pro 已处理", result["message"])
 
+    def test_qoder_already_claimed_is_success(self):
+        module = types.ModuleType("qoder_daily")
+        module.REGIONS = {"cn": {"base": "https://example.invalid"}}
+        module.do_checkin = lambda account: (False, "今日已领取")
+        module.do_pro_upgrade = lambda account: (True, False, "当前未发现 Pro 升级活动")
+        with patch.dict(sys.modules, {"qoder_daily": module}):
+            result = runner.qoder("token", "user", False, "/tmp/state")
+        self.assertTrue(result["ok"])
+        self.assertIn("今日已领取", result["message"])
+
 if __name__ == "__main__":
     unittest.main()

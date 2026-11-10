@@ -3,7 +3,7 @@
 Pinned upstream code:
 
 - WorkBuddy Daily, L0NE-6/WorkBuddy-Daily commit `db08e48d5bb04bae0079a23a827f1ef34ba3c65b`, MIT; see `upstream/workbuddy/LICENSE` and `NOTICE.md`.
-- Qoder Daily, coderDJing/Qoder-Daily-private commit `ffeae0c8cc51dfc4a720d506e47947b39b04578a`, MIT; see `upstream/qoder/LICENSE`.
+- Qoder Daily, L0NE-6/Qoder-Daily commit `fa30b6a491906e7a2a730c0af2006bb2c6b6ce7d` (v1.0.19), MIT; see `upstream/qoder/LICENSE` and `NOTICE.md`.
 
 The WorkBuddy snapshot has two integration patches: account loading runs only under `__main__`, and the local daemon lookup uses the session directory matching the active credential file, without an unused websocket import.
 
