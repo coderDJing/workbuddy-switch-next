@@ -1,0 +1,6 @@
+import { Columns3,Rows3,SlidersHorizontal } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Select,SelectContent,SelectItem,SelectTrigger,SelectValue } from "@/components/ui/select";
+import type { BasicAccountSort } from "@/lib/account-layout";
+import { cn } from "@/lib/utils";
+export function AccountViewControls({compact,toggleCompact,sort,setSort}:{compact:boolean;toggleCompact:()=>void;sort:BasicAccountSort;setSort:(v:BasicAccountSort)=>void}){return <><Select value={sort} onValueChange={v=>setSort(v as BasicAccountSort)}><SelectTrigger size="sm" className="w-auto min-w-32 gap-1.5 border-0 bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground" aria-label="账号排序方式"><SlidersHorizontal className="size-4"/><SelectValue/></SelectTrigger><SelectContent><SelectItem value="active">当前使用优先</SelectItem><SelectItem value="createdAt">添加时间（新→旧）</SelectItem><SelectItem value="name">名称 A→Z</SelectItem></SelectContent></Select><Button variant="ghost" size="icon" className={cn("size-9 rounded-lg",compact&&"bg-accent text-accent-foreground")} onClick={toggleCompact} aria-label={compact?"切换为宽松模式":"切换为紧凑模式"} title={compact?"切换为宽松模式":"切换为紧凑模式"}>{compact?<Rows3/>:<Columns3/>}</Button></>;}

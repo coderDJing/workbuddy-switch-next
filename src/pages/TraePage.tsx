@@ -1,3 +1,6 @@
+import { accountGrid } from "@/lib/account-layout";
+import { useAccountDensity } from "@/lib/account-layout";
+import { ACCOUNT_CARD_CLASS } from "@/lib/account-layout";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, Clock3, Columns3, Ellipsis, ExternalLink, FileDown, FileUp, Gift, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -21,7 +24,7 @@ import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { useTraeStatus } from "@/stores/trae-status";
 import { useTraeView } from "@/stores/trae-view";
 
-const CARD_CLASS = "flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,.025),0_10px_28px_rgba(15,23,42,.035)] transition-shadow hover:shadow-[0_2px_4px_rgba(15,23,42,.04),0_14px_34px_rgba(15,23,42,.055)]";
+const CARD_CLASS = ACCOUNT_CARD_CLASS;
 type Pending = { kind: "switch"; account: api.TraeAccount } | { kind: "delete"; group: TraeAccountGroup };
 const format = (value: number) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
 const formatTime = (seconds?: number | null) => seconds ? new Date(seconds * 1000).toLocaleString("zh-CN", { hour12: false }) : "—";
@@ -101,7 +104,7 @@ function CreditPanel({ credit, loading, error, compact, accountName }: { credit?
 export default function TraePage() {
   const { variant, setVariant } = useTraeView();
   const { status, error: loadError, refresh } = useTraeStatus();
-  const [compact, setCompact] = useState(() => { try { return localStorage.getItem("wb-switch.compact") !== "0"; } catch { return true; } });
+  const {compact,toggleCompact}=useAccountDensity();
   const [sortKey, setSortKey] = useState<TraeSortKey>(() => { try { const value = localStorage.getItem("wb-switch.trae.sort"); return TRAE_SORT_OPTIONS.some(o => o.value === value) ? value as TraeSortKey : "active"; } catch { return "active"; } });
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const mutationRunning = useRef(false);
@@ -198,9 +201,6 @@ export default function TraePage() {
     if (!name || name === group.name) { setEditing(null); return; }
     void run(`rename:${group.key}`, async () => { for (const account of group.accounts) await api.traeAction("rename", { accountId: account.id, name }); setEditing(null); }, "账号名称已更新");
   }
-  function toggleCompact() {
-    setCompact(value => { try { localStorage.setItem("wb-switch.compact", value ? "0" : "1"); } catch { /* 本次选择有效。 */ } return !value; });
-  }
   function groupCredit(group: TraeAccountGroup) {
     return group.accounts.flatMap(a => [creditOverrides[a.id], a.credits]).filter((c): c is api.TraeCredit => !!c).sort((a, b) => b.checkedAt - a.checkedAt)[0];
   }
@@ -257,7 +257,7 @@ export default function TraePage() {
       </div>
       {!status && !loadError ? <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />加载账号…</div>
         : groups.length === 0 && current.length === 0 ? <div className="rounded-2xl border border-dashed border-border bg-muted/15 px-6 py-14 text-center text-sm text-muted-foreground"><p>暂无{variantLabel(variant)} TRAE 账号。</p><p className="mt-2 text-xs">点击上方「登录添加」；已有本机登录可直接识别。</p></div>
-        : <div className={cn("grid min-w-0 gap-5", compact ? "grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))]" : "grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))]")}>
+        : <div className={accountGrid(compact)}>
           {current.map(c => <article key={`live:${c.client}`} className={CARD_CLASS}>
             <header className={cn("flex items-center gap-3 border-b border-border bg-primary/5", compact ? "min-h-[52px] px-3.5 py-1.5" : "min-h-[104px] px-5 py-3")}><TraeMark size={compact ? 24 : 40} global={variant === "ai"} /><div><h3 className="text-sm font-semibold">本机当前登录</h3><p className="text-xs text-muted-foreground">{clientLabel(c.client)} · 尚未添加</p></div></header>
             <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}>已识别到官方客户端的登录，可直接添加后管理和切换。</div>

@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import * as api from "@/lib/api";
 import { useAccountsStore } from "@/stores/accounts";
+import { useDoubaoStatus } from "@/stores/doubao-status";
 import { useMinimaxStatus } from "@/stores/minimax-status";
 import { useQoderStatus } from "@/stores/qoder-status";
 import { useTraeStatus } from "@/stores/trae-status";
@@ -11,13 +12,13 @@ import { useTraeStatus } from "@/stores/trae-status";
 export const WORKBUDDY_STATUS_REFRESH_INTERVAL_MS = 60 * 1000;
 
 /** Refresh WorkBuddy status only while the main window is visible and focused. */
-export function useWorkbuddyStatusRefresh(qoderEnabled = false, workbuddyEnabled = true, traeEnabled = false, minimaxEnabled = false) {
+export function useWorkbuddyStatusRefresh(qoderEnabled = false, workbuddyEnabled = true, traeEnabled = false, minimaxEnabled = false, doubaoEnabled = false) {
   const activeRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
 
   useEffect(() => {
-    if (!qoderEnabled && !workbuddyEnabled && !traeEnabled && !minimaxEnabled) return;
+    if (!qoderEnabled && !workbuddyEnabled && !traeEnabled && !minimaxEnabled && !doubaoEnabled) return;
     let disposed = false;
     let documentVisible = document.visibilityState !== "hidden";
     const webui = api.isWebui();
@@ -39,6 +40,7 @@ export function useWorkbuddyStatusRefresh(qoderEnabled = false, workbuddyEnabled
       if (workbuddyEnabled) void useAccountsStore.getState().refreshStatus(abortControllerRef.current?.signal);
       if (qoderEnabled) void useQoderStatus.getState().refresh();
       if (traeEnabled) void useTraeStatus.getState().refresh();
+      if (doubaoEnabled) void useDoubaoStatus.getState().refresh();
       if (minimaxEnabled) void useMinimaxStatus.getState().refresh();
     }
 
@@ -124,5 +126,5 @@ export function useWorkbuddyStatusRefresh(qoderEnabled = false, workbuddyEnabled
       window.removeEventListener("blur", onBlur);
       unlisten?.();
     };
-  }, [qoderEnabled, workbuddyEnabled, traeEnabled, minimaxEnabled]);
+  }, [qoderEnabled, workbuddyEnabled, traeEnabled, minimaxEnabled, doubaoEnabled]);
 }

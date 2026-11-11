@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
  * 持久化在 localStorage（与 `wb-switch.compact` / `wb-switch.theme` 同风格），
  * 键名 `wb-switch.tools.<id>`，值 `"1"` / `"0"`；缺省时取 `defaultEnabled`。
  */
-export type ToolId = "workbuddy" | "codebuddyIde" | "codebuddyCli" | "vscodeExt" | "jetbrains" | "qoder" | "trae" | "minimax";
+export type ToolId = "workbuddy" | "codebuddyIde" | "codebuddyCli" | "vscodeExt" | "jetbrains" | "qoder" | "trae" | "minimax" | "doubao";
 
 export interface ToolDef {
   id: ToolId;
@@ -24,6 +24,7 @@ export interface ToolDef {
 }
 
 export const SUPPORTED_TOOLS: ToolDef[] = [
+ {id:"doubao",label:"豆包",description:"豆包桌面端账号切换、额度与每日签到",defaultEnabled:true},
   {
     id: "workbuddy",
     label: "WorkBuddy",

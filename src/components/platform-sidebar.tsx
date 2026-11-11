@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { Settings } from "lucide-react";
 
-import { AppIconMark, MinimaxMark, QoderMark, TraeMark, WorkBuddyMark } from "@/components/product-marks";
+import { AppIconMark, DoubaoMark, MinimaxMark, QoderMark, TraeMark, WorkBuddyMark } from "@/components/product-marks";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { platformPath, type PlatformDef, type PlatformId } from "@/lib/platforms";
@@ -11,6 +11,7 @@ import { AiCliDialog } from "@/components/ai-cli-dialog";
 
 /** 平台栏图标：按产品线取产品图标。 */
 export function PlatformMark({ id, size }: { id: PlatformId; size: number }) {
+  if (id === "doubao") return <DoubaoMark size={size} />;
   if (id === "minimax") return <MinimaxMark size={size} />;
   return id === "trae" ? <TraeMark size={size} /> : id === "qoder" ? <QoderMark size={size} /> : <WorkBuddyMark size={size} />;
 }

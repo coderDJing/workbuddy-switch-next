@@ -11,6 +11,7 @@ pub enum Target {
     QoderDesktop,
     TraeDesktop,
     MinimaxDesktop,
+    DoubaoDesktop,
     Workbuddy,
     CodebuddyIde,
     Vscode,
@@ -24,6 +25,7 @@ impl Target {
             "qoder-cli" => Ok(Self::QoderCli),
             "qoder-desktop" => Ok(Self::QoderDesktop),
             "trae-desktop" => Ok(Self::TraeDesktop),
+            "doubao-desktop" => Ok(Self::DoubaoDesktop),
             "minimax-desktop" => Ok(Self::MinimaxDesktop),
             "workbuddy" => Ok(Self::Workbuddy),
             "codebuddy-ide" => Ok(Self::CodebuddyIde),
@@ -39,6 +41,7 @@ impl Target {
             Self::QoderCli => "qoder-cli",
             Self::QoderDesktop => "qoder-desktop",
             Self::TraeDesktop => "trae-desktop",
+            Self::DoubaoDesktop => "doubao-desktop",
             Self::MinimaxDesktop => "minimax-desktop",
             Self::Workbuddy => "workbuddy",
             Self::CodebuddyIde => "codebuddy-ide",
@@ -47,6 +50,7 @@ impl Target {
         }
     }
 
+    pub fn is_doubao(self) -> bool { matches!(self,Self::DoubaoDesktop) }
     pub fn is_trae(self) -> bool {
         matches!(self, Self::TraeDesktop)
     }

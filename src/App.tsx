@@ -1,3 +1,7 @@
+import DoubaoPage from "@/pages/DoubaoPage";
+import DoubaoCreditStatsPage from "@/pages/DoubaoCreditStatsPage";
+import DoubaoSettingsPage from "@/pages/DoubaoSettingsPage";
+import { useDoubaoStatus } from "@/stores/doubao-status";
 import MinimaxCreditStatsPage from "@/pages/MinimaxCreditStatsPage";
 import MinimaxTokenStatsPage from "@/pages/MinimaxTokenStatsPage";
 import MinimaxSettingsPage from "@/pages/MinimaxSettingsPage";
@@ -255,6 +259,9 @@ function Layout() {
   const traeError = useTraeStatus((s) => s.error);
   const traeVariant = useTraeView((s) => s.variant);
   const traeRunning = traeError ? undefined : (traeStatus?.clients ?? []).find(c => c.variant === traeVariant && c.client === "desktop")?.running ?? undefined;
+  const doubaoStatus = useDoubaoStatus((s) => s.status);
+  const doubaoError = useDoubaoStatus((s) => s.error);
+  const doubaoRunning = doubaoError ? undefined : doubaoStatus?.client.running ?? undefined;
   const minimaxStatus = useMinimaxStatus((s) => s.status);
   const minimaxError = useMinimaxStatus((s) => s.error);
   const minimaxRegion = useMinimaxView((s) => s.region);
@@ -271,7 +278,7 @@ function Layout() {
     platforms[0];
   const topPadding = macTitleBar ? "pt-14" : "pt-4";
   useCreditAutoRefresh(platforms.some((p) => p.id === "codebuddy"));
-  useWorkbuddyStatusRefresh(platforms.some((p) => p.id === "qoder"), platforms.some((p) => p.id === "codebuddy"), platforms.some((p) => p.id === "trae"), platforms.some((p) => p.id === "minimax"));
+  useWorkbuddyStatusRefresh(platforms.some((p) => p.id === "qoder"), platforms.some((p) => p.id === "codebuddy"), platforms.some((p) => p.id === "trae"), platforms.some((p) => p.id === "minimax"), platforms.some((p) => p.id === "doubao"));
   useRotateDeferredNotice();
 
   return (
@@ -281,8 +288,8 @@ function Layout() {
         platforms={platforms}
         activePlatform={activePlatform?.id}
         onSettings={onSettings}
-        running={{ codebuddy: running, qoder: qoderDesktopRunning(qoderStatus, qoderError, qoderVariant), trae: traeRunning, minimax: minimaxRunning }}
-        statusLabels={{ codebuddy: `WorkBuddy ${variantLabel(workbuddyVariant)}`, qoder: variantLabel(qoderVariant), trae: variantLabel(traeVariant), minimax: minimaxRegion === "en" ? "国际版" : "国内版" }}
+        running={{ codebuddy: running, qoder: qoderDesktopRunning(qoderStatus, qoderError, qoderVariant), trae: traeRunning, minimax: minimaxRunning, doubao: doubaoRunning }}
+        statusLabels={{ codebuddy: `WorkBuddy ${variantLabel(workbuddyVariant)}`, qoder: variantLabel(qoderVariant), trae: variantLabel(traeVariant), minimax: minimaxRegion === "en" ? "国际版" : "国内版", doubao: "桌面端" }}
         topPadding={topPadding}
         macTitleBar={macTitleBar}
       />
@@ -314,6 +321,7 @@ const PLATFORM_PAGES: Record<PlatformId, Partial<Record<PlatformPageKey, ReactNo
   },
   trae: { accounts: <TraePage />, "credit-stats": <TraeCreditStatsPage />, settings: <TraeSettingsPage /> },
   qoder: { accounts: <QoderPage />, "token-stats": <TokenStatsPage key="qoder" platform="qoder" />, "credit-stats": <QoderCreditStatsPage />, settings: <QoderSettingsPage /> },
+  doubao: { accounts: <DoubaoPage />, "credit-stats": <DoubaoCreditStatsPage />, settings: <DoubaoSettingsPage /> },
   minimax: { accounts: <MinimaxPage />, "token-stats": <MinimaxTokenStatsPage />, "credit-stats": <MinimaxCreditStatsPage />, settings: <MinimaxSettingsPage /> },
 };
 

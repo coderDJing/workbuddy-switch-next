@@ -1,3 +1,4 @@
+import doubaoIcon from "@/assets/doubao-official-icon.png";
 import { cn } from "@/lib/utils";
 import workbuddyIcon from "@/assets/workbuddy-official-icon.png";
 import codebuddyCnIdeIcon from "@/assets/codebuddy-cn-ide-icon.png";
@@ -272,3 +273,5 @@ export function QoderMark({ size = 32, className, global = false }: MarkProps & 
 export function QoderCliMark({ size = 32, className, global = false }: MarkProps & { global?: boolean }) {
   return <TerminalMark size={size} className={className} brandIcon={global ? qoderGlobalIcon : qoderCnIcon} />;
 }
+
+export function DoubaoMark({size=32,className}:MarkProps){return <span aria-hidden className={cn("inline-flex shrink-0",className)} style={{width:size,height:size}}><img src={doubaoIcon} alt="" className="size-full object-contain" /></span>;}

@@ -1,3 +1,5 @@
+import { accountGrid } from "@/lib/account-layout";
+import { useAccountDensity } from "@/lib/account-layout";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
@@ -257,13 +259,7 @@ export default function AccountsPage() {
   // Account metadata can change without changing which accounts need a query.
   const autoCheckinAccountIds = useMemo(() => JSON.parse(autoCheckinKey) as string[], [autoCheckinKey]);
   /** 紧凑模式：卡片更小、同屏更多列；默认开启，持久化到 localStorage */
-  const [compact, setCompact] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("wb-switch.compact") !== "0";
-    } catch {
-      return true;
-    }
-  });
+  const { compact, toggleCompact } = useAccountDensity();
   /** 账号列表排序方式：持久化到 localStorage，默认积分紧迫优先。 */
   const [sortKey, setSortKey] = useAccountSortKey();
 
@@ -272,18 +268,6 @@ export default function AccountsPage() {
    * 缺省 = 现有四端开、JetBrains 关（与 `src/lib/supported-tools.ts` 的默认值一致）。
    */
   const enabledTools = useSupportedTools();
-
-  function toggleCompact() {
-    setCompact((value) => {
-      const next = !value;
-      try {
-        localStorage.setItem("wb-switch.compact", next ? "1" : "0");
-      } catch {
-        /* 存储不可用时静默 */
-      }
-      return next;
-    });
-  }
 
   useEffect(() => {
     void fetchAll();
@@ -1124,7 +1108,7 @@ export default function AccountsPage() {
             )}
           </div>
         ) : (
-          <div className={cn("grid min-w-0 gap-5", compact ? "grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))]" : "grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))]")}>
+          <div className={accountGrid(compact)}>
             {/* 不要给这个网格加 items-start：它会覆盖 Grid 默认的 stretch，让同排卡片因内容长度不同而
                 高低参差。卡片内部 article 是 flex-col、内容区是 flex-1，会自动吸收差额、footer 自动贴底对齐。 */}
             {orderedAccounts.map((a) => (

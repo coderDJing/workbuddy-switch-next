@@ -10,7 +10,7 @@ import { useSupportedTools, type ToolId } from "./supported-tools";
  * 平台按产品线命名，彼此平级、账号库互不相通。新增平台（如 Trae）= 在这里加一条
  * + 一个后端模块；页面里不要写 `platform === "xxx"` 判断能力，改这里的 `pages`。
  */
-export type PlatformId = "codebuddy" | "qoder" | "trae" | "minimax";
+export type PlatformId = "codebuddy" | "qoder" | "trae" | "minimax" | "doubao";
 
 /** 平台内的页面。同一个 key 在不同平台由各自的页面组件实现。 */
 export type PlatformPageKey = "accounts" | "sessions" | "token-stats" | "credit-stats" | "settings";
@@ -60,6 +60,7 @@ export const PLATFORMS: PlatformDef[] = [
   { id: "trae", label: "TRAE", tools: ["trae"], pages: [ACCOUNTS, { key: "credit-stats", label: "积分统计", icon: Sparkles }, { key: "settings", label: "平台设置", icon: SlidersHorizontal }] },
   /** MiniMax Code 的桌面端与 CLI 共用登录态及本机会话用量。 */
   { id: "minimax", label: "MiniMax Code", tools: ["minimax"], pages: [ACCOUNTS, { key: "token-stats", label: "Token 统计", icon: MessagesSquare }, { key: "credit-stats", label: "积分统计", icon: Sparkles }, { key: "settings", label: "平台设置", icon: SlidersHorizontal }] },
+  { id: "doubao", label: "豆包", tools: ["doubao"], pages: [ACCOUNTS, {key: "credit-stats", label: "额度统计", icon: Sparkles}, {key: "settings", label: "平台设置", icon: SlidersHorizontal}] },
 ];
 
 export function platformPath(platform: PlatformId, page: PlatformPageKey = "accounts"): string {

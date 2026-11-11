@@ -1763,5 +1763,50 @@
         "required": true
       }
     }
+  },
+  "get_doubao_status": {
+    "method": "GET",
+    "path": "/api/doubao/status",
+    "input": "{}",
+    "signature": "getDoubaoStatus()",
+    "parameters": {}
+  },
+  "doubao_action": {
+    "method": "POST",
+    "path": "/api/doubao/action",
+    "input": "{action,input}",
+    "signature": "doubaoAction(action:\"capture\"|\"switch\"|\"credits\"|\"rename\"|\"delete\"|\"open\"|\"checkin\"|\"checkin_status\"|\"statistics\"|\"token_stats\"|\"get_settings\"|\"save_settings\"|\"automation_run\"|\"backup_export\"|\"backup_preview\"|\"backup_import\"|\"cloud_backup\"|\"cloud_preview\"|\"cloud_restore\"|\"cloud_sync\", input:DoubaoInput)",
+    "parameters": {
+      "action": {
+        "type": "\"checkin\" | \"capture\" | \"switch\" | \"credits\" | \"rename\" | \"delete\" | \"open\" | \"statistics\" | \"get_settings\" | \"save_settings\" | \"automation_run\" | \"backup_export\" | \"backup_preview\" | ... 6 more ... | \"token_stats\"",
+        "required": true,
+        "enum": [
+          "checkin",
+          "capture",
+          "switch",
+          "credits",
+          "rename",
+          "delete",
+          "open",
+          "statistics",
+          "get_settings",
+          "save_settings",
+          "automation_run",
+          "backup_export",
+          "backup_preview",
+          "backup_import",
+          "cloud_backup",
+          "cloud_preview",
+          "cloud_restore",
+          "cloud_sync",
+          "checkin_status",
+          "token_stats"
+        ]
+      },
+      "input": {
+        "type": "DoubaoInput",
+        "required": true
+      }
+    }
   }
 }

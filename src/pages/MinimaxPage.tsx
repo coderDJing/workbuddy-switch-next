@@ -1,3 +1,6 @@
+import { useAccountDensity, useBasicAccountSort, orderBasicAccounts, accountGrid } from "@/lib/account-layout";
+import { AccountViewControls } from "@/components/account-view-controls";
+import { ACCOUNT_CARD_CLASS } from "@/lib/account-layout";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Clock3, Ellipsis, FileDown, FileUp, Gift, Fingerprint, Info, Loader2, LogIn, Pencil, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -19,7 +22,7 @@ import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { useMinimaxStatus } from "@/stores/minimax-status";
 import { useMinimaxView } from "@/stores/minimax-view";
 
-const CARD_CLASS = "flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,.025),0_10px_28px_rgba(15,23,42,.035)] transition-shadow hover:shadow-[0_2px_4px_rgba(15,23,42,.04),0_14px_34px_rgba(15,23,42,.055)]";
+const CARD_CLASS = ACCOUNT_CARD_CLASS;
 const format = (value: number) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
 /** `expiresAt` / `checkedAt` 是秒，`capturedAt` 是毫秒，统一在这里换算。 */
 const formatTime = (seconds?: number | null) => seconds ? new Date(seconds * 1000).toLocaleString("zh-CN", { hour12: false }) : "—";
@@ -75,6 +78,8 @@ function CreditBlock({ credit, loading, error, accountName }: { credit?: api.Min
 type Pending = { kind: "switch"; account: api.MinimaxAccount } | { kind: "delete"; account: api.MinimaxAccount };
 
 export default function MinimaxPage() {
+  const {compact,toggleCompact}=useAccountDensity();
+  const [sort,setSort]=useBasicAccountSort("minimax");
   const { region, setRegion } = useMinimaxView();
   const { status, error: loadError, refresh } = useMinimaxStatus();
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -95,7 +100,7 @@ export default function MinimaxPage() {
   const busy = busyKey !== null || claiming;
 
   const client = (status?.clients ?? []).find(c => c.region === region);
-  const accounts = (status?.accounts ?? []).filter(a => a.region === region);
+  const accounts = orderBasicAccounts((status?.accounts ?? []).filter(a => a.region === region),sort,client?.activeAccountId);
 
   useVisibleInterval(() => { void refresh(); }, 60_000);
   useEffect(() => {
@@ -208,24 +213,24 @@ export default function MinimaxPage() {
           <h2 id="minimax-accounts-title" className="text-base font-semibold tracking-tight">账号</h2>
           <Badge variant="secondary" className="h-6 min-w-6 rounded-full border-0 px-1.5 text-[11px] tabular-nums text-muted-foreground shadow-none" aria-label={`${accounts.length} 个${regionLabel(region)} MiniMax Code 账号`}>{accounts.length}</Badge>
         </div>
-        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
-          <DemoAction><Button variant="outline" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || !accounts.length} onClick={() => void claim(accounts)} aria-label="领取积分">{claiming ? <Loader2 className="animate-spin" /> : <Gift />}领取积分</Button></DemoAction>
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1"><AccountViewControls compact={compact} toggleCompact={toggleCompact} sort={sort} setSort={setSort}/>
           <DemoAction><Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || accounts.length === 0 || accounts.some(a => creditLoading[a.id])} onClick={() => void queryCredits(accounts)} aria-label="刷新积分" title="查询当前区域所有账号的官方积分"><RefreshCw className={accounts.some(a => creditLoading[a.id]) ? "animate-spin" : undefined} />刷新积分</Button></DemoAction>
+          <DemoAction><Button variant="outline" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || !accounts.length} onClick={() => void claim(accounts)} aria-label="领取积分">{claiming ? <Loader2 className="animate-spin" /> : <Gift />}领取积分</Button></DemoAction>
         </div>
       </div>
       {!status && !loadError ? <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />加载账号…</div>
         : accounts.length === 0 && !(client?.configured && !client.activeAccountId) ? <div className="rounded-2xl border border-dashed border-border bg-muted/15 px-6 py-14 text-center text-sm text-muted-foreground"><p>暂无{regionLabel(region)} MiniMax Code 账号。</p><p className="mt-2 text-xs">点击上方「登录添加」；已有本机登录可直接识别。</p></div>
-        : <div className="grid min-w-0 gap-5 grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))]">
+        : <div className={accountGrid(compact)}>
           {client?.configured && !client.activeAccountId && <article className={CARD_CLASS}>
             <header className="flex min-h-[52px] items-center gap-3 border-b border-border bg-primary/5 px-3.5 py-1.5"><MinimaxMark size={24} global={region === "en"} /><div><h3 className="text-sm font-semibold">本机当前登录</h3><p className="text-xs text-muted-foreground">{client.name} · 尚未添加</p></div></header>
-            <div className="flex-1 px-3.5 pb-4 pt-3 text-xs leading-5 text-muted-foreground">已识别到官方客户端的登录，可直接添加后管理和切换。</div>
+            <div className={cn("flex-1 text-xs leading-5 text-muted-foreground",compact?"px-3.5 pb-4 pt-3":"px-5 pb-5 pt-4")}>已识别到官方客户端的登录，可直接添加后管理和切换。</div>
             <footer className="border-t px-3.5 py-2"><DemoAction><Button size="sm" variant="outline" disabled={busy} onClick={capture}>{busyKey === "capture" ? <Loader2 className="animate-spin" /> : <LogIn />}添加当前账号</Button></DemoAction></footer>
           </article>}
           {accounts.map(account => {
             const active = account.active || client?.activeAccountId === account.id;
             const loading = creditLoading[account.id];
             return <article key={account.id} className={CARD_CLASS}>
-              <header className={cn("relative flex min-h-[52px] items-center gap-2 border-b border-border px-3.5 py-1.5", active ? "bg-primary/5" : "bg-muted/30")}>
+              <header className={cn("relative flex items-center gap-2 border-b border-border",compact?"min-h-[52px] px-3.5 py-1.5":"min-h-[104px] px-5 py-3", active ? "bg-primary/5" : "bg-muted/30")}>
                 <div className="pointer-events-none absolute inset-0 overflow-hidden"><div className={cn("absolute -right-10 -top-16 size-20 rounded-full blur-2xl", active ? "bg-primary/15" : "bg-muted/30")} />{active && <div className="absolute right-5 top-[64%] -translate-y-1/2 rotate-[7deg] opacity-[0.075] saturate-50 grayscale-[10%]"><MinimaxMark size={40} global={region === "en"} /></div>}</div>
                 <div className="relative z-10 min-w-0 flex-1">
                   {editing === account.id

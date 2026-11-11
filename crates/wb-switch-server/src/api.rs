@@ -64,6 +64,8 @@ pub fn router() -> Router {
             "/api/trae/action",
             post(api_trae_action).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
         )
+        .route("/api/doubao/status", get(api_doubao_status))
+        .route("/api/doubao/action", post(api_doubao_action).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)))
         .route("/api/minimax/status", get(api_minimax_status))
         .route(
             "/api/minimax/action",
@@ -768,6 +770,31 @@ struct MinimaxAction {
 
 async fn api_minimax_action(Json(body): Json<MinimaxAction>) -> Response {
     match wb_switch_core::modules::minimax::action(&body.action, body.input).await {
+        Ok(v) => json_ok(v),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+
+async fn api_doubao_status() -> Response {
+    match tokio::task::spawn_blocking(wb_switch_core::modules::doubao::status).await {
+        Ok(Ok(v)) => json_ok(v),
+        Ok(Err(e)) => json_err(e, StatusCode::BAD_REQUEST),
+        Err(_) => json_err(
+            "豆包 状态任务异常结束".into(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DoubaoAction {
+    action: String,
+    input: Value,
+}
+
+async fn api_doubao_action(Json(body): Json<DoubaoAction>) -> Response {
+    match wb_switch_core::modules::doubao::action(&body.action, body.input).await {
         Ok(v) => json_ok(v),
         Err(e) => json_err(e, StatusCode::BAD_REQUEST),
     }

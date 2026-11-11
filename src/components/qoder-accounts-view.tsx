@@ -1,3 +1,5 @@
+import { accountGrid } from "@/lib/account-layout";
+import { ACCOUNT_CARD_CLASS } from "@/lib/account-layout";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, Clock3, Columns3, Ellipsis, FileDown, FileUp, Gift, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -218,7 +220,7 @@ function QoderAccountCard({ group, targets, targetStatus, compact, busy, busyKey
   return (
     <article
       className={cn(
-        "flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,.025),0_10px_28px_rgba(15,23,42,.035)] transition-shadow hover:shadow-[0_2px_4px_rgba(15,23,42,.04),0_14px_34px_rgba(15,23,42,.055)]",
+        ACCOUNT_CARD_CLASS,
       )}
     >
       <header className={cn("relative flex items-center gap-2 border-b border-border", compact ? "min-h-[52px] px-3.5 py-1.5" : "min-h-[104px] px-5 py-3", active ? "bg-primary/5" : "bg-muted/30")}>
@@ -567,7 +569,7 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
             </p>
           </div>
         ) : (
-          <div className={cn("grid min-w-0 gap-5", compact ? "grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))]" : "grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))]")}>
+          <div className={accountGrid(compact)}>
             {currentLogins.map((s) => (
               <CurrentLoginCard key={s.target} status={s} compact={compact} busy={busy} saving={busyKey === `capture:${s.target}`} onSave={() => capture(s.target)} needsAuthorization={authorizationRequired.includes(s.target)} refreshVersion={creditVersion} onCredit={onCredit} onLoading={onLoading} />
             ))}

@@ -76,7 +76,7 @@ import { UpdateCheckTimeoutError, waitForUpdateCheck } from "./update-check";
  */
 
 const DEMO_READ_COMMANDS = new Set([
-  "get_minimax_status", "get_trae_status", "get_status", "get_accounts", "get_codebuddy_cli_status", "get_codebuddy_cn_ide_status", "get_codebuddy_ide_status", "get_vscode_ext_status", "get_jetbrains_status", "get_qoder_status", "get_qoder_credits", "list_vscode_sessions", "list_codebuddy_ide_sessions", "list_codebuddy_intl_ide_sessions", "vscode_session_links_preview", "codebuddy_ide_session_links_preview", "codebuddy_intl_ide_session_links_preview", "list_account_sessions", "session_links_preview_cross", "list_session_groups", "get_session_group", "preview_session_group_pair", "get_checkin_status",
+  "get_doubao_status", "get_minimax_status", "get_trae_status", "get_status", "get_accounts", "get_codebuddy_cli_status", "get_codebuddy_cn_ide_status", "get_codebuddy_ide_status", "get_vscode_ext_status", "get_jetbrains_status", "get_qoder_status", "get_qoder_credits", "list_vscode_sessions", "list_codebuddy_ide_sessions", "list_codebuddy_intl_ide_sessions", "vscode_session_links_preview", "codebuddy_ide_session_links_preview", "codebuddy_intl_ide_session_links_preview", "list_account_sessions", "session_links_preview_cross", "list_session_groups", "get_session_group", "preview_session_group_pair", "get_checkin_status",
   "get_credit_expiry", "get_credit_statistics", "get_auto_checkin_config",
   "get_token_statistics", "get_qoder_statistics", "get_qoder_credit_statistics",
   "get_qoder_automation", "get_qoder_companion",
@@ -180,6 +180,10 @@ async function httpCall<T>(cmd: string, args?: Record<string, unknown>): Promise
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (demoModeEnabled) {
+    if (cmd === "doubao_action") {
+      if (["statistics", "get_settings"].includes(String(args?.action)) && !(args?.input as { refresh?: boolean } | undefined)?.refresh) return screenshotDemoResponse(cmd, args) as T;
+      throw new Error(DEMO_UNAVAILABLE_MESSAGE);
+    }
     if (cmd === "minimax_action") {
       if (["statistics", "token_stats", "get_settings"].includes(String(args?.action))) return screenshotDemoResponse(cmd, args) as T;
       throw new Error(DEMO_UNAVAILABLE_MESSAGE);
@@ -1346,3 +1350,18 @@ export interface MinimaxTokens {input:number;output:number;cacheRead:number;cach
 export interface MinimaxTokenStatistics {generatedAt:number;available:boolean;accountAttributionAvailable:false;regionAttributionAvailable:false;totals:MinimaxTokens;sessionCount:number;fileCount:number;skippedRecords:number;complete:boolean;daily:{date:string;model:string;tokens:MinimaxTokens}[];models:{model:string;tokens:MinimaxTokens}[]}
 export function getMinimaxStatistics(region:MinimaxRegion,refresh=false):Promise<MinimaxStatistics> {return minimaxAction("statistics",{region,refresh}) as Promise<MinimaxStatistics>;}
 export function getMinimaxAutomation():Promise<MinimaxAutomation> {return minimaxAction("get_settings",{}) as Promise<MinimaxAutomation>;}
+
+export interface DoubaoWindow {key:string;name:string;usedPercent:number|null;remainingPercent:number|null;exhausted:boolean;resetsAt:number|null}
+export interface DoubaoCredit {available:boolean;unit:"percent";remaining:number|null;windows:DoubaoWindow[];planName:string|null;planActive:boolean;planExpiresAt:number|null;checkedAt:number}
+export interface DoubaoCheckin {ok:boolean;state:"available"|"already"|"claimed"|"closed"|"unconfirmed";message:string;credits:number|null;reward?:number|null;continuousDays?:number|null;lastCheckinDate?:string|null;earnedTotal?:number|null;checkedAt:number;warning?:string}
+export interface DoubaoAccount {id:string;uid:string;name:string;capturedAt:number;active:boolean;needsLogin:boolean;switchable:boolean;credits:DoubaoCredit|null;checkin:DoubaoCheckin|null;warning?:string}
+export interface DoubaoStatus {accounts:DoubaoAccount[];client:{name:string;detected:boolean;configured:boolean;running:boolean|null;activeAccountId:string|null;identity:{uid:string;name:string}|null;recognitionError:string|null};capabilities:{nativeCli:false;tokenStatistics:false;portableDesktopSession:false}}
+export interface DoubaoStatistics {generatedAt:number;retentionDays:number;accounts:DoubaoAccount[];snapshots:{accountId:string;name:string;at:number;credit:DoubaoCredit}[];errors:{accountId:string;message:string}[]}
+export type DoubaoSettings = TraeRegionSettings;
+export interface DoubaoAutomation {settings:DoubaoSettings;logs:{at:number;action:string;outcome:string}[]}
+export interface DoubaoBackupPreview {accounts:{name:string;exists:boolean}[];count:number;snapshotId:string;desktopSessionIncluded:false}
+export interface DoubaoInput {accountId?:string;name?:string;closeRunning?:boolean;relaunch?:boolean;dryRun?:boolean;timeoutSeconds?:number;refresh?:boolean;settings?:DoubaoSettings;passphrase?:string;data?:string;snapshotId?:string;path?:string}
+export function getDoubaoStatus():Promise<DoubaoStatus>{return call("get_doubao_status");}
+export function doubaoAction(action:"capture"|"switch"|"credits"|"rename"|"delete"|"open"|"checkin"|"checkin_status"|"statistics"|"token_stats"|"get_settings"|"save_settings"|"automation_run"|"backup_export"|"backup_preview"|"backup_import"|"cloud_backup"|"cloud_preview"|"cloud_restore"|"cloud_sync",input:DoubaoInput):Promise<unknown>{return call("doubao_action",{action,input});}
+export function getDoubaoStatistics(refresh=false):Promise<DoubaoStatistics>{return doubaoAction("statistics",{refresh}) as Promise<DoubaoStatistics>;}
+export function getDoubaoAutomation():Promise<DoubaoAutomation>{return doubaoAction("get_settings",{}) as Promise<DoubaoAutomation>;}

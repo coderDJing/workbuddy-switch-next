@@ -32,7 +32,7 @@ One-shot options:
   --summary                     Compact inspect/credits output; keeps raw balances and 2-decimal display strings
   --variant cn|ai|all            Filter accounts (default: all)
   --target TARGET               codebuddy-cli (default), workbuddy, codebuddy-ide, vscode, jetbrains,
-                                qoder-cli, qoder-desktop, trae-desktop, minimax-desktop
+                                qoder-cli, qoder-desktop, trae-desktop, minimax-desktop, doubao-desktop
   --dry-run                     Preview switch target without writing or closing clients
   --close-running               Explicitly allow closing a desktop/Qoder target
   --relaunch                    Desktop restart; requires --close-running (new desktop targets require both)
@@ -342,7 +342,7 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
                 ((options.target.is_qoder()
                     || options.target.is_desktop()
                     || options.target.is_trae()
-                    || options.target.is_minimax())
+                    || options.target.is_minimax() || options.target.is_doubao())
                     && options.command == Command::Status)
                     || matches!(
                         options.command,
@@ -379,7 +379,7 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
                     && (options.target.is_qoder()
                         || options.target.is_desktop()
                         || options.target.is_trae()
-                        || options.target.is_minimax())
+                        || options.target.is_minimax() || options.target.is_doubao())
             }
             "--settings-file" => options.command == Command::Automation,
             "--refresh" => options.command == Command::CreditStats,
@@ -481,14 +481,14 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
                 "Use automation get|run, or automation set --variant cn|ai --settings-file PATH",
             ));
         }
-        if options.action == "set" && options.variant.is_none() {
+        if options.action == "set" && options.variant.is_none() && !options.target.is_doubao() {
             return Err(Failure::usage("automation set requires --variant cn or ai"));
         }
     }
     if matches!(options.command, Command::Automation)
         && !options.target.is_qoder()
         && !options.target.is_trae()
-        && !options.target.is_minimax()
+        && !options.target.is_minimax() && !options.target.is_doubao()
     {
         return Err(Failure::usage(
             "This command requires --target qoder-cli, qoder-desktop trae-desktop or minimax-desktop",
@@ -498,7 +498,7 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
         && (!(options.target == Target::QoderDesktop
             || options.target.is_desktop()
             || options.target.is_trae()
-            || options.target.is_minimax())
+            || options.target.is_minimax() || options.target.is_doubao())
             || !options.close_running)
     {
         return Err(Failure::usage(
@@ -526,7 +526,7 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
     if matches!(options.command, Command::TokenStats | Command::CreditStats)
         && !options.target.is_qoder()
         && !options.target.is_trae()
-        && !options.target.is_minimax()
+        && !options.target.is_minimax() && !options.target.is_doubao()
         && flags.contains_key("--variant")
     {
         return Err(Failure::usage(
@@ -559,6 +559,7 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
             "MiniMax queries are sequential; --model, --concurrency and --wait are unsupported",
         ));
     }
+    if options.target.is_doubao() && (options.variant == Some(WbVariant::Ai) || ["--model", "--concurrency", "--wait"].iter().any(|k| flags.contains_key(*k))) { return Err(Failure::usage("Doubao supports the cn desktop only; --model, --concurrency and --wait are unsupported")); }
     if options.target.is_qoder() && flags.contains_key("--model") {
         return Err(Failure::usage(
             "Qoder model availability is unknown; --model is not supported",

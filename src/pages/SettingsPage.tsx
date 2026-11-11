@@ -2209,6 +2209,7 @@ function SupportedToolsCard() {
     vscodeExt: (size) => <VscodeExtMark size={size} />,
     jetbrains: (size) => <JetbrainsMark size={size} />,
     qoder: (size) => <QoderMark size={size} />,
+    doubao: (size) => <PlatformMark id="doubao" size={size} />,
     minimax: (size) => <PlatformMark id="minimax" size={size} />,
   };
 

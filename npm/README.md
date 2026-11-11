@@ -1,6 +1,6 @@
 # WorkBuddy Switch Next
 
-基于 [WorkBuddy Switch](https://github.com/changexbc/workbuddy-switch) 的社区维护版本，提供桌面 GUI、浏览器 webui 和一次性 CLI。支持 WorkBuddy / CodeBuddy 各端、JetBrains 插件与 Qoder 国内版 / 国际版的账号管理与切换。
+基于 [WorkBuddy Switch](https://github.com/changexbc/workbuddy-switch) 的社区维护版本，提供桌面 GUI、浏览器 webui 和一次性 CLI。集中管理 WorkBuddy / CodeBuddy、Qoder、TRAE、MiniMax Code、豆包五个平台的账号、额度与自动任务；功能以各目标实际能力为准。
 
 从 [正式版 Releases](https://github.com/coderDJing/workbuddy-switch-next/releases/latest) 获取桌面安装包；桌面安装包已自带同版本命令。完整功能、截图和平台限制见 [项目 README](https://github.com/coderDJing/workbuddy-switch-next#readme)。
 
@@ -57,3 +57,5 @@ macOS webui 的文件权限由启动服务的终端决定，切换账号遇到�
 ## 许可
 
 [MIT](https://github.com/coderDJing/workbuddy-switch-next/blob/main/LICENSE)。保留原项目版权与来源。
+
+五平台功能、安装方式和验证范围见 [项目 README](https://github.com/coderDJing/workbuddy-switch-next#readme)。豆包目标为 `doubao-desktop`，MiniMax 为 `minimax-desktop`，TRAE 为 `trae-desktop`；运行 `help --json` 查询可用命令。

@@ -1,3 +1,4 @@
+import { ACCOUNT_CARD_CLASS } from "@/lib/account-layout";
 import { ArrowRight, CalendarCheck2, CalendarDays, CalendarOff, Check, CircleCheck, Clock3, Coins, Ellipsis, Gauge, History, Info, Loader2, PackageOpen, PlaneTakeoff, RefreshCw, Sparkles, Star, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -504,7 +505,7 @@ export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInf
 
   return (
     <TooltipProvider>
-      <article className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,.025),0_10px_28px_rgba(15,23,42,.035)] transition-shadow hover:shadow-[0_2px_4px_rgba(15,23,42,.04),0_14px_34px_rgba(15,23,42,.055)]">
+      <article className={ACCOUNT_CARD_CLASS}>
       <header
         className={cn(
           "relative flex items-center border-b border-border",
