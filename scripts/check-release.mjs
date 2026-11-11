@@ -9,6 +9,7 @@ const read = name => fs.readFileSync(path.join(root, name), 'utf8');
 const json = name => JSON.parse(read(name));
 const release = json('release-config.json');
 assertReleaseChannel(release.version, release.channel);
+assert.ok(fs.existsSync(path.join(root, `docs/releases/${release.version}.md`)), 'Missing release notes for current version');
 const config = json('src-tauri/tauri.conf.json');
 for (const name of ['package.json', 'package-lock.json', 'npm/package.json', 'src-tauri/tauri.conf.json']) {
   assert.equal(json(name).version, release.version, `Version mismatch: ${name}`);
