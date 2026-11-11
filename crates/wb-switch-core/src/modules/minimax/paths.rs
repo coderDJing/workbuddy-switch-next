@@ -191,6 +191,8 @@ impl Paths {
 }
 
 /// 桌面端进程映像名（Windows 带 .exe）。
+/// 只有 Windows 的进程探测按映像名找客户端，macOS 走 bundle 路径标记。
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn desktop_image() -> &'static str {
     if cfg!(target_os = "windows") {
         "MiniMax Code.exe"
