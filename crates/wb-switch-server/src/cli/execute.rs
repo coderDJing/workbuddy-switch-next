@@ -112,7 +112,8 @@ async fn execute_inner(
             "codebuddy-ide",
             "vscode",
             "jetbrains",
-            "trae-desktop"
+            "trae-desktop",
+            "minimax-desktop"
         ]);
         value["capabilities"] = super::qoder::capabilities();
         value["operationsCommand"] = json!("operations [OPERATION]");
@@ -131,6 +132,9 @@ async fn execute_inner(
     }
     if options.target.is_trae() {
         return super::trae::execute(options, control).await;
+    }
+    if options.target.is_minimax() {
+        return super::minimax::execute(options, control).await;
     }
     if matches!(
         options.command,

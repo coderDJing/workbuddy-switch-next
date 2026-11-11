@@ -520,7 +520,7 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
           </div>
           <div className="flex items-center gap-1">
             <DemoAction><Button variant="ghost" size="sm" className="h-9 px-2.5" disabled={busy} onClick={() => setBackupMode("import")} title="从备份文件导入账号"><FileUp />导入备份</Button></DemoAction>
-            <DemoAction><Button variant="ghost" size="sm" className="h-9 px-2.5" disabled={busy || !status?.bundles.length} onClick={() => setBackupMode("export")} title="导出账号备份"><FileDown />导出</Button></DemoAction>
+            <DemoAction><Button variant="ghost" size="sm" className="h-9 px-2.5" disabled={busy || !(status?.bundles ?? []).length} onClick={() => setBackupMode("export")} title="导出账号备份"><FileDown />导出</Button></DemoAction>
           </div>
         </div>
       </div>

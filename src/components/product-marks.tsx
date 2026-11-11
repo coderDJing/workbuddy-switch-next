@@ -1,11 +1,20 @@
 import { cn } from "@/lib/utils";
 import workbuddyIcon from "@/assets/workbuddy-official-icon.png";
 import codebuddyCnIdeIcon from "@/assets/codebuddy-cn-ide-icon.png";
+import minimaxIcon from "@/assets/minimax-official-icon.png";
 import qoderCnIcon from "@/assets/qoder-cn-official-icon.png";
 import qoderGlobalIcon from "@/assets/qoder-global-official-icon.png";
 import traeIcon from "@/assets/trae-official-icon.svg";
 
 const appIconUrl = `${import.meta.env.BASE_URL}icon-transparent.png`;
+
+/** MiniMax Code 官方标记：取自安装目录 `uninstallerIcon.ico` 的 256px 帧，原样使用。 */
+export function MinimaxMark({ size = 32, className, global = false }: MarkProps & { global?: boolean }) {
+  return <span aria-hidden className={cn("relative inline-flex shrink-0", className)} style={{ width: size, height: size }}>
+    <img src={minimaxIcon} alt="" className="size-full object-contain" />
+    {global && <IntlBadge size={size} />}
+  </span>;
+}
 
 /** TRAE 官方标记，来自 TRAE CN 3.4.15 安装包 out/media/trae-logo.svg，原样使用。 */
 export function TraeMark({ size = 32, className, global = false }: MarkProps & { global?: boolean }) {

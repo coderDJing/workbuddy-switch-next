@@ -425,6 +425,21 @@ pub async fn trae_action(action: String, input: Value) -> Result<Value, String> 
     wb_switch_core::modules::trae::action(&action, input).await
 }
 
+/// GET /api/minimax/status —— MiniMax Code 现场登录态与账号包列表。
+///
+/// async + spawn_blocking：进程探测会跑 tasklist / ps 子进程。
+#[tauri::command]
+pub async fn get_minimax_status() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(wb_switch_core::modules::minimax::status)
+        .await
+        .map_err(|_| "MiniMax 状态任务异常结束".to_string())?
+}
+
+#[tauri::command]
+pub async fn minimax_action(action: String, input: Value) -> Result<Value, String> {
+    wb_switch_core::modules::minimax::action(&action, input).await
+}
+
 #[tauri::command]
 pub async fn auto_capture_qoder_accounts() -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(qoder::auto_capture)

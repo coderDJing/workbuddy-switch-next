@@ -1714,5 +1714,40 @@
         "required": true
       }
     }
+  },
+  "get_minimax_status": {
+    "method": "GET",
+    "path": "/api/minimax/status",
+    "input": "{}",
+    "signature": "getMinimaxStatus()",
+    "parameters": {}
+  },
+  "minimax_action": {
+    "method": "POST",
+    "path": "/api/minimax/action",
+    "input": "{action,input}",
+    "signature": "minimaxAction(action:\"capture\"|\"switch\"|\"credits\"|\"rename\"|\"delete\"|\"open\"|\"identity\"|\"login_start\"|\"login_poll\"|\"login_cancel\", input:MinimaxInput)",
+    "parameters": {
+      "action": {
+        "type": "\"capture\" | \"switch\" | \"credits\" | \"rename\" | \"delete\" | \"open\" | \"identity\" | \"login_start\" | \"login_poll\" | \"login_cancel\"",
+        "required": true,
+        "enum": [
+          "capture",
+          "switch",
+          "credits",
+          "rename",
+          "delete",
+          "open",
+          "identity",
+          "login_start",
+          "login_poll",
+          "login_cancel"
+        ]
+      },
+      "input": {
+        "type": "MinimaxInput",
+        "required": true
+      }
+    }
   }
 }

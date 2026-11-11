@@ -181,7 +181,7 @@ export function CodebuddyIdeSwitchAccountDialog({ open, onOpenChange, account, v
             syncSelections.length > 0 ? syncSelections : undefined,
           );
       const nickname = displayName(account);
-      const copied = res.sessionCopy?.copied.length ?? 0;
+      const copied = (res.sessionCopy?.copied ?? []).length;
       const errors = res.sessionCopy?.errors ?? [];
       const linkErrors = res.sessionCopy?.linkErrors ?? [];
       const syncReport = res.sessionSync;

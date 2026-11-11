@@ -336,3 +336,61 @@ fn unlimited_accounts_are_explicit_and_keep_finite_subtotals() {
     assert_eq!(value["summary"]["hasUnlimitedAccounts"], false);
     assert_eq!(value["summary"]["totalRemaining"], 7.0);
 }
+
+#[test]
+fn minimax_target_is_single_slot_and_region_scoped() {
+    for command in ["accounts", "status", "inspect", "credits"] {
+        let o = parsed(&[command, "--target=minimax-desktop", "--variant", "ai"]);
+        assert!(o.target.is_minimax(), "{command}");
+        assert_eq!(o.target.as_str(), "minimax-desktop");
+        assert_eq!(o.variant, Some(WbVariant::Ai));
+        assert!(!o.target.is_desktop() && !o.target.is_qoder() && !o.target.is_trae());
+    }
+    // 桌面端与 CLI 共用一个登录槽：切号要么带 --dry-run，要么显式关闭并重开。
+    assert!(parsed(&["switch", "mm-1", "--target=minimax-desktop", "--dry-run"]).dry_run);
+    let relaunch = parsed(&[
+        "switch",
+        "mm-1",
+        "--target=minimax-desktop",
+        "--close-running",
+        "--relaunch",
+    ]);
+    assert!(relaunch.close_running && relaunch.relaunch);
+    assert!(parse(&args(&[
+        "switch",
+        "mm-1",
+        "--target=minimax-desktop",
+        "--relaunch"
+    ]))
+    .is_err());
+    // 逐账号顺序查询：不接受并发与模型筛选。
+    for extra in ["--model=x", "--concurrency=2", "--wait=5"] {
+        assert!(
+            parse(&args(&["credits", "--target=minimax-desktop", extra])).is_err(),
+            "{extra}"
+        );
+    }
+    // 区域映射：CLI 的 ai 对应凭据目录里的 en。
+    assert_eq!(
+        super::minimax::region_arg(&parsed(&["accounts", "--target=minimax-desktop"])),
+        None
+    );
+    assert_eq!(
+        super::minimax::region_arg(&parsed(&[
+            "accounts",
+            "--target=minimax-desktop",
+            "--variant",
+            "cn"
+        ])),
+        Some("cn")
+    );
+    assert_eq!(
+        super::minimax::region_arg(&parsed(&[
+            "accounts",
+            "--target=minimax-desktop",
+            "--variant",
+            "ai"
+        ])),
+        Some("en")
+    );
+}

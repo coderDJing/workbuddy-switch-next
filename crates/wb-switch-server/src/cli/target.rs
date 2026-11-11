@@ -10,6 +10,7 @@ pub enum Target {
     QoderCli,
     QoderDesktop,
     TraeDesktop,
+    MinimaxDesktop,
     Workbuddy,
     CodebuddyIde,
     Vscode,
@@ -23,6 +24,7 @@ impl Target {
             "qoder-cli" => Ok(Self::QoderCli),
             "qoder-desktop" => Ok(Self::QoderDesktop),
             "trae-desktop" => Ok(Self::TraeDesktop),
+            "minimax-desktop" => Ok(Self::MinimaxDesktop),
             "workbuddy" => Ok(Self::Workbuddy),
             "codebuddy-ide" => Ok(Self::CodebuddyIde),
             "vscode" => Ok(Self::Vscode),
@@ -37,6 +39,7 @@ impl Target {
             Self::QoderCli => "qoder-cli",
             Self::QoderDesktop => "qoder-desktop",
             Self::TraeDesktop => "trae-desktop",
+            Self::MinimaxDesktop => "minimax-desktop",
             Self::Workbuddy => "workbuddy",
             Self::CodebuddyIde => "codebuddy-ide",
             Self::Vscode => "vscode",
@@ -46,6 +49,10 @@ impl Target {
 
     pub fn is_trae(self) -> bool {
         matches!(self, Self::TraeDesktop)
+    }
+    /// MiniMax Code：桌面端与 CLI 共用一个登录槽，所以只有一个目标。
+    pub fn is_minimax(self) -> bool {
+        matches!(self, Self::MinimaxDesktop)
     }
     pub fn is_qoder(self) -> bool {
         matches!(self, Self::QoderCli | Self::QoderDesktop)

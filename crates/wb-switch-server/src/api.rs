@@ -64,6 +64,11 @@ pub fn router() -> Router {
             "/api/trae/action",
             post(api_trae_action).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
         )
+        .route("/api/minimax/status", get(api_minimax_status))
+        .route(
+            "/api/minimax/action",
+            post(api_minimax_action).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
         .route("/api/status", get(api_status))
         .route("/api/accounts", get(api_accounts))
         .route("/api/codebuddy-cli/status", get(api_codebuddy_cli_status))
@@ -738,6 +743,31 @@ struct TraeAction {
 }
 async fn api_trae_action(Json(body): Json<TraeAction>) -> Response {
     match wb_switch_core::modules::trae::action(&body.action, body.input).await {
+        Ok(v) => json_ok(v),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+
+async fn api_minimax_status() -> Response {
+    match tokio::task::spawn_blocking(wb_switch_core::modules::minimax::status).await {
+        Ok(Ok(v)) => json_ok(v),
+        Ok(Err(e)) => json_err(e, StatusCode::BAD_REQUEST),
+        Err(_) => json_err(
+            "MiniMax 状态任务异常结束".into(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MinimaxAction {
+    action: String,
+    input: Value,
+}
+
+async fn api_minimax_action(Json(body): Json<MinimaxAction>) -> Response {
+    match wb_switch_core::modules::minimax::action(&body.action, body.input).await {
         Ok(v) => json_ok(v),
         Err(e) => json_err(e, StatusCode::BAD_REQUEST),
     }

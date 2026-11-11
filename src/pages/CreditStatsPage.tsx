@@ -327,7 +327,7 @@ function officialAccountFor(
   officialUsage: CreditOfficialUsage | undefined,
   accountId: string,
 ): CreditOfficialUsageAccount | undefined {
-  return officialUsage?.accounts.find((account) => account.accountId === accountId);
+  return (officialUsage?.accounts ?? []).find((account) => account.accountId === accountId);
 }
 
 function chartPoints(daily: CreditStatsDailyPoint[], range: RangeKey) {

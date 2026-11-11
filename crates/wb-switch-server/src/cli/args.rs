@@ -20,6 +20,7 @@ Commands:
   rewards ACCOUNT_ID|--all       Daily check-in / Qoder rewards (explicit selection required)
   automation [get|set|run]       Platform automation settings/history; run only enabled tasks
   login                         Wait for official authorization, save account, do not switch clients
+                                 (minimax-desktop: prints a device user code, then polls until authorized)
   operations [OPERATION]        Discover complete WebUI operations and input contracts
   call OPERATION                Run a named operation in-process, without starting a server
   version                       Show version
@@ -31,7 +32,7 @@ One-shot options:
   --summary                     Compact inspect/credits output; keeps raw balances and 2-decimal display strings
   --variant cn|ai|all            Filter accounts (default: all)
   --target TARGET               codebuddy-cli (default), workbuddy, codebuddy-ide, vscode, jetbrains,
-                                qoder-cli, qoder-desktop, trae-desktop
+                                qoder-cli, qoder-desktop, trae-desktop, minimax-desktop
   --dry-run                     Preview switch target without writing or closing clients
   --close-running               Explicitly allow closing a desktop/Qoder target
   --relaunch                    Desktop restart; requires --close-running (new desktop targets require both)
@@ -340,7 +341,8 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
             "--variant" => {
                 ((options.target.is_qoder()
                     || options.target.is_desktop()
-                    || options.target.is_trae())
+                    || options.target.is_trae()
+                    || options.target.is_minimax())
                     && options.command == Command::Status)
                     || matches!(
                         options.command,
@@ -376,7 +378,8 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
                 options.command == Command::Switch
                     && (options.target.is_qoder()
                         || options.target.is_desktop()
-                        || options.target.is_trae())
+                        || options.target.is_trae()
+                        || options.target.is_minimax())
             }
             "--settings-file" => options.command == Command::Automation,
             "--refresh" => options.command == Command::CreditStats,
@@ -493,7 +496,8 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
     if options.relaunch
         && (!(options.target == Target::QoderDesktop
             || options.target.is_desktop()
-            || options.target.is_trae())
+            || options.target.is_trae()
+            || options.target.is_minimax())
             || !options.close_running)
     {
         return Err(Failure::usage(
@@ -542,6 +546,15 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
     {
         return Err(Failure::usage(
             "TRAE queries are sequential; --model, --concurrency and --wait are unsupported",
+        ));
+    }
+    if options.target.is_minimax()
+        && ["--model", "--concurrency", "--wait"]
+            .iter()
+            .any(|k| flags.contains_key(*k))
+    {
+        return Err(Failure::usage(
+            "MiniMax queries are sequential; --model, --concurrency and --wait are unsupported",
         ));
     }
     if options.target.is_qoder() && flags.contains_key("--model") {

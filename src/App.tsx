@@ -1,6 +1,7 @@
 import TraeCreditStatsPage from "@/pages/TraeCreditStatsPage";
 import TraeSettingsPage from "@/pages/TraeSettingsPage";
 import TraePage from "@/pages/TraePage";
+import MinimaxPage from "@/pages/MinimaxPage";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { BrowserRouter, HashRouter, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router-dom";
@@ -41,6 +42,8 @@ import { useQoderStatus, qoderDesktopRunning } from "@/stores/qoder-status";
 import { useQoderView } from "@/stores/qoder-view";
 import { useTraeStatus } from "@/stores/trae-status";
 import { useTraeView } from "@/stores/trae-view";
+import { useMinimaxStatus } from "@/stores/minimax-status";
+import { useMinimaxView } from "@/stores/minimax-view";
 import { normalizeVariant, variantLabel } from "@/lib/variant";
 
 /**
@@ -248,7 +251,11 @@ function Layout() {
   const traeStatus = useTraeStatus((s) => s.status);
   const traeError = useTraeStatus((s) => s.error);
   const traeVariant = useTraeView((s) => s.variant);
-  const traeRunning = traeError ? undefined : traeStatus?.clients.find(c => c.variant === traeVariant && c.client === "desktop")?.running ?? undefined;
+  const traeRunning = traeError ? undefined : (traeStatus?.clients ?? []).find(c => c.variant === traeVariant && c.client === "desktop")?.running ?? undefined;
+  const minimaxStatus = useMinimaxStatus((s) => s.status);
+  const minimaxError = useMinimaxStatus((s) => s.error);
+  const minimaxRegion = useMinimaxView((s) => s.region);
+  const minimaxRunning = minimaxError ? undefined : (minimaxStatus?.clients ?? []).find(c => c.region === minimaxRegion)?.running ?? undefined;
   const sessionsNavEnabled = useSessionsNavEnabled();
   const platforms = useEnabledPlatforms();
   const { pathname } = useLocation();
@@ -261,7 +268,7 @@ function Layout() {
     platforms[0];
   const topPadding = macTitleBar ? "pt-14" : "pt-4";
   useCreditAutoRefresh(platforms.some((p) => p.id === "codebuddy"));
-  useWorkbuddyStatusRefresh(platforms.some((p) => p.id === "qoder"), platforms.some((p) => p.id === "codebuddy"), platforms.some((p) => p.id === "trae"));
+  useWorkbuddyStatusRefresh(platforms.some((p) => p.id === "qoder"), platforms.some((p) => p.id === "codebuddy"), platforms.some((p) => p.id === "trae"), platforms.some((p) => p.id === "minimax"));
   useRotateDeferredNotice();
 
   return (
@@ -271,8 +278,8 @@ function Layout() {
         platforms={platforms}
         activePlatform={activePlatform?.id}
         onSettings={onSettings}
-        running={{ codebuddy: running, qoder: qoderDesktopRunning(qoderStatus, qoderError, qoderVariant), trae: traeRunning }}
-        statusLabels={{ codebuddy: `WorkBuddy ${variantLabel(workbuddyVariant)}`, qoder: variantLabel(qoderVariant), trae: variantLabel(traeVariant) }}
+        running={{ codebuddy: running, qoder: qoderDesktopRunning(qoderStatus, qoderError, qoderVariant), trae: traeRunning, minimax: minimaxRunning }}
+        statusLabels={{ codebuddy: `WorkBuddy ${variantLabel(workbuddyVariant)}`, qoder: variantLabel(qoderVariant), trae: variantLabel(traeVariant), minimax: minimaxRegion === "en" ? "国际版" : "国内版" }}
         topPadding={topPadding}
         macTitleBar={macTitleBar}
       />
@@ -304,6 +311,7 @@ const PLATFORM_PAGES: Record<PlatformId, Partial<Record<PlatformPageKey, ReactNo
   },
   trae: { accounts: <TraePage />, "credit-stats": <TraeCreditStatsPage />, settings: <TraeSettingsPage /> },
   qoder: { accounts: <QoderPage />, "token-stats": <TokenStatsPage key="qoder" platform="qoder" />, "credit-stats": <QoderCreditStatsPage />, settings: <QoderSettingsPage /> },
+  minimax: { accounts: <MinimaxPage /> },
 };
 
 /** 进入应用时落到上次所在的平台（已关闭则取第一个启用的平台）。 */

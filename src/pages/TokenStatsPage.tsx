@@ -1706,7 +1706,7 @@ export default function TokenStatsPage({ platform = "codebuddy" }: { platform?: 
     persistPreferredTokenSource(next);
   }, [active, stats, qoder]);
 
-  const source = stats?.sources.find((item) => item.source === active);
+  const source = (stats?.sources ?? []).find((item) => item.source === active);
 
   return (
     <div className="mx-auto w-full max-w-[1180px] min-w-0 px-4 py-6 sm:px-8 sm:py-9">

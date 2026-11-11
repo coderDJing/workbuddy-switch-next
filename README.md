@@ -2,7 +2,7 @@
 
 **多平台 AI 账号工作台。账号、用量、自动化，在一个地方管理。**
 
-WorkBuddy Switch Next 面向同时使用多个 AI 编程客户端的人：集中管理 WorkBuddy / CodeBuddy 与 Qoder 国内版、国际版账号，查看积分与 Token 用量，安排领取和空闲轮换，也让 AI Agent 通过 CLI 读取状态、查询额度和切换账号。
+WorkBuddy Switch Next 面向同时使用多个 AI 编程客户端的人：集中管理 WorkBuddy / CodeBuddy、Qoder 国内版 / 国际版、TRAE 与 MiniMax Code 的账号，查看积分与 Token 用量，安排领取和空闲轮换，也让 AI Agent 通过 CLI 读取状态、查询额度和切换账号。
 
 桌面 App 基于 Tauri，另提供浏览器 webui 与一次性 CLI。平台各自管理账号和自动任务，共用一套导航、统计视图与操作习惯。
 
@@ -18,7 +18,7 @@ Next 在上游项目的基础上，持续完善多平台工作台与 Agent 调�
 
 | 你想做的事 | Next 的做法 |
 | --- | --- |
-| 管理多个 AI 工具的账号 | WorkBuddy / CodeBuddy 与 Qoder 平级切换；平台内分国内版、国际版，客户端状态与当前账号集中展示 |
+| 管理多个 AI 工具的账号 | WorkBuddy / CodeBuddy、Qoder、TRAE 与 MiniMax Code 平级切换；平台内分国内版、国际版，客户端状态与当前账号集中展示 |
 | 判断剩余积分怎么用 | 查看余额、临期资源与用量趋势；Qoder 的本地请求积分和额度快照分开展示，缺失 Token 明确标记不可用 |
 | 把重复操作交给工具 | 按平台设置每日领取、余额提醒和 CLI 空闲轮换；查询失败、客户端运行中等情况明确记录 |
 | 让 AI Agent 帮忙管理 | 一次性 CLI 提供 JSON、能力发现、稳定账号 ID、区域筛选、汇总查询与明确错误码；界面内可一键复制 Skill 接入说明或查询命令 |
@@ -114,6 +114,7 @@ sudo codesign --force --deep --sign - "/Applications/WorkBuddy Switch Next.app"
 | Qoder CN CLI | ✅ | — | — | ✅ | ✅ |
 | Qoder 国际版桌面端 | ✅ | — | ✅ | — | — |
 | Qoder 国际版 CLI | ✅ | — | — | ✅ | ✅ |
+| MiniMax Code（国内版 / 国际版，桌面端与 CLI 共用登录态） | ✅ | — | ✅ | — | — |
 
 ✅ 表示支持，— 表示不支持。设置 →「支持工具」可按客户端逐个开启 / 关闭入口；关闭后该端入口与状态轮询一并隐藏，不影响账号库与其它端；JetBrains 端默认关闭，可在设置中随时打开。
 
@@ -142,6 +143,18 @@ sudo codesign --force --deep --sign - "/Applications/WorkBuddy Switch Next.app"
 凭据布局与切换流程参考 [NextAgentX/qoder-trae-workbuddy-switch](https://github.com/NextAgentX/qoder-trae-workbuddy-switch) 及 [JIUSHIQINGSHAN/qoder-switch](https://github.com/JIUSHIQINGSHAN/qoder-switch)，代码按本项目结构重写。
 
 CodeBuddy CLI 切换时会先关闭正在运行的 CLI，当前会话会中断且不会自动重开；其余各端可在客户端运行时自动完成切换。
+
+### MiniMax Code
+
+MiniMax Code 的桌面端与 CLI 共用一份登录态（`~/.minimax/auth/prod/{cn|en}/mcode-public/`），因此平台只有一个切换目标，区域分国内版与国际版，账号库与其它平台隔离。平台提供「账号管理」，额度显示在账号卡上。
+
+- **添加**：点「登录添加」在工具内完成设备码授权（弹窗显示用户码并自动打开浏览器，不用先打开客户端，也不切换客户端当前登录）；也可在官方客户端登录后点「识别本机账号」。
+- **切换**：先请求客户端正常退出，再成组写入 `auth.json` 与 `auth-state.json` 并把两份文件的 `generation` 同步抬高，写完读回核验，失败恢复原文件；随后按需重新打开客户端。客户端拒绝退出时停止，不强制终止进程。
+- **积分**：逐账号查询官方积分明细与套餐信息。非现场账号可用 refresh token 换新令牌并回写账号包；现场账号只读不刷，令牌过期时提示打开客户端刷新，不误判成登录失效。
+- **身份**：登录成功即用新令牌问官方身份接口，补上真实 uid、昵称与邮箱；同一账号的重复卡片自动合并。
+- **命令行**：`--target minimax-desktop` 专用目标，支持 `accounts` / `status` / `inspect` / `credits` / `switch` / `login`，`--variant cn|ai` 选区域。
+- **存储**：账号包在 `~/.wb-switch/minimax/accounts.json` 中以 Windows DPAPI 或 macOS Keychain 派生的 AES-256-GCM 加密保存，明文令牌不落盘；每次切换前保留加密备份，每个区域最近 10 份。
+- **验证范围**：Windows MiniMax Code 3.1.13 国内版已验证本机识别、工具内设备码登录、身份补全、加密保存、真实切换写入（代际 1→2、两文件一致）、过期令牌的报错路径与专用 CLI；国际版真实登录、macOS、桌面端与 CLI 同时在线尚未实测。详见 [MiniMax Code 接入](docs/minimax-integration.md)。
 
 ### 会话悬浮窗（Agent Companion）
 

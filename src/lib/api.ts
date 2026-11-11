@@ -76,7 +76,7 @@ import { UpdateCheckTimeoutError, waitForUpdateCheck } from "./update-check";
  */
 
 const DEMO_READ_COMMANDS = new Set([
-  "get_trae_status", "get_status", "get_accounts", "get_codebuddy_cli_status", "get_codebuddy_cn_ide_status", "get_codebuddy_ide_status", "get_vscode_ext_status", "get_jetbrains_status", "get_qoder_status", "get_qoder_credits", "list_vscode_sessions", "list_codebuddy_ide_sessions", "list_codebuddy_intl_ide_sessions", "vscode_session_links_preview", "codebuddy_ide_session_links_preview", "codebuddy_intl_ide_session_links_preview", "list_account_sessions", "session_links_preview_cross", "list_session_groups", "get_session_group", "preview_session_group_pair", "get_checkin_status",
+  "get_minimax_status", "get_trae_status", "get_status", "get_accounts", "get_codebuddy_cli_status", "get_codebuddy_cn_ide_status", "get_codebuddy_ide_status", "get_vscode_ext_status", "get_jetbrains_status", "get_qoder_status", "get_qoder_credits", "list_vscode_sessions", "list_codebuddy_ide_sessions", "list_codebuddy_intl_ide_sessions", "vscode_session_links_preview", "codebuddy_ide_session_links_preview", "codebuddy_intl_ide_session_links_preview", "list_account_sessions", "session_links_preview_cross", "list_session_groups", "get_session_group", "preview_session_group_pair", "get_checkin_status",
   "get_credit_expiry", "get_credit_statistics", "get_auto_checkin_config",
   "get_token_statistics", "get_qoder_statistics", "get_qoder_credit_statistics",
   "get_qoder_automation", "get_qoder_companion",
@@ -1285,3 +1285,49 @@ export interface TraeAutomation {settings:{cn:TraeRegionSettings;ai:TraeRegionSe
 export interface TraeBackupPreview {accounts:{name:string;variant:"cn"|"ai";exists:boolean}[];count:number;snapshotId:string}
 export function getTraeStatistics(variant:"cn"|"ai",refresh=false):Promise<TraeStatistics> {return traeAction("statistics",{variant,refresh}) as Promise<TraeStatistics>;}
 export function getTraeAutomation():Promise<TraeAutomation> {return traeAction("get_settings",{}) as Promise<TraeAutomation>;}
+
+// ---------------------------------------------------------------------------
+// MiniMax Code
+// ---------------------------------------------------------------------------
+
+export type MinimaxRegion = "cn" | "en";
+export interface MinimaxCreditPack { name:string; remaining:number; total:number; used:number; expiresAt?:number|null }
+/** 额度与会员信息；`available=false` 表示官方未返回可识别余额（未知余额不算零）。 */
+export interface MinimaxCredit {
+  available:boolean; unit:"credits"|string; unlimited:boolean;
+  remaining:number|null; total?:number|null; used?:number|null;
+  checkedAt:number; expiresAt?:number|null;
+  planName?:string|null; planExpiresAt?:number|null; hasTokenPlan?:boolean;
+  dailyGiftRemaining?:number|null;
+  packs?:MinimaxCreditPack[];
+  error?:string|null;
+}
+export interface MinimaxAccount {
+  id:string; uid:string; name:string; email:string|null; region:MinimaxRegion;
+  capturedAt:number; expiresAt:number|null; needsLogin:boolean; active:boolean;
+  credits?:MinimaxCredit|null;
+  /** 仅在 `login` / `identity` 的结果里出现：新登录就是客户端当前登录的那个账号。 */
+  matchesLiveClient?:boolean;
+  /** 仅在 `identity` 的结果里出现：本次顺带合并掉的重复卡片数。 */
+  mergedDuplicates?:number;
+}
+export interface MinimaxClient {
+  region:MinimaxRegion; name:string;
+  detected:boolean; configured:boolean;
+  running:boolean|null; activeAccountId:string|null;
+  tokenExpired:boolean;
+  expiresAt:number|null;
+  identity:{uid:string;name:string|null;email:string|null}|null;
+  recognitionError:string|null;
+}
+/** 桌面端与 CLI 共用一份登录态，因此 `sharedLogin` 恒为 true、只有一个切换目标。 */
+export interface MinimaxStatus { accounts:MinimaxAccount[]; clients:MinimaxClient[]; sharedLogin:true }
+export interface MinimaxInput {region?:MinimaxRegion;accountId?:string;name?:string;closeRunning?:boolean;relaunch?:boolean;dryRun?:boolean;loginId?:string}
+/** 设备码授权会话；`userCode` 显示给用户，`device_code` / `code_verifier` 只留在后端进程内。 */
+export interface MinimaxLoginStart {loginId:string;region:MinimaxRegion;userCode:string;verificationUri:string;verificationUriComplete:string|null;expiresIn:number;intervalMs:number}
+export type MinimaxLoginPoll =
+  | {status:"pending";retryAfterMs?:number;slowDown?:boolean}
+  | {status:"authorized";account:MinimaxAccount}
+  | {status:"failed"|"expired";error:string};
+export function getMinimaxStatus():Promise<MinimaxStatus> {return call("get_minimax_status");}
+export function minimaxAction(action:"capture"|"switch"|"credits"|"rename"|"delete"|"open"|"identity"|"login_start"|"login_poll"|"login_cancel",input:MinimaxInput):Promise<unknown> {return call("minimax_action",{action,input});}

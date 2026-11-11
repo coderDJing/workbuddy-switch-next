@@ -833,6 +833,7 @@ export function screenshotDemoResponse(command: string, args?: Record<string, un
     case "get_accounts": return { accounts: demoAccounts };
     case "trae_action": return demoTraeManagement(String(args?.action), args?.input as Record<string, unknown> | undefined);
     case "get_trae_status": return {accounts:[{id:"demo-trae-cn",uid:"demo-trae-user",name:"TRAE 演示账号",email:"trae@example.invalid",variant:"cn",client:"desktop",capturedAt:Math.floor(demoNow/1000),expiresAt:null,needsLogin:false,credits:{remaining:112.5,unlimited:false,available:true,checkedAt:Math.floor(demoNow/1000),unit:"credits"}}],clients:[{variant:"cn",client:"desktop",name:"Trae CN",detected:true,configured:true,running:false,activeAccountId:"demo-trae-cn",recognitionError:null}],nativeCliSupported:false};
+    case "get_minimax_status": return demoMinimaxStatus();
     case "get_qoder_status": return demoQoderStatus();
     case "get_qoder_credits": return { ok: true, remaining: 428, total: 500, used: 72 };
     case "get_qoder_statistics": {
@@ -1056,4 +1057,38 @@ function demoTraeManagement(action: string, input?: Record<string, unknown>) {
   const credit=(used:number,at:number)=>({remaining:150-used,total:150,used,available:true,unlimited:false,unit:"credits",checkedAt:at,periodEndAt:now+86400*30,expiresAt:now+86400*30});
   const id="demo-trae-"+variant,name="TRAE 演示账号";
   return {generatedAt:now,retentionDays:365,variant,accounts:[{id,uid:"demo-user",name,email:null,variant,client:"desktop",capturedAt:now-86400*7,expiresAt:now+86400*30,needsLogin:false,credits:credit(37.5,now)}],snapshots:Array.from({length:7},(_,index)=>{const at=now-(6-index)*86400;return {accountId:id,name,variant,at,credit:credit(7.5+index*5,at)};}),errors:[]};
+}
+
+/** MiniMax Code 演示数据：两个区域各自一套账号，额度字段与后端 `credits::query` 同构。 */
+function demoMinimaxStatus() {
+  const now = Math.floor(Date.now() / 1000);
+  const credit = (remaining: number, total: number, used: number) => ({
+    available: true, unit: "credits", unlimited: false,
+    remaining, total, used, checkedAt: now,
+    expiresAt: now + 86_400 * 21, planExpiresAt: now + 86_400 * 21,
+    planName: "MiniMax 标准版", hasTokenPlan: true, dailyGiftRemaining: 5,
+    packs: [
+      { name: "积分包 1", remaining, total, used, expiresAt: now + 86_400 * 21 },
+      { name: "积分包 2", remaining: 40, total: 40, used: 0, expiresAt: now + 86_400 * 90 },
+    ],
+    error: null,
+  });
+  const accounts = [
+    { id: "demo-minimax-cn-a", uid: "demo-minimax-cn-a", name: "MiniMax 工作号", email: "minimax@example.invalid", region: "cn" as const, capturedAt: now - 86_400 * 5, expiresAt: now + 86_400 * 30, needsLogin: false, active: true, credits: credit(320, 500, 180) },
+    { id: "demo-minimax-cn-b", uid: "demo-minimax-cn-b", name: "MiniMax 备用号", email: null, region: "cn" as const, capturedAt: now - 86_400 * 12, expiresAt: now + 86_400 * 12, needsLogin: false, active: false, credits: credit(96, 200, 104) },
+    { id: "demo-minimax-en-a", uid: "demo-minimax-en-a", name: "MiniMax Global", email: "global@example.invalid", region: "en" as const, capturedAt: now - 86_400 * 3, expiresAt: now + 86_400 * 27, needsLogin: false, active: true, credits: credit(180, 300, 120) },
+  ];
+  return {
+    accounts,
+    clients: ["cn", "en"].map(region => ({
+      region,
+      name: region === "cn" ? "MiniMax Code 国内版" : "MiniMax Code 国际版",
+      detected: true, configured: true, running: region === "cn",
+      activeAccountId: accounts.find(account => account.region === region && account.active)?.id ?? null,
+      tokenExpired: false, expiresAt: now + 86_400 * 30,
+      identity: { uid: "demo-minimax-user", name: "演示用户", email: null },
+      recognitionError: null,
+    })),
+    sharedLogin: true,
+  };
 }

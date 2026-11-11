@@ -4,19 +4,20 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import * as api from "@/lib/api";
 import { useAccountsStore } from "@/stores/accounts";
+import { useMinimaxStatus } from "@/stores/minimax-status";
 import { useQoderStatus } from "@/stores/qoder-status";
 import { useTraeStatus } from "@/stores/trae-status";
 
 export const WORKBUDDY_STATUS_REFRESH_INTERVAL_MS = 60 * 1000;
 
 /** Refresh WorkBuddy status only while the main window is visible and focused. */
-export function useWorkbuddyStatusRefresh(qoderEnabled = false, workbuddyEnabled = true, traeEnabled = false) {
+export function useWorkbuddyStatusRefresh(qoderEnabled = false, workbuddyEnabled = true, traeEnabled = false, minimaxEnabled = false) {
   const activeRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
 
   useEffect(() => {
-    if (!qoderEnabled && !workbuddyEnabled && !traeEnabled) return;
+    if (!qoderEnabled && !workbuddyEnabled && !traeEnabled && !minimaxEnabled) return;
     let disposed = false;
     let documentVisible = document.visibilityState !== "hidden";
     const webui = api.isWebui();
@@ -38,6 +39,7 @@ export function useWorkbuddyStatusRefresh(qoderEnabled = false, workbuddyEnabled
       if (workbuddyEnabled) void useAccountsStore.getState().refreshStatus(abortControllerRef.current?.signal);
       if (qoderEnabled) void useQoderStatus.getState().refresh();
       if (traeEnabled) void useTraeStatus.getState().refresh();
+      if (minimaxEnabled) void useMinimaxStatus.getState().refresh();
     }
 
     function startTimer() {
@@ -122,5 +124,5 @@ export function useWorkbuddyStatusRefresh(qoderEnabled = false, workbuddyEnabled
       window.removeEventListener("blur", onBlur);
       unlisten?.();
     };
-  }, [qoderEnabled, workbuddyEnabled, traeEnabled]);
+  }, [qoderEnabled, workbuddyEnabled, traeEnabled, minimaxEnabled]);
 }

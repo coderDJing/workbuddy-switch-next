@@ -64,14 +64,14 @@ export default function QoderCreditStatsPage() {
   }, [quotaReload]);
   useEffect(() => { setModel("all"); setAccount("all"); setPage(0); }, [variant]);
   useEffect(() => { setPage(0); }, [range, model, local]);
-  const source = local?.credits.find((s) => s.source === (variant === "ai" ? "qoder-ai" : "qoder"));
+  const source = (local?.credits ?? []).find((s) => s.source === (variant === "ai" ? "qoder-ai" : "qoder"));
   const view = useMemo(() => source ? qoderCreditView(source, range, model) : null, [source, range, model]);
-  const allAccounts = quota?.accounts.filter((a) => a.global === (variant === "ai")) ?? [];
+  const allAccounts = (quota?.accounts ?? []).filter((a) => a.global === (variant === "ai"));
   const accounts = allAccounts.filter((a) => account === "all" || a.accountKey === account);
   const start = qoderRangeStart(range), end = localDateKey(new Date());
   const accountDaily = useMemo(() => {
     const days = new Map<string, number>();
-    quota?.daily.filter((d) => d.global === (variant === "ai") && (account === "all" || d.accountKey === account) && d.date >= start && d.date <= end)
+    (quota?.daily ?? []).filter((d) => d.global === (variant === "ai") && (account === "all" || d.accountKey === account) && d.date >= start && d.date <= end)
       .forEach((d) => days.set(d.date, (days.get(d.date) ?? 0) + d.credits));
     return [...days].sort(([a], [b]) => a.localeCompare(b)).map(([key, credits]) => ({ key, credits }));
   }, [quota, variant, account, start, end]);

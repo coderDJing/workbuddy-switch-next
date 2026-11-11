@@ -134,6 +134,25 @@ workbuddy-switch-next automation set --target qoder-cli --variant cn --settings-
 
 以下模型限额、共享账号库、CodeBuddy 认证更新与默认关闭进程的说明适用于 `codebuddy-cli`；通用编码、JSON 信封和中断退出约定同样适用于 Qoder。Qoder 的 `--text` 为易读缩进 JSON，不套用 CodeBuddy 专用状态文案。
 
+## MiniMax Code 调用
+
+桌面端与 CLI 共用 `~/.minimax/auth/prod/{cn|en}/mcode-public/` 的一份登录态，因此只有一个目标 `minimax-desktop`，用 `--variant cn|ai` 选区域（`ai` 即凭据目录里的 `en`）。
+
+```bash
+workbuddy-switch-next accounts --target minimax-desktop
+workbuddy-switch-next status --target minimax-desktop --variant cn
+workbuddy-switch-next inspect --target minimax-desktop --variant ai
+workbuddy-switch-next credits --target minimax-desktop --timeout 20
+workbuddy-switch-next switch <ACCOUNT_ID> --target minimax-desktop --dry-run
+workbuddy-switch-next switch <ACCOUNT_ID> --target minimax-desktop --close-running --relaunch
+workbuddy-switch-next login --target minimax-desktop --variant cn
+```
+
+- `login` 走 OAuth 设备码流程：先把 8 位用户码和授权地址写到 stderr（JSON 模式下是 `event=authorization_required`），再在当前进程内轮询到授权完成。成功返回 `status=authorized` 与新账号元数据；**只入库，不写现场登录、不切客户端**。`device_code` 与 PKCE `verifier` 留在进程内，不落盘。
+- 返回值里 `sharedLogin=true` 表示桌面端与 CLI 共用一个登录槽，`nativeCliSupported=true` 表示该账号可被原生 CLI 使用；`clients` 覆盖所选区域的全部客户端。
+- 支持的快捷命令只有 `accounts` / `status` / `inspect` / `credits` / `switch` / `login`；`limits`、`token-stats`、`credit-stats`、`rewards`、`automation` 返回 `UNSUPPORTED_CAPABILITY`（退出码 2），不伪造数据。`--model` / `--concurrency` / `--wait` 不适用。
+- `credits` 支持 `--timeout`（默认 30 秒，超出按超时失败）。现场账号的令牌过期时报错并提示打开客户端刷新，不代刷；非现场账号会先用 refresh token 换新再查询。
+
 ## 命令
 
 | 命令 | 用途 |

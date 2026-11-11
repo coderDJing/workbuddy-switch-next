@@ -4,6 +4,7 @@ mod args;
 mod control;
 mod credits;
 mod execute;
+mod minimax;
 mod operations;
 mod output;
 mod protocol;

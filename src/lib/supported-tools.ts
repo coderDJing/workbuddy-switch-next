@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
  * 持久化在 localStorage（与 `wb-switch.compact` / `wb-switch.theme` 同风格），
  * 键名 `wb-switch.tools.<id>`，值 `"1"` / `"0"`；缺省时取 `defaultEnabled`。
  */
-export type ToolId = "workbuddy" | "codebuddyIde" | "codebuddyCli" | "vscodeExt" | "jetbrains" | "qoder" | "trae";
+export type ToolId = "workbuddy" | "codebuddyIde" | "codebuddyCli" | "vscodeExt" | "jetbrains" | "qoder" | "trae" | "minimax";
 
 export interface ToolDef {
   id: ToolId;
@@ -63,6 +63,13 @@ export const SUPPORTED_TOOLS: ToolDef[] = [
     defaultEnabled: true,
   },
   { id: "trae", label: "TRAE 国内版 / 国际版", description: "TRAE 国内版与国际版的账号保存、切换和额度查询；账号独立保存", defaultEnabled: true },
+  {
+    id: "minimax",
+    label: "MiniMax Code",
+    description:
+      "MiniMax Code 国内版与国际版的账号保存、整组切换和积分查询。桌面端与 CLI 共用同一份登录态，因此只有一个切换目标；账号独立保存",
+    defaultEnabled: true,
+  },
 ];
 
 function storageKey(id: ToolId): string {

@@ -2209,6 +2209,7 @@ function SupportedToolsCard() {
     vscodeExt: (size) => <VscodeExtMark size={size} />,
     jetbrains: (size) => <JetbrainsMark size={size} />,
     qoder: (size) => <QoderMark size={size} />,
+    minimax: (size) => <PlatformMark id="minimax" size={size} />,
   };
 
   return (
@@ -2349,7 +2350,7 @@ function RateLimitCard() {
     }
   }
 
-  const existingTargets = status?.targets.filter((target) => target.exists) ?? [];
+  const existingTargets = (status?.targets ?? []).filter((target) => target.exists);
   const installedCount = existingTargets.filter((target) => target.installed).length;
   // IDE 的限额只有日志一条来源：扫描开关关闭时文案不能再说「仍按日志扫描」。
   const ideNote =

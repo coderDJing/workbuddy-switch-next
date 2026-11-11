@@ -301,6 +301,8 @@ pub fn run() {
             commands::get_qoder_status,
             commands::get_trae_status,
             commands::trae_action,
+            commands::get_minimax_status,
+            commands::minimax_action,
             commands::get_qoder_automation,
             commands::save_qoder_automation,
             commands::run_qoder_automation,

@@ -16,6 +16,7 @@ pub mod jetbrains;
 pub mod limits;
 #[cfg(target_os = "linux")]
 pub mod linux_keyring;
+pub mod minimax;
 pub mod notifications;
 pub mod oauth;
 pub mod official_usage;

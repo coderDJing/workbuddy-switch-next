@@ -237,7 +237,7 @@ export default function TraePage() {
         <div className="min-w-[190px] flex-1"><h2 className="text-sm font-semibold text-foreground">添加与迁移账号</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">在官方客户端完成登录后，识别并添加到账号库</p></div>
         <DemoAction><Button className="h-10 bg-primary px-4 text-primary-foreground shadow-sm hover:bg-primary/90" disabled={busy} onClick={() => { setLoginOpen(true); }}><LogIn />登录添加</Button></DemoAction>
         <DemoAction><Button variant="ghost" size="sm" className="h-9 px-2.5" disabled={busy} onClick={() => capture("desktop")} title="识别并保存官方客户端当前登录的账号"><RefreshCw className={busyKey === "capture:desktop" ? "animate-spin" : undefined} />识别本机账号</Button></DemoAction>
-        <div className="flex items-center gap-1"><DemoAction><Button variant="ghost" size="sm" className="h-9 px-2.5" disabled={busy} onClick={() => setBackupMode("import")}><FileUp />导入备份</Button></DemoAction><DemoAction><Button variant="ghost" size="sm" className="h-9 px-2.5" disabled={busy || !status?.accounts.length} onClick={() => setBackupMode("export")}><FileDown />导出</Button></DemoAction></div>
+        <div className="flex items-center gap-1"><DemoAction><Button variant="ghost" size="sm" className="h-9 px-2.5" disabled={busy} onClick={() => setBackupMode("import")}><FileUp />导入备份</Button></DemoAction><DemoAction><Button variant="ghost" size="sm" className="h-9 px-2.5" disabled={busy || !(status?.accounts ?? []).length} onClick={() => setBackupMode("export")}><FileDown />导出</Button></DemoAction></div>
       </div>
     </div>
 
