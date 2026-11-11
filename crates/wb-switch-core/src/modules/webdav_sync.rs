@@ -1001,6 +1001,71 @@ pub(crate) async fn trae_cloud(
     Ok(result)
 }
 
+/// MiniMax uses its own remote object and the shared encrypted envelope/ETag guards.
+pub(crate) async fn minimax_cloud(
+    engine: &crate::modules::minimax::Engine,
+    action: &str,
+    passphrase: &str,
+    snapshot: Option<&str>,
+) -> Result<Value, String> {
+    let _guard = crate::modules::state_lock::StateLock::try_at(
+        &config::home_dir().join(".wb-switch/minimax/cloud.lock"),
+    )
+    .map_err(|_| "MiniMax 云同步正在执行")?;
+    let mut target = resolve_target(&load_webdav_config())?;
+    target.file_url = format!(
+        "{}/minimax-accounts.wbs",
+        target.dir_url.trim_end_matches('/')
+    );
+    let response = download_backup(&target).await?;
+    if action == "cloud_preview" || action == "cloud_restore" {
+        let response = response.ok_or("云端还没有 MiniMax 备份")?;
+        let id = format!("{:x}", Sha256::digest(&response.body));
+        if action == "cloud_restore" && snapshot != Some(id.as_str()) {
+            return Err("云端 MiniMax 备份已变化，请重新预览".into());
+        }
+        let (_, payload) = decrypt_envelope_async(response.body, passphrase.into()).await?;
+        if action == "cloud_restore" {
+            return engine.import_payload(&payload);
+        }
+        let mut preview = engine.preview_payload(&payload)?;
+        preview["snapshotId"] = json!(id);
+        return Ok(preview);
+    }
+    let local = engine.backup_payload()?;
+    let before = local.clone();
+    let etag = response.as_ref().map(strong_etag).transpose()?;
+    let payload = if action == "cloud_sync" {
+        if let Some(response) = response {
+            let (_, remote) = decrypt_envelope_async(response.body, passphrase.into()).await?;
+            crate::modules::minimax::backup::merge(local, remote)?
+        } else {
+            local
+        }
+    } else if action == "cloud_backup" {
+        local
+    } else {
+        return Err("未知 MiniMax 云端操作".into());
+    };
+    let count = payload["accounts"].as_array().map_or(0, Vec::len);
+    if count == 0 {
+        return Err("没有可备份的 MiniMax 账号".into());
+    }
+    let encrypted =
+        encrypt_envelope_async(payload.clone(), passphrase.into(), config::now_ms()).await?;
+    upload_backup(&target, encrypted, etag.as_deref()).await?;
+    let mut result = if action == "cloud_sync" {
+        if engine.backup_payload()? != before {
+            return Err("云端已更新，但本地账号发生变化；请重新同步".into());
+        }
+        engine.import_payload(&payload)?
+    } else {
+        json!({"ok":true})
+    };
+    result["count"] = json!(count);
+    Ok(result)
+}
+
 /// 拉取并解密远端备份，返回脱敏预览（不含 token）与远端信息。
 pub async fn restore_preview(passphrase: &str) -> Result<Value, String> {
     let target = resolve_target(&load_webdav_config())?;

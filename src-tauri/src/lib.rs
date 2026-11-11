@@ -102,6 +102,26 @@ fn spawn_background_loops(app: tauri::AppHandle) {
             tokio::time::sleep(Duration::from_secs(30)).await;
         }
     });
+    let minimax_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            if let Ok(result) = modules::minimax::automation::cycle().await {
+                #[cfg(desktop)]
+                for title in result["notices"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(serde_json::Value::as_str)
+                {
+                    tray::notify_rotate_deferred(
+                        &minimax_app,
+                        &serde_json::json!({"title":title,"body":"请前往 MiniMax Code 账号管理查看详情"}),
+                    );
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+    });
     let credit_cache_app = app.clone();
     modules::credits::spawn_credit_cache_watcher(move |cache| {
         let _ = credit_cache_app.emit("credit-query-cache-updated", cache);

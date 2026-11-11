@@ -43,16 +43,12 @@ fn base_status(body: &Value) -> (Option<i64>, Option<String>) {
 }
 
 fn failure(body: &Value, route: &str) -> String {
-    let (code, message) = base_status(body);
+    let (code, _) = base_status(body);
     if code.is_some_and(|code| NEED_LOGIN_CODES.contains(&code)) {
         return "登录已失效，请在 MiniMax Code 客户端重新登录后重新识别保存".into();
     }
-    match (code, message) {
-        (Some(code), Some(message)) if !message.is_empty() => {
-            format!("{route} 失败（{code}）：{message}")
-        }
-        (Some(code), None) => format!("{route} 失败（{code}）"),
-        (None, Some(message)) if !message.is_empty() => format!("{route} 失败：{message}"),
+    match code {
+        Some(code) => format!("{route} 失败（{code}）"),
         _ => format!("{route} 返回无法识别的内容"),
     }
 }
@@ -62,7 +58,7 @@ fn amount(value: Option<&Value>) -> Option<f64> {
     value
         .as_f64()
         .or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()))
-        .filter(|number| number.is_finite())
+        .filter(|number| number.is_finite() && *number >= 0.0)
 }
 
 fn seconds_from_ms(value: Option<&Value>) -> Option<i64> {
@@ -78,6 +74,10 @@ fn seconds_from_ms(value: Option<&Value>) -> Option<i64> {
 }
 
 fn details_view(body: &Value) -> Value {
+    let unknown = || json!({"available":false,"remaining":null,"total":null,"used":null,"expiresAt":null,"packs":[]});
+    if !body["details"].is_array() {
+        return unknown();
+    }
     let rows = body
         .get("details")
         .and_then(Value::as_array)
@@ -89,14 +89,18 @@ fn details_view(body: &Value) -> Value {
     let mut expiry: Option<i64> = None;
     let mut packs = Vec::new();
     for (index, row) in rows.iter().enumerate() {
-        let row_remaining = amount(row.get("remaining_amount")).unwrap_or(0.0);
-        let row_granted = amount(row.get("granted_amount")).unwrap_or(0.0);
-        let row_consumed = amount(row.get("consumed_amount")).unwrap_or(0.0);
+        let (Some(row_remaining), Some(row_granted), Some(row_consumed)) = (
+            amount(row.get("remaining_amount")),
+            amount(row.get("granted_amount")),
+            amount(row.get("consumed_amount")),
+        ) else {
+            return unknown();
+        };
         remaining += row_remaining;
         granted += row_granted;
         consumed += row_consumed;
         let expires_at = seconds_from_ms(row.get("expire_at_ms"));
-        if let Some(at) = expires_at {
+        if let Some(at) = expires_at.filter(|_| row_remaining > 0.0) {
             expiry = Some(expiry.map_or(at, |current: i64| current.min(at)));
         }
         if row_remaining > 0.0 {
@@ -110,6 +114,7 @@ fn details_view(body: &Value) -> Value {
         }
     }
     json!({
+        "available": true,
         "rows": rows.len(),
         "remaining": remaining,
         "total": granted,
@@ -184,8 +189,12 @@ pub async fn query(region: Region, token: &str) -> Result<Value, String> {
         return Err(errors.join("；"));
     }
 
-    let points = details_view(&details);
-    let plan = membership_view(&membership);
+    let points = details_view(if details_ok { &details } else { &Value::Null });
+    let plan = membership_view(if membership_ok {
+        &membership
+    } else {
+        &Value::Null
+    });
     let remaining = plan
         .get("remaining")
         .and_then(Value::as_f64)
@@ -258,5 +267,21 @@ mod tests {
         let text = failure(&obscure, "套餐信息");
         assert!(text.contains("套餐信息"));
         assert!(!text.contains("mmort_"));
+        let malicious = json!({"base_resp":{"status_code":500,"status_msg":"mmort_private_token"}});
+        assert!(!failure(&malicious, "积分").contains("mmort_"));
+    }
+
+    #[test]
+    fn missing_or_invalid_credit_details_never_become_zero() {
+        for body in [
+            json!({}),
+            json!({"details":[{"remaining_amount":5}]}),
+            json!({"details":[{"remaining_amount":-1,"granted_amount":10,"consumed_amount":11}]}),
+        ] {
+            let view = details_view(&body);
+            assert_eq!(view["available"], false);
+            assert!(view["remaining"].is_null());
+        }
+        assert_eq!(details_view(&json!({"details":[]}))["remaining"], 0.0);
     }
 }

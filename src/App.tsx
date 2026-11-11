@@ -1,3 +1,6 @@
+import MinimaxCreditStatsPage from "@/pages/MinimaxCreditStatsPage";
+import MinimaxTokenStatsPage from "@/pages/MinimaxTokenStatsPage";
+import MinimaxSettingsPage from "@/pages/MinimaxSettingsPage";
 import TraeCreditStatsPage from "@/pages/TraeCreditStatsPage";
 import TraeSettingsPage from "@/pages/TraeSettingsPage";
 import TraePage from "@/pages/TraePage";
@@ -311,7 +314,7 @@ const PLATFORM_PAGES: Record<PlatformId, Partial<Record<PlatformPageKey, ReactNo
   },
   trae: { accounts: <TraePage />, "credit-stats": <TraeCreditStatsPage />, settings: <TraeSettingsPage /> },
   qoder: { accounts: <QoderPage />, "token-stats": <TokenStatsPage key="qoder" platform="qoder" />, "credit-stats": <QoderCreditStatsPage />, settings: <QoderSettingsPage /> },
-  minimax: { accounts: <MinimaxPage /> },
+  minimax: { accounts: <MinimaxPage />, "token-stats": <MinimaxTokenStatsPage />, "credit-stats": <MinimaxCreditStatsPage />, settings: <MinimaxSettingsPage /> },
 };
 
 /** 进入应用时落到上次所在的平台（已关闭则取第一个启用的平台）。 */

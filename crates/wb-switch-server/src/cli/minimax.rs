@@ -18,16 +18,99 @@ pub(super) fn region_arg(options: &Options) -> Option<&'static str> {
 }
 
 pub(super) async fn execute(options: &Options, control: &Control) -> Result<(Value, u8), Failure> {
+    if options.command == Command::TokenStats {
+        control.check()?;
+        let mut value = response(options.command.as_str(), options.target);
+        value["statistics"] = minimax::action("token_stats", json!({}))
+            .await
+            .map_err(|e| Failure::operation("MINIMAX_STATS_FAILED", e))?;
+        return Ok((value, 0));
+    }
+    if matches!(options.command, Command::CreditStats | Command::Automation) {
+        let mut value = response(options.command.as_str(), options.target);
+        let regions = options
+            .variant
+            .map(|v| vec![if v.as_str() == "ai" { "en" } else { "cn" }])
+            .unwrap_or_else(|| vec!["cn", "en"]);
+        control.check()?;
+        if options.command == Command::Automation && options.action == "set" {
+            let path = options
+                .settings_file
+                .as_deref()
+                .ok_or_else(|| Failure::usage("Missing settings file"))?;
+            let bytes = std::fs::read(path)
+                .ok()
+                .filter(|b| b.len() <= 1024 * 1024)
+                .ok_or_else(|| Failure::usage("Cannot read settings file or file too large"))?;
+            let patch = serde_json::from_slice(&bytes)
+                .map_err(|_| Failure::usage("Settings file must contain valid JSON"))?;
+            let region = if regions[0] == "en" {
+                minimax::Region::En
+            } else {
+                minimax::Region::Cn
+            };
+            value["automation"] = minimax::automation::patch_region(region, patch)
+                .map_err(|e| Failure::operation("MINIMAX_SETTINGS_FAILED", e))?;
+        } else if options.command == Command::Automation && options.action == "get" {
+            let mut result = minimax::action("get_settings", json!({}))
+                .await
+                .map_err(|e| Failure::operation("MINIMAX_SETTINGS_FAILED", e))?;
+            if let Some(variant) = options.variant {
+                result["settings"]
+                    .as_object_mut()
+                    .unwrap()
+                    .retain(|key, _| key == if variant.as_str() == "ai" { "en" } else { "cn" });
+                if let Some(logs) = result["logs"].as_array_mut() {
+                    logs.retain(|l| {
+                        l["region"] == if variant.as_str() == "ai" { "en" } else { "cn" }
+                    });
+                }
+            }
+            value["automation"] = result;
+        } else {
+            let mut results = Vec::new();
+            for region in regions {
+                control.check()?;
+                let action = if options.command == Command::CreditStats {
+                    "statistics"
+                } else {
+                    "automation_run"
+                };
+                results.push(
+                    minimax::action(action, json!({"region":region,"refresh":options.refresh}))
+                        .await
+                        .map_err(|e| Failure::operation("MINIMAX_OPERATION_FAILED", e))?,
+                );
+            }
+            value["regions"] = json!(results);
+        }
+        let partial = value["regions"].as_array().is_some_and(|regions| {
+            regions.iter().any(|r| {
+                r["errors"]
+                    .as_array()
+                    .is_some_and(|errors| !errors.is_empty())
+            })
+        });
+        if partial {
+            value["ok"] = json!(false);
+            value["error"] = error(
+                "PARTIAL_CREDITS",
+                "Some MINIMAX statistics refreshes failed",
+            );
+        }
+        return Ok((value, if partial { 3 } else { 0 }));
+    }
     if !matches!(
         options.command,
         Command::Accounts
             | Command::Status
             | Command::Inspect
             | Command::Credits
+            | Command::Rewards
             | Command::Switch
             | Command::Login
     ) {
-        return Err(Failure{code:"UNSUPPORTED_CAPABILITY",message:"MiniMax Code supports accounts/status/inspect/credits/switch/login. The desktop app and its CLI share one login slot; there is no per-client target.".into(),exit:2});
+        return Err(Failure{code:"UNSUPPORTED_CAPABILITY",message:"MiniMax Code supports accounts/status/inspect/credits/rewards/switch/login/token-stats/credit-stats/automation. The desktop app and its CLI share one login slot; there is no per-client target.".into(),exit:2});
     }
     if options.command == Command::Login {
         return login(options, control).await;
@@ -88,6 +171,37 @@ pub(super) async fn execute(options: &Options, control: &Control) -> Result<(Val
         return Ok((value, 0));
     }
     let mut failed = 0;
+    if options.command == Command::Rewards {
+        let mut rewards = Vec::new();
+        for a in &accounts {
+            control.check()?;
+            match minimax::action(
+                "checkin",
+                json!({"accountId":a["id"],"timeoutSeconds":options.timeout}),
+            )
+            .await
+            {
+                Ok(result) => {
+                    let ok = result["ok"].as_bool() == Some(true);
+                    if !ok {
+                        failed += 1;
+                    }
+                    let message = result["message"].as_str().unwrap_or("Reward claim failed");
+                    rewards.push(json!({"accountId":a["id"],"accountName":a["name"],"region":a["region"],"ok":ok,
+                        "message":result["message"],"state":result["state"],"credits":result["credits"],
+                        "error":if ok {Value::Null}else{error(if result["authInvalid"]==true{"AUTH_RELOGIN_REQUIRED"}else{"REWARD_FAILED"},message)}}));
+                }
+                Err(e) => {
+                    failed += 1;
+                    rewards.push(json!({"accountId":a["id"],"accountName":a["name"],"region":a["region"],"ok":false,
+                        "error":error("REWARD_FAILED",&e)}));
+                }
+            }
+        }
+        value["rewards"] = json!(rewards);
+        value["complete"] = json!(failed == 0);
+    }
+
     if matches!(options.command, Command::Inspect | Command::Credits) {
         let mut credits = Vec::new();
         for account in &accounts {
@@ -138,8 +252,12 @@ pub(super) async fn execute(options: &Options, control: &Control) -> Result<(Val
     value["ok"] = json!(failed == 0);
     if failed > 0 {
         value["error"] = error(
-            "PARTIAL_CREDITS",
-            "Some MiniMax credit queries failed; unknown balances are not zero",
+            if options.command == Command::Rewards {
+                "PARTIAL_REWARDS"
+            } else {
+                "PARTIAL_CREDITS"
+            },
+            "Some MiniMax operations failed; inspect per-account results",
         );
     }
     Ok((value, if failed > 0 { 3 } else { 0 }))

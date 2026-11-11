@@ -150,7 +150,7 @@ workbuddy-switch-next login --target minimax-desktop --variant cn
 
 - `login` 走 OAuth 设备码流程：先把 8 位用户码和授权地址写到 stderr（JSON 模式下是 `event=authorization_required`），再在当前进程内轮询到授权完成。成功返回 `status=authorized` 与新账号元数据；**只入库，不写现场登录、不切客户端**。`device_code` 与 PKCE `verifier` 留在进程内，不落盘。
 - 返回值里 `sharedLogin=true` 表示桌面端与 CLI 共用一个登录槽，`nativeCliSupported=true` 表示该账号可被原生 CLI 使用；`clients` 覆盖所选区域的全部客户端。
-- 支持的快捷命令只有 `accounts` / `status` / `inspect` / `credits` / `switch` / `login`；`limits`、`token-stats`、`credit-stats`、`rewards`、`automation` 返回 `UNSUPPORTED_CAPABILITY`（退出码 2），不伪造数据。`--model` / `--concurrency` / `--wait` 不适用。
+- 支持 `accounts` / `status` / `inspect` / `credits` / `switch` / `login` / `rewards` / `token-stats` / `credit-stats` / `automation`。`limits` 返回 `UNSUPPORTED_CAPABILITY`（退出码 2）。Token 统计为本机所有区域与账号合计；credit-stats 按区域保存快照。rewards 必须指定账号或 --all，领取后回查确认。automation get/set/run 按区域管理已启用任务。`--model` / `--concurrency` / `--wait` 不适用。
 - `credits` 支持 `--timeout`（默认 30 秒，超出按超时失败）。现场账号的令牌过期时报错并提示打开客户端刷新，不代刷；非现场账号会先用 refresh token 换新再查询。
 
 ## 命令

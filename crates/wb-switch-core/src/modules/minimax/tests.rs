@@ -74,6 +74,188 @@ fn engine(root: &Path) -> Engine {
     }
 }
 
+#[test]
+fn portable_backup_rekeys_and_preserves_existing_logins() {
+    let source = temp_root();
+    let destination = temp_root();
+    let e = engine(&source);
+    let d = engine(&destination);
+    write_live(
+        &source,
+        Region::Cn,
+        &live_payload(Region::Cn, "portable", 3),
+    );
+    write_identity(&source, "exported");
+    e.capture(Region::Cn).unwrap();
+    write_live(
+        &destination,
+        Region::Cn,
+        &live_payload(Region::Cn, "destination", 5),
+    );
+    let before = read_live(&destination, Region::Cn);
+    let export = e.export_backup("portable-test-password", None).unwrap();
+    let data = export["data"].as_str().unwrap();
+    assert!(!data.contains("mmoat_"));
+    assert!(d.preview_backup(data, "wrong-password").is_err());
+    let preview = d.preview_backup(data, "portable-test-password").unwrap();
+    assert!(!preview.to_string().contains("accessToken"));
+    assert!(d
+        .import_backup(data, "portable-test-password", "changed")
+        .is_err());
+    let r = d
+        .import_backup(
+            data,
+            "portable-test-password",
+            preview["snapshotId"].as_str().unwrap(),
+        )
+        .unwrap();
+    assert_eq!(r["imported"], 1);
+    assert_eq!(read_live(&destination, Region::Cn), before);
+    let store = d.load().unwrap();
+    let payload = d.unseal(&store.accounts[0]).unwrap();
+    assert_eq!(
+        record_key(&payload.auth, Region::Cn).unwrap(),
+        d.paths.credential_key(Region::Cn)
+    );
+    let again = d
+        .import_backup(
+            data,
+            "portable-test-password",
+            preview["snapshotId"].as_str().unwrap(),
+        )
+        .unwrap();
+    assert_eq!(again["skipped"], 1);
+    std::fs::remove_dir_all(source).unwrap();
+    std::fs::remove_dir_all(destination).unwrap();
+}
+
+#[test]
+fn cloud_merge_rejects_different_authorization_and_accepts_other_region() {
+    let root = temp_root();
+    let e = engine(&root);
+    write_live(&root, Region::Cn, &live_payload(Region::Cn, "first", 1));
+    write_identity(&root, "name");
+    e.capture(Region::Cn).unwrap();
+    let local = e.backup_payload().unwrap();
+    let mut remote = local.clone();
+    let key = record_key(&remote["accounts"][0]["auth"]["auth"], Region::Cn).unwrap();
+    remote["accounts"][0]["auth"]["auth"]["records"][key]["refreshToken"] = json!("different");
+    assert!(super::backup::merge(local.clone(), remote).is_err());
+    assert_eq!(
+        super::backup::merge(local.clone(), local).unwrap()["accounts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    write_live(
+        &root,
+        Region::En,
+        &live_payload(Region::En, "international", 1),
+    );
+    e.capture(Region::En).unwrap();
+    assert_eq!(
+        e.backup_payload().unwrap()["accounts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn automatic_switch_rechecks_current_login_and_running_cli() {
+    for cli in [false, true] {
+        let root = temp_root();
+        let e = engine_with(
+            &root,
+            FakeProcesses {
+                cli: AtomicBool::new(cli),
+                ..Default::default()
+            },
+        );
+        let old = live_payload(Region::Cn, "current", 1);
+        write_live(&root, Region::Cn, &old);
+        let current = e.capture(Region::Cn).unwrap();
+        write_live(&root, Region::Cn, &live_payload(Region::Cn, "candidate", 2));
+        let next = e.capture(Region::Cn).unwrap();
+        write_live(&root, Region::Cn, &old);
+        let now = chrono::Utc::now().timestamp();
+        for (id, balance) in [
+            (current["id"].as_str().unwrap(), 1.0),
+            (next["id"].as_str().unwrap(), 100.0),
+        ] {
+            e.cache_credits(
+                id,
+                json!({"available":true,"remaining":balance,"unit":"credits","checkedAt":now}),
+            )
+            .unwrap();
+        }
+        assert!(e
+            .switch_checked(
+                Region::Cn,
+                next["id"].as_str().unwrap(),
+                false,
+                false,
+                false,
+                Some("changed")
+            )
+            .is_err());
+        let mut state = super::automation::State::default();
+        super::automation::rotate(
+            &e,
+            &e.load().unwrap().accounts,
+            Region::Cn,
+            &super::automation::RegionSettings::default(),
+            &mut state,
+            now,
+        )
+        .unwrap();
+        assert_eq!(
+            e.live(Region::Cn).unwrap().unwrap().credential.epoch(),
+            if cli { "current" } else { "candidate" }
+        );
+        assert!(serde_json::to_string(&state).unwrap().contains(if cli {
+            "running"
+        } else {
+            "switched"
+        }));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn snapshots_are_region_scoped_and_bounded() {
+    let root = temp_root();
+    let e = engine(&root);
+    write_live(&root, Region::Cn, &live_payload(Region::Cn, "cn", 1));
+    let account = e.capture(Region::Cn).unwrap();
+    let id = account["id"].as_str().unwrap();
+    let now = chrono::Utc::now().timestamp();
+    e.cache_credits(
+        id,
+        json!({"available":true,"remaining":50,"checkedAt":now-100*86400}),
+    )
+    .unwrap();
+    e.cache_credits(id, json!({"available":true,"remaining":40,"checkedAt":now}))
+        .unwrap();
+    e.cache_credits(id, json!({"available":true,"remaining":30,"checkedAt":now}))
+        .unwrap();
+    assert_eq!(e.load().unwrap().snapshots.len(), 1);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    assert!(
+        runtime.block_on(e.statistics(Region::En, false)).unwrap()["snapshots"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 fn engine_with(root: &Path, processes: FakeProcesses) -> Engine {
     Engine {
         paths: Paths {

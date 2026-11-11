@@ -833,6 +833,7 @@ export function screenshotDemoResponse(command: string, args?: Record<string, un
     case "get_accounts": return { accounts: demoAccounts };
     case "trae_action": return demoTraeManagement(String(args?.action), args?.input as Record<string, unknown> | undefined);
     case "get_trae_status": return {accounts:[{id:"demo-trae-cn",uid:"demo-trae-user",name:"TRAE 演示账号",email:"trae@example.invalid",variant:"cn",client:"desktop",capturedAt:Math.floor(demoNow/1000),expiresAt:null,needsLogin:false,credits:{remaining:112.5,unlimited:false,available:true,checkedAt:Math.floor(demoNow/1000),unit:"credits"}}],clients:[{variant:"cn",client:"desktop",name:"Trae CN",detected:true,configured:true,running:false,activeAccountId:"demo-trae-cn",recognitionError:null}],nativeCliSupported:false};
+    case "minimax_action": return demoMinimaxManagement(String(args?.action), args?.input as Record<string, unknown> | undefined);
     case "get_minimax_status": return demoMinimaxStatus();
     case "get_qoder_status": return demoQoderStatus();
     case "get_qoder_credits": return { ok: true, remaining: 428, total: 500, used: 72 };
@@ -1074,9 +1075,9 @@ function demoMinimaxStatus() {
     error: null,
   });
   const accounts = [
-    { id: "demo-minimax-cn-a", uid: "demo-minimax-cn-a", name: "MiniMax 工作号", email: "minimax@example.invalid", region: "cn" as const, capturedAt: now - 86_400 * 5, expiresAt: now + 86_400 * 30, needsLogin: false, active: true, credits: credit(320, 500, 180) },
-    { id: "demo-minimax-cn-b", uid: "demo-minimax-cn-b", name: "MiniMax 备用号", email: null, region: "cn" as const, capturedAt: now - 86_400 * 12, expiresAt: now + 86_400 * 12, needsLogin: false, active: false, credits: credit(96, 200, 104) },
-    { id: "demo-minimax-en-a", uid: "demo-minimax-en-a", name: "MiniMax Global", email: "global@example.invalid", region: "en" as const, capturedAt: now - 86_400 * 3, expiresAt: now + 86_400 * 27, needsLogin: false, active: true, credits: credit(180, 300, 120) },
+    { id: "demo-minimax-cn-a", uid: "demo-minimax-cn-a", name: "MiniMax 工作号", email: "minimax@example.invalid", region: "cn" as const, capturedAt: (now - 86_400 * 5) * 1000, expiresAt: now + 86_400 * 30, needsLogin: false, active: true, credits: credit(320, 500, 180) },
+    { id: "demo-minimax-cn-b", uid: "demo-minimax-cn-b", name: "MiniMax 备用号", email: null, region: "cn" as const, capturedAt: (now - 86_400 * 12) * 1000, expiresAt: now + 86_400 * 12, needsLogin: false, active: false, credits: credit(96, 200, 104) },
+    { id: "demo-minimax-en-a", uid: "demo-minimax-en-a", name: "MiniMax Global", email: "global@example.invalid", region: "en" as const, capturedAt: (now - 86_400 * 3) * 1000, expiresAt: now + 86_400 * 27, needsLogin: false, active: true, credits: credit(180, 300, 120) },
   ];
   return {
     accounts,
@@ -1091,4 +1092,12 @@ function demoMinimaxStatus() {
     })),
     sharedLogin: true,
   };
+}
+
+function demoMinimaxManagement(action:string,input?:Record<string,unknown>) {
+  const status=demoMinimaxStatus(), now=Math.floor(Date.now()/1000);
+  if(action==="get_settings") {const config={refreshEnabled:false,intervalMinutes:30,dailyEnabled:false,dailyTime:"09:00",alertsEnabled:false,expiryDays:7,lowBalance:20,rotateEnabled:false,rotateBelow:10,cooldownMinutes:30};return {settings:{cn:{...config},en:{...config}},logs:[]};}
+  if(action==="token_stats") {const tokens={input:12000,output:4000,cacheRead:6000,cacheWrite:2000,total:24000,requests:12};return {generatedAt:now,available:true,accountAttributionAvailable:false,regionAttributionAvailable:false,totals:tokens,sessionCount:3,fileCount:3,skippedRecords:0,complete:true,daily:[{date:new Intl.DateTimeFormat("sv-SE").format(Date.now()),model:"MiniMax-M2",tokens}],models:[{model:"MiniMax-M2",tokens}]};}
+  const region=input?.region==="en"?"en":"cn",accounts=status.accounts.filter(a=>a.region===region);
+  return {generatedAt:now,retentionDays:90,region,accounts,snapshots:accounts.flatMap(a=>Array.from({length:7},(_,i)=>({accountId:a.id,name:a.name,region,at:now-(6-i)*86400,credit:{...a.credits,used:Math.max(0,a.credits.used-(6-i)*5),remaining:a.credits.remaining+(6-i)*5,checkedAt:now-(6-i)*86400}}))),errors:[]};
 }

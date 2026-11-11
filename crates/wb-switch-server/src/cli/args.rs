@@ -488,9 +488,10 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
     if matches!(options.command, Command::Automation)
         && !options.target.is_qoder()
         && !options.target.is_trae()
+        && !options.target.is_minimax()
     {
         return Err(Failure::usage(
-            "This command requires --target qoder-cli, qoder-desktop or trae-desktop",
+            "This command requires --target qoder-cli, qoder-desktop trae-desktop or minimax-desktop",
         ));
     }
     if options.relaunch
@@ -525,6 +526,7 @@ pub fn parse(args: &[String]) -> Result<Options, Failure> {
     if matches!(options.command, Command::TokenStats | Command::CreditStats)
         && !options.target.is_qoder()
         && !options.target.is_trae()
+        && !options.target.is_minimax()
         && flags.contains_key("--variant")
     {
         return Err(Failure::usage(

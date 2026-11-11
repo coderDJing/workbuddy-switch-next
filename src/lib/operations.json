@@ -1726,22 +1726,36 @@
     "method": "POST",
     "path": "/api/minimax/action",
     "input": "{action,input}",
-    "signature": "minimaxAction(action:\"capture\"|\"switch\"|\"credits\"|\"rename\"|\"delete\"|\"open\"|\"identity\"|\"login_start\"|\"login_poll\"|\"login_cancel\", input:MinimaxInput)",
+    "signature": "minimaxAction(action:\"capture\"|\"switch\"|\"credits\"|\"rename\"|\"delete\"|\"open\"|\"identity\"|\"login_start\"|\"login_poll\"|\"login_cancel\"|\"checkin\"|\"checkin_status\"|\"statistics\"|\"token_stats\"|\"get_settings\"|\"save_settings\"|\"automation_run\"|\"backup_export\"|\"backup_preview\"|\"backup_import\"|\"cloud_backup\"|\"cloud_preview\"|\"cloud_restore\"|\"cloud_sync\", input:MinimaxInput)",
     "parameters": {
       "action": {
-        "type": "\"capture\" | \"switch\" | \"credits\" | \"rename\" | \"delete\" | \"open\" | \"identity\" | \"login_start\" | \"login_poll\" | \"login_cancel\"",
+        "type": "\"checkin\" | \"capture\" | \"switch\" | \"credits\" | \"rename\" | \"delete\" | \"open\" | \"statistics\" | \"get_settings\" | \"save_settings\" | \"automation_run\" | \"backup_export\" | \"backup_preview\" | ... 10 more ... | \"token_stats\"",
         "required": true,
         "enum": [
+          "checkin",
           "capture",
           "switch",
           "credits",
           "rename",
           "delete",
           "open",
+          "statistics",
+          "get_settings",
+          "save_settings",
+          "automation_run",
+          "backup_export",
+          "backup_preview",
+          "backup_import",
+          "cloud_backup",
+          "cloud_preview",
+          "cloud_restore",
+          "cloud_sync",
           "identity",
           "login_start",
           "login_poll",
-          "login_cancel"
+          "login_cancel",
+          "checkin_status",
+          "token_stats"
         ]
       },
       "input": {

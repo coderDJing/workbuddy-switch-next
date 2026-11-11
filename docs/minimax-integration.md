@@ -113,4 +113,20 @@ x-signature = md5( f"{x-timestamp}I*7Cf%WZ#S&%1RlZJ&C2{body}" )
 - 授权页有 5 分钟时限：过期或直连链接失效时，服务端会提示「缺少有效的 user_code」，重新发起一次即可。
 - 「当前账号」先按代际精确匹配，代际对不上（例如刚刚重新登录过）再按平台 uid 认，避免界面同时出现「本机当前登录：尚未添加」和一张同名账号卡。**写入仍以代际为准**：这种情况下点切换会真正执行，把新令牌同步进客户端；登录结果里的 `matchesLiveClient` 会在弹窗里说明「这就是客户端当前登录的账号」。
 - 客户端现场令牌过期时页面会显示一条琥珀色提示：本工具不代刷客户端的令牌，打开一次 MiniMax Code 让它自行刷新；账号包里那份新令牌仍可用于切换与积分查询。
-- 没有 Token 统计、会话复制、自动轮换与悬浮窗接入：MiniMax Code 的本地用量数据格式尚未核实。
+- Token 统计来自共享本机会话，不能可靠按账号或区域归因。关联会话与悬浮窗事件接入尚未实现。
+
+## 功能补齐（2026-11-11）
+
+账号页支持单账号和当前区域批量领取、加密备份导入导出。新增 Token 统计、积分统计与平台设置；CLI 新增 `rewards`、`token-stats`、`credit-stats`、`automation get/set/run`。
+
+每日领取使用官方 `signin/status` 与 `signin/claim`，携带本机 IANA 时区，先查资格、每轮只提交一次、再查确认。超时或回执不明不重复提交；已领取返回 already。领取确认后刷新余额。两区域均按官方面板判定资格，国际版真实领取尚未验证。
+
+自动领取、额度查询、低余额/到期/登录及查询异常提醒、空闲轮换默认关闭，按 cn/en 独立配置；自动领取每天最多尝试 3 次、失败间隔 30 分钟。桌面端和 serve 注册调度，跨进程锁避免重复执行；轮换前在锁内校验当前登录，桌面端或 CLI 运行时顺延。
+
+积分查询保存 90 天、最多 5000 条快照；只比较积分包组成不变的累计已用量，领取、到期和错误会建立新基线。Token 统计读取默认数据目录 `v2/sessions/**/messages.jsonl`，按日期、模型汇总输入/输出/缓存，去重响应；无可靠账号/区域标识，明确为本机合计。
+
+便携备份使用密码加密的 WBS 信封，导入前必须预览并携带 snapshotId，已有账号保留，导入时按目标电脑重建凭据命名空间。WebDAV 使用独立 `minimax-accounts.wbs`，带强 ETag 并发保护；同账号授权冲突时停止同步。
+
+新增 action：`checkin`、`checkin_status`、`statistics`、`token_stats`、`get_settings`、`save_settings`、`automation_run`、`backup_export`、`backup_preview`、`backup_import`、`cloud_backup`、`cloud_preview`、`cloud_restore`、`cloud_sync`。输入另支持 refresh/settings/passphrase/data/snapshotId/path。
+
+参考项目与验证证据见 [功能补齐记录](research/minimax-parity.md)。

@@ -6,8 +6,12 @@
 //!
 //! 凭据布局与代际约定参考官方开源实现 `MiniMax-AI/minimax-code`（MIT）；
 //! 刷新与额度字段另有 `VICqiufeeng/dsh-minimax-connect`（MIT）的实测记录。
+pub mod automation;
+pub(crate) mod backup;
+mod checkin;
 mod credits;
 mod identity;
+mod insights;
 mod oauth;
 mod paths;
 mod proc;
@@ -15,6 +19,7 @@ mod protocol;
 mod sign;
 #[cfg(test)]
 mod tests;
+mod usage;
 mod vault;
 
 use std::collections::HashMap;
@@ -102,6 +107,8 @@ struct Store {
     version: u32,
     #[serde(default)]
     accounts: Vec<Account>,
+    #[serde(default)]
+    snapshots: Vec<insights::Snapshot>,
 }
 
 impl Default for Store {
@@ -109,6 +116,7 @@ impl Default for Store {
         Self {
             version: STORE_VERSION,
             accounts: Vec::new(),
+            snapshots: Vec::new(),
         }
     }
 }
@@ -200,6 +208,9 @@ impl Engine {
 
     fn save(&self, store: &Store) -> Result<(), String> {
         let text = serde_json::to_string_pretty(store).map_err(|_| "无法编码 MiniMax 账号库")?;
+        if text.len() > 8 * 1024 * 1024 {
+            return Err("MiniMax 账号库超过读取上限，未覆盖原文件".into());
+        }
         std::fs::create_dir_all(&self.paths.store).map_err(|_| "无法创建 MiniMax 账号目录")?;
         crate::modules::config::atomic_write(&self.accounts_file(), &text)
             .map_err(|_| "无法保存 MiniMax 账号库".into())
@@ -563,6 +574,18 @@ impl Engine {
         relaunch: bool,
         dry_run: bool,
     ) -> Result<Value, String> {
+        self.switch_checked(region, account_id, close_running, relaunch, dry_run, None)
+    }
+
+    fn switch_checked(
+        &self,
+        region: Region,
+        account_id: &str,
+        close_running: bool,
+        relaunch: bool,
+        dry_run: bool,
+        expected_epoch: Option<&str>,
+    ) -> Result<Value, String> {
         let _guard = self.lock()?;
         let mut store = self.load()?;
         let account = self.find(&store, account_id)?.clone();
@@ -575,6 +598,11 @@ impl Engine {
         let token_expired = credential.expired(now_ms());
 
         let live = self.live(region)?;
+        if expected_epoch
+            .is_some_and(|epoch| live.as_ref().is_none_or(|v| v.credential.epoch() != epoch))
+        {
+            return Err("当前账号已变化，已取消自动轮换".into());
+        }
         if live
             .as_ref()
             .is_some_and(|value| value.credential.epoch() == account.epoch)
@@ -746,29 +774,6 @@ impl Engine {
         Ok(json!({"opened": true}))
     }
 
-    fn persist_payload(&self, account_id: &str, payload: &Payload) -> Result<(), String> {
-        let _guard = self.lock()?;
-        let mut store = self.load()?;
-        let sealed = self.seal(payload)?;
-        let credential = protocol::parse(payload, {
-            let account = store
-                .accounts
-                .iter()
-                .find(|account| account.id == account_id)
-                .ok_or("MiniMax 账号已删除")?;
-            account.region
-        })?;
-        let account = store
-            .accounts
-            .iter_mut()
-            .find(|account| account.id == account_id)
-            .ok_or("MiniMax 账号已删除")?;
-        account.payload = sealed;
-        account.expires_at = Some(credential.expires_at_ms / 1000);
-        account.needs_login = false;
-        self.save(&store)
-    }
-
     fn mark_needs_login(&self, account_id: &str) {
         let Ok(_guard) = self.lock() else {
             return;
@@ -790,7 +795,9 @@ impl Engine {
             .iter_mut()
             .find(|account| account.id == account_id)
             .ok_or("MiniMax 账号已删除")?;
-        account.credits = Some(credits);
+        account.credits = Some(credits.clone());
+        let account = account.clone();
+        insights::record(&mut store, &account, &credits);
         self.save(&store)
     }
 
@@ -800,6 +807,13 @@ impl Engine {
         &self,
         account_id: &str,
     ) -> Result<(Account, protocol::Credential), String> {
+        let _credential_guard = StateLock::try_at(
+            &self
+                .paths
+                .store
+                .join(format!("credential-{}.lock", short_hash(account_id))),
+        )
+        .map_err(|_| "该账号正在查询或更新令牌，请稍后重试")?;
         let (account, payload, live_credential, live_generation) = {
             let _guard = self.lock_for_read()?;
             let store = self.load()?;
@@ -840,7 +854,19 @@ impl Engine {
                 return Err("当前账号的访问令牌已过期，请打开 MiniMax Code 让它刷新后重试".into());
             }
             current
-        } else if credential.expired(at_ms - REFRESH_MARGIN_MS) {
+        } else if credential.expired(at_ms + REFRESH_MARGIN_MS) {
+            // Keep switching and parallel refreshes out of this refresh transaction.
+            let _guard = self.lock_for_read()?;
+            let mut store = self.load()?;
+            if self.find(&store, account_id)?.payload != account.payload {
+                return Err("账号授权已更新，请重新查询".into());
+            }
+            if self
+                .live(account.region)?
+                .is_some_and(|v| v.credential.epoch() == account.epoch)
+            {
+                return Err("该账号已切换为当前账号，请由 MiniMax Code 刷新后重试".into());
+            }
             let grant = oauth::refresh(account.region, &credential.refresh_token).await?;
             let (updated, refreshed) = protocol::apply_grant(
                 &payload,
@@ -850,7 +876,15 @@ impl Engine {
                 at_ms + grant.expires_in_secs * 1000,
                 live_generation,
             )?;
-            self.persist_payload(account_id, &updated)?;
+            let saved = store
+                .accounts
+                .iter_mut()
+                .find(|a| a.id == account_id)
+                .ok_or("账号已删除")?;
+            saved.payload = self.seal(&updated)?;
+            saved.expires_at = Some(refreshed.expires_at_ms / 1000);
+            saved.needs_login = false;
+            self.save(&store)?;
             refreshed
         } else {
             credential
@@ -863,7 +897,7 @@ impl Engine {
 
         match query_credits(account.region, &credential.access_token, timeout_secs).await {
             Ok(value) => {
-                let _ = self.cache_credits(account_id, value.clone());
+                self.cache_credits(account_id, value.clone())?;
                 Ok(value)
             }
             Err(error) => {
@@ -952,6 +986,47 @@ impl Engine {
             serde_json::from_value(input).map_err(|_| "MiniMax 参数不合法或包含未知字段")?;
         let region = args.region.unwrap_or(Region::Cn);
         match action {
+            "checkin" => {
+                self.checkin(
+                    args.account_id.as_deref().ok_or("缺少账号")?,
+                    args.timeout_seconds,
+                )
+                .await
+            }
+            "checkin_status" => {
+                self.checkin_status(
+                    args.account_id.as_deref().ok_or("缺少账号")?,
+                    args.timeout_seconds,
+                )
+                .await
+            }
+            "statistics" => self.statistics(region, args.refresh.unwrap_or(false)).await,
+            "token_stats" => usage::statistics(&self.paths.home.join(".minimax/v2/sessions")),
+            "get_settings" => automation::status(self),
+            "save_settings" => automation::save(self, args.settings.ok_or("缺少设置")?),
+            "automation_run" => automation::run(self, true, args.region).await,
+            "backup_export" => self.export_backup(
+                args.passphrase.as_deref().ok_or("缺少备份密码")?,
+                args.path.as_deref(),
+            ),
+            "backup_preview" => self.preview_backup(
+                args.data.as_deref().ok_or("缺少备份")?,
+                args.passphrase.as_deref().ok_or("缺少备份密码")?,
+            ),
+            "backup_import" => self.import_backup(
+                args.data.as_deref().ok_or("缺少备份")?,
+                args.passphrase.as_deref().ok_or("缺少备份密码")?,
+                args.snapshot_id.as_deref().ok_or("请先预览备份")?,
+            ),
+            "cloud_backup" | "cloud_preview" | "cloud_restore" | "cloud_sync" => {
+                crate::modules::webdav_sync::minimax_cloud(
+                    self,
+                    action,
+                    args.passphrase.as_deref().ok_or("缺少备份密码")?,
+                    args.snapshot_id.as_deref(),
+                )
+                .await
+            }
             "capture" => self.capture(region),
             "switch" => self.switch(
                 region,
@@ -1209,6 +1284,12 @@ struct Args {
     dry_run: Option<bool>,
     #[serde(default)]
     timeout_seconds: Option<u64>,
+    refresh: Option<bool>,
+    settings: Option<Value>,
+    passphrase: Option<String>,
+    data: Option<String>,
+    snapshot_id: Option<String>,
+    path: Option<String>,
 }
 
 /// 删掉同区域、同 uid、但不是 `keep_id` 的重复卡片，返回删除条数。
@@ -1263,5 +1344,9 @@ pub fn status() -> Result<Value, String> {
 }
 
 pub async fn action(action: &str, input: Value) -> Result<Value, String> {
-    Engine::real().action(action, input).await
+    let runtime = tokio::runtime::Handle::current();
+    let action = action.to_string();
+    tokio::task::spawn_blocking(move || runtime.block_on(Engine::real().action(&action, input)))
+        .await
+        .map_err(|_| "MiniMax 操作异常结束".to_string())?
 }

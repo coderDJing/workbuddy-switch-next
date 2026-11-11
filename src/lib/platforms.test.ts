@@ -8,7 +8,7 @@ describe("platform registration",()=>{
     expect(PLATFORMS[0].id).toBe("codebuddy");
     for(const p of PLATFORMS)for(const tool of p.tools)expect(SUPPORTED_TOOLS.some(t=>t.id===tool)).toBe(true);
     expect(PLATFORMS.find(p=>p.id==="trae")?.pages.map(p=>p.key)).toEqual(["accounts", "credit-stats", "settings"]);
-    // MiniMax Code 桌面端与 CLI 共用登录态，第一期只有账号页。
-    expect(PLATFORMS.find(p=>p.id==="minimax")?.pages.map(p=>p.key)).toEqual(["accounts"]);
+    // MiniMax Code 桌面端与 CLI 共用登录态及本机会话用量。
+    expect(PLATFORMS.find(p=>p.id==="minimax")?.pages.map(p=>p.key)).toEqual(["accounts", "token-stats", "credit-stats", "settings"]);
   });
 });

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Clock3, Ellipsis, Fingerprint, Info, Loader2, LogIn, Pencil, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Check, Clock3, Ellipsis, FileDown, FileUp, Gift, Fingerprint, Info, Loader2, LogIn, Pencil, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { DemoAction } from "@/components/demo-action";
 import { MinimaxLoginDialog } from "@/components/minimax-login-dialog";
+import { MinimaxBackupDialog } from "@/components/minimax-backup-dialog";
 import { MinimaxMark } from "@/components/product-marks";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +81,9 @@ export default function MinimaxPage() {
   const mutationRunning = useRef(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [backupMode, setBackupMode] = useState<"import" | "export" | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [claimResults, setClaimResults] = useState<Record<string, api.MinimaxCheckin>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const cancelRename = useRef(false);
@@ -88,7 +92,7 @@ export default function MinimaxPage() {
   const [creditErrors, setCreditErrors] = useState<Record<string, string>>({});
   const [creditLoading, setCreditLoading] = useState<Record<string, boolean>>({});
   const querying = useRef(new Set<string>());
-  const busy = busyKey !== null;
+  const busy = busyKey !== null || claiming;
 
   const client = (status?.clients ?? []).find(c => c.region === region);
   const accounts = (status?.accounts ?? []).filter(a => a.region === region);
@@ -119,6 +123,24 @@ export default function MinimaxPage() {
   useEffect(() => {
     if (!api.isDemoMode()) void queryCredits(accountsRef.current.filter(a => !a.credits || Date.now() / 1000 - a.credits.checkedAt > 300));
   }, [accountKey, region, queryCredits]);
+
+  async function claim(items: api.MinimaxAccount[]) {
+    if (mutationRunning.current) return;
+    mutationRunning.current = true; setClaiming(true);
+    let claimed = 0, already = 0, closed = 0, failed = 0;
+    try {
+      for (const account of items) {
+        let result: api.MinimaxCheckin;
+        try { result = await api.minimaxAction("checkin", { accountId: account.id }) as api.MinimaxCheckin; }
+        catch (error) { result = { ok: false, state: "failed", message: api.asError(error), credits: null }; }
+        setClaimResults(values => ({ ...values, [account.id]: result }));
+        if (result.balance) setCreditOverrides(values => ({ ...values, [account.id]: result.balance! }));
+        if (result.state === "claimed") claimed++; else if (result.state === "already") already++; else if (result.state === "closed") closed++; else failed++;
+      }
+      const message = `领取完成：成功 ${claimed}，已领取 ${already}，未开放 ${closed}，待处理 ${failed}`;
+      if (failed) toast.warning(message); else toast.success(message);
+    } finally { await refresh(true); setClaiming(false); mutationRunning.current = false; }
+  }
 
   async function run(key: string, action: () => Promise<void>, message: string) {
     if (mutationRunning.current) return;
@@ -170,6 +192,8 @@ export default function MinimaxPage() {
       <div className="relative flex flex-wrap items-center gap-x-5 gap-y-4">
         <div className="min-w-[190px] flex-1"><h2 className="text-sm font-semibold text-foreground">添加与迁移账号</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">在官方客户端完成登录后，识别并添加到账号库</p></div>
         <DemoAction><Button className="h-10 bg-primary px-4 text-primary-foreground shadow-sm hover:bg-primary/90" disabled={busy} onClick={() => setLoginOpen(true)}><LogIn />登录添加</Button></DemoAction>
+        <DemoAction><Button variant="ghost" size="sm" disabled={busy} onClick={() => setBackupMode("import")}><FileUp />导入备份</Button></DemoAction>
+        <DemoAction><Button variant="ghost" size="sm" disabled={busy || !status?.accounts.length} onClick={() => setBackupMode("export")}><FileDown />导出</Button></DemoAction>
         <DemoAction><Button variant="ghost" size="sm" className="h-9 px-2.5" disabled={busy} onClick={capture} title="识别并保存官方客户端当前登录的账号"><RefreshCw className={busyKey === "capture" ? "animate-spin" : undefined} />识别本机账号</Button></DemoAction>
       </div>
     </div>
@@ -185,6 +209,7 @@ export default function MinimaxPage() {
           <Badge variant="secondary" className="h-6 min-w-6 rounded-full border-0 px-1.5 text-[11px] tabular-nums text-muted-foreground shadow-none" aria-label={`${accounts.length} 个${regionLabel(region)} MiniMax Code 账号`}>{accounts.length}</Badge>
         </div>
         <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
+          <DemoAction><Button variant="outline" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || !accounts.length} onClick={() => void claim(accounts)} aria-label="领取积分">{claiming ? <Loader2 className="animate-spin" /> : <Gift />}领取积分</Button></DemoAction>
           <DemoAction><Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || accounts.length === 0 || accounts.some(a => creditLoading[a.id])} onClick={() => void queryCredits(accounts)} aria-label="刷新积分" title="查询当前区域所有账号的官方积分"><RefreshCw className={accounts.some(a => creditLoading[a.id]) ? "animate-spin" : undefined} />刷新积分</Button></DemoAction>
         </div>
       </div>
@@ -214,6 +239,7 @@ export default function MinimaxPage() {
                     : <DemoAction><Button variant="outline" size="icon" className="size-7 rounded-lg" disabled={busy || account.needsLogin} onClick={() => setPending({ kind: "switch", account })} aria-label="切换到此账号" title={account.needsLogin ? "登录已过期，请重新登录添加" : "将 MiniMax Code 切换到此账号"}>{busyKey === account.id ? <Loader2 className="size-4 animate-spin" /> : <MinimaxMark size={15} global={region === "en"} />}</Button></DemoAction>}
                 </span>
                 <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="relative z-20 size-7 rounded-lg text-muted-foreground" aria-label={`管理账号 ${account.name}`} disabled={busy}><Ellipsis className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-40">
+                  {!api.isDemoMode() && <DropdownMenuItem disabled={busy} onSelect={() => void claim([account])}><Gift />领取积分</DropdownMenuItem>}
                   {!api.isDemoMode() && <DropdownMenuItem disabled={loading} onSelect={() => void queryCredits([account])}><RefreshCw />刷新积分</DropdownMenuItem>}
                   <DropdownMenuItem onSelect={() => setInfo(account)}><Info />账号信息</DropdownMenuItem>
                   {!api.isDemoMode() && account.uid.startsWith("epoch:") && <DropdownMenuItem disabled={loading} onSelect={() => resolveIdentity(account)}><Fingerprint />识别身份</DropdownMenuItem>}
@@ -222,6 +248,7 @@ export default function MinimaxPage() {
               </header>
               <div className="flex-1 px-3.5 pb-4 pt-3 text-xs leading-5 text-muted-foreground">
                 <CreditBlock credit={creditOf(account)} loading={!!loading} error={creditErrors[account.id]} accountName={account.name} />
+                {claimResults[account.id] && <p className={cn("mt-3 text-xs", claimResults[account.id].ok ? "text-muted-foreground" : "text-amber-700")} role="status">{claimResults[account.id].message}{claimResults[account.id].warning ? ` · ${claimResults[account.id].warning}` : ""}</p>}
                 {account.needsLogin && <div className="mt-3 flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300"><span>登录已过期</span><DemoAction><Button size="sm" variant="ghost" disabled={busy} onClick={() => setLoginOpen(true)}>重新登录</Button></DemoAction></div>}
               </div>
               <footer className="flex items-center gap-2 border-t border-border px-3.5 py-2 text-[11px] text-muted-foreground">
@@ -235,6 +262,7 @@ export default function MinimaxPage() {
     <p className="mt-6 text-xs leading-6 text-muted-foreground">切换会先退出 MiniMax Code，写入账号凭据后重新打开；本机项目与历史保留，云端会话仍归原账号所有。CLI 与桌面端共用登录态，切换后两者同时生效。</p>
 
     <MinimaxLoginDialog open={loginOpen} onOpenChange={open => { if (!busy) setLoginOpen(open); }} region={region} label={regionLabel(region)} />
+    <MinimaxBackupDialog mode={backupMode} onClose={() => setBackupMode(null)} />
 
     <Dialog open={!!info} onOpenChange={open => { if (!open) setInfo(null); }}><DialogContent>
       <DialogHeader><DialogTitle>账号信息</DialogTitle><DialogDescription>{info?.name}</DialogDescription></DialogHeader>

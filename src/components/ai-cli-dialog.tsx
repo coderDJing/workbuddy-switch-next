@@ -1,3 +1,4 @@
+import { useMinimaxView } from "@/stores/minimax-view";
 import { useState } from "react";
 import { Check, Copy, FileText, Terminal } from "lucide-react";
 import { toast } from "sonner";
@@ -34,11 +35,12 @@ function CommandRow({ title, command }: { title: string; command: string }) {
 
 /** Copyable discovery/query examples only; opening this guide never runs a command. */
 export function AiCliDialog({ platform }: { platform: PlatformId }) {
+  const minimaxVariant: CliRegion = useMinimaxView(s => s.region) === "en" ? "ai" : "cn";
   const qoderVariant = useQoderView(s => s.variant);
   const traeVariant = useTraeView(s => s.variant);
   const codebuddyVariant = useAccountsStore(s => s.variant);
-  const [target, setTarget] = useState<CliTarget>(platform === "trae" ? "trae-desktop" : platform === "qoder" ? "qoder-cli" : "codebuddy-cli");
-  const [region, setRegion] = useState<CliRegion>(platform === "trae" ? traeVariant : platform === "qoder" ? qoderVariant : codebuddyVariant);
+  const [target, setTarget] = useState<CliTarget>(platform === "minimax" ? "minimax-desktop" : platform === "trae" ? "trae-desktop" : platform === "qoder" ? "qoder-cli" : "codebuddy-cli");
+  const [region, setRegion] = useState<CliRegion>(platform === "minimax" ? minimaxVariant : platform === "trae" ? traeVariant : platform === "qoder" ? qoderVariant : codebuddyVariant);
   const [copied, setCopied] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const qoder = target.startsWith("qoder-");
@@ -62,8 +64,8 @@ export function AiCliDialog({ platform }: { platform: PlatformId }) {
     if (open) {
       setCopied(null);
       setShowGuide(false);
-      setTarget(platform === "trae" ? "trae-desktop" : platform === "qoder" ? "qoder-cli" : "codebuddy-cli");
-      setRegion(platform === "trae" ? traeVariant : platform === "qoder" ? qoderVariant : codebuddyVariant);
+      setTarget(platform === "minimax" ? "minimax-desktop" : platform === "trae" ? "trae-desktop" : platform === "qoder" ? "qoder-cli" : "codebuddy-cli");
+      setRegion(platform === "minimax" ? minimaxVariant : platform === "trae" ? traeVariant : platform === "qoder" ? qoderVariant : codebuddyVariant);
     }
   }}>
     <DialogTrigger asChild>

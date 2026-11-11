@@ -1,7 +1,8 @@
 import { APP_VERSION, GITHUB_REPOSITORY_URL } from "./update";
 
-export type CliTarget = "codebuddy-cli" | "qoder-cli" | "qoder-desktop" | "workbuddy" | "codebuddy-ide" | "vscode" | "jetbrains" | "trae-desktop";
+export type CliTarget = "codebuddy-cli" | "qoder-cli" | "qoder-desktop" | "workbuddy" | "codebuddy-ide" | "vscode" | "jetbrains" | "trae-desktop" | "minimax-desktop";
 export const CLI_TARGET_LABELS: Record<CliTarget, string> = {
+  "minimax-desktop": "MiniMax Code（桌面端 / CLI）",
   "trae-desktop": "TRAE 桌面端",
   "codebuddy-cli": "CodeBuddy CLI", workbuddy: "WorkBuddy", "codebuddy-ide": "CodeBuddy IDE",
   vscode: "VS Code CodeBuddy 插件", jetbrains: "JetBrains CodeBuddy 插件", "qoder-cli": "Qoder CLI", "qoder-desktop": "Qoder 桌面端",
@@ -10,6 +11,13 @@ export type CliRegion = "cn" | "ai" | "all";
 export type CliCommand = { title: string; command: string };
 
 export function cliQueryCommands(target: CliTarget, region: CliRegion): CliCommand[] {
+  if (target === "minimax-desktop") return [
+    { title: "账号与额度概览", command: `workbuddy-switch-next inspect --target ${target} --variant ${region}` },
+    { title: "本机 Token 统计", command: `workbuddy-switch-next token-stats --target ${target}` },
+    { title: "积分快照与历史", command: `workbuddy-switch-next credit-stats --target ${target} --variant ${region}` },
+    { title: "自动任务配置", command: `workbuddy-switch-next automation get --target ${target} --variant ${region}` },
+    { title: "发现完整管理操作", command: "workbuddy-switch-next operations minimax_action" },
+  ];
   if (target.startsWith("trae-")) return [
     {title:"账号与额度概览",command:`workbuddy-switch-next inspect --target ${target} --variant ${region}`},
     {title:"查看账号 ID",command:`workbuddy-switch-next accounts --target ${target} --variant ${region}`},
@@ -43,6 +51,20 @@ export function cliQueryText(target: CliTarget, region: CliRegion): string {
 
 /** Static reference for a Skill author: no local accounts, paths, or credentials. */
 export function cliSkillGuide(target: CliTarget, region: CliRegion): string {
+  if (target === "minimax-desktop") return [
+    "# MiniMax Code 账号管理接入说明",
+    "先运行 help --json 和 operations minimax_action 确认版本能力。桌面端与 CLI 共用登录槽；cn 国内版、ai 国际版，对应底层 action 的 region=cn/en。",
+    cliQueryText(target, region),
+    "支持 accounts/status/inspect/credits/login/switch/rewards/token-stats/credit-stats/automation。Token 统计汇总本机共享会话，不能按账号或区域归因；积分快照按区域保存。",
+    "rewards ACCOUNT_ID 或 rewards --all 显式领取，先查询资格、只提交一次、回查确认；结果未确认时先检查状态。退出码 3 表示部分失败。",
+    "automation get/set/run 管理每日领取、自动查询、提醒与空闲轮换；set 必须指定 --variant cn|ai 和 --settings-file。自动功能默认关闭，持续调度需要桌面端或 serve 运行。",
+    `workbuddy-switch-next login --target ${target} --variant ${region === "all" ? "cn" : region}`,
+    `workbuddy-switch-next switch ACCOUNT_ID --target ${target} --dry-run`,
+    "仅按用户要求切换。mcode CLI 运行时需先退出；桌面端可用 --close-running --relaunch 正常关闭并重开。",
+    "call minimax_action --input-file PATH 支持 backup_export/backup_preview/backup_import 和 cloud_backup/cloud_preview/cloud_restore/cloud_sync。密码放入输入文件；恢复必须携带预览返回的 snapshotId。",
+    "stdout 为 JSON，stderr 为进度。未知余额不按零处理；现场令牌由客户端刷新。普通查询不输出凭据，不支持模型限额、--model、--concurrency 或 --wait。",
+    "需要保存 call 结果时使用 --output-file PATH，目标文件不得已存在；备份内容为密码加密后的数据。",
+  ].join("\n\n");
   if (target.startsWith("trae-")) return [
     "# TRAE 桌面账号管理接入说明",
     "这是咱们的管理 CLI，不是 TRAE 官方企业 CLI。先运行 help --json 和 operations 确认版本能力。",

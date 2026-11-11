@@ -58,8 +58,8 @@ export const PLATFORMS: PlatformDef[] = [
     ],
   },
   { id: "trae", label: "TRAE", tools: ["trae"], pages: [ACCOUNTS, { key: "credit-stats", label: "积分统计", icon: Sparkles }, { key: "settings", label: "平台设置", icon: SlidersHorizontal }] },
-  /** MiniMax Code 的桌面端与 CLI 共用一份登录态，第一期只有账号页（额度显示在账号卡片上）。 */
-  { id: "minimax", label: "MiniMax Code", tools: ["minimax"], pages: [ACCOUNTS] },
+  /** MiniMax Code 的桌面端与 CLI 共用登录态及本机会话用量。 */
+  { id: "minimax", label: "MiniMax Code", tools: ["minimax"], pages: [ACCOUNTS, { key: "token-stats", label: "Token 统计", icon: MessagesSquare }, { key: "credit-stats", label: "积分统计", icon: Sparkles }, { key: "settings", label: "平台设置", icon: SlidersHorizontal }] },
 ];
 
 export function platformPath(platform: PlatformId, page: PlatformPageKey = "accounts"): string {

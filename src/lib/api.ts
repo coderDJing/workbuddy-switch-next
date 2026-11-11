@@ -180,6 +180,10 @@ async function httpCall<T>(cmd: string, args?: Record<string, unknown>): Promise
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (demoModeEnabled) {
+    if (cmd === "minimax_action") {
+      if (["statistics", "token_stats", "get_settings"].includes(String(args?.action))) return screenshotDemoResponse(cmd, args) as T;
+      throw new Error(DEMO_UNAVAILABLE_MESSAGE);
+    }
     if (cmd === "trae_action") {
       if (args?.action === "statistics" || args?.action === "get_settings") return screenshotDemoResponse(cmd, args) as T;
       throw new Error(DEMO_UNAVAILABLE_MESSAGE);
@@ -1322,7 +1326,7 @@ export interface MinimaxClient {
 }
 /** 桌面端与 CLI 共用一份登录态，因此 `sharedLogin` 恒为 true、只有一个切换目标。 */
 export interface MinimaxStatus { accounts:MinimaxAccount[]; clients:MinimaxClient[]; sharedLogin:true }
-export interface MinimaxInput {region?:MinimaxRegion;accountId?:string;name?:string;closeRunning?:boolean;relaunch?:boolean;dryRun?:boolean;loginId?:string}
+export interface MinimaxInput {region?:MinimaxRegion;accountId?:string;name?:string;closeRunning?:boolean;relaunch?:boolean;dryRun?:boolean;loginId?:string;timeoutSeconds?:number;refresh?:boolean;settings?:MinimaxAutomation["settings"];passphrase?:string;data?:string;snapshotId?:string;path?:string}
 /** 设备码授权会话；`userCode` 显示给用户，`device_code` / `code_verifier` 只留在后端进程内。 */
 export interface MinimaxLoginStart {loginId:string;region:MinimaxRegion;userCode:string;verificationUri:string;verificationUriComplete:string|null;expiresIn:number;intervalMs:number}
 export type MinimaxLoginPoll =
@@ -1330,4 +1334,15 @@ export type MinimaxLoginPoll =
   | {status:"authorized";account:MinimaxAccount}
   | {status:"failed"|"expired";error:string};
 export function getMinimaxStatus():Promise<MinimaxStatus> {return call("get_minimax_status");}
-export function minimaxAction(action:"capture"|"switch"|"credits"|"rename"|"delete"|"open"|"identity"|"login_start"|"login_poll"|"login_cancel",input:MinimaxInput):Promise<unknown> {return call("minimax_action",{action,input});}
+export function minimaxAction(action:"capture"|"switch"|"credits"|"rename"|"delete"|"open"|"identity"|"login_start"|"login_poll"|"login_cancel"|"checkin"|"checkin_status"|"statistics"|"token_stats"|"get_settings"|"save_settings"|"automation_run"|"backup_export"|"backup_preview"|"backup_import"|"cloud_backup"|"cloud_preview"|"cloud_restore"|"cloud_sync",input:MinimaxInput):Promise<unknown> {return call("minimax_action",{action,input});}
+
+export interface MinimaxCheckin {ok:boolean;state:"claimed"|"already"|"closed"|"failed"|"auth"|"unconfirmed";message:string;credits:number|null;warning?:string;balance?:MinimaxCredit}
+export interface MinimaxSnapshot {accountId:string;name:string;region:MinimaxRegion;at:number;credit:MinimaxCredit}
+export interface MinimaxStatistics {generatedAt:number;retentionDays:number;region:MinimaxRegion;accounts:MinimaxAccount[];snapshots:MinimaxSnapshot[];errors:{accountId:string;message:string}[]}
+export type MinimaxRegionSettings = TraeRegionSettings;
+export interface MinimaxAutomation {settings:{cn:MinimaxRegionSettings;en:MinimaxRegionSettings};logs:{at:number;region:MinimaxRegion;action:string;outcome:string}[]}
+export interface MinimaxBackupPreview {accounts:{name:string;region:MinimaxRegion;exists:boolean}[];count:number;snapshotId:string}
+export interface MinimaxTokens {input:number;output:number;cacheRead:number;cacheWrite:number;total:number;requests:number}
+export interface MinimaxTokenStatistics {generatedAt:number;available:boolean;accountAttributionAvailable:false;regionAttributionAvailable:false;totals:MinimaxTokens;sessionCount:number;fileCount:number;skippedRecords:number;complete:boolean;daily:{date:string;model:string;tokens:MinimaxTokens}[];models:{model:string;tokens:MinimaxTokens}[]}
+export function getMinimaxStatistics(region:MinimaxRegion,refresh=false):Promise<MinimaxStatistics> {return minimaxAction("statistics",{region,refresh}) as Promise<MinimaxStatistics>;}
+export function getMinimaxAutomation():Promise<MinimaxAutomation> {return minimaxAction("get_settings",{}) as Promise<MinimaxAutomation>;}

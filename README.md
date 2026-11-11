@@ -146,13 +146,13 @@ CodeBuddy CLI 切换时会先关闭正在运行的 CLI，当前会话会中断�
 
 ### MiniMax Code
 
-MiniMax Code 的桌面端与 CLI 共用一份登录态（`~/.minimax/auth/prod/{cn|en}/mcode-public/`），因此平台只有一个切换目标，区域分国内版与国际版，账号库与其它平台隔离。平台提供「账号管理」，额度显示在账号卡上。
+MiniMax Code 的桌面端与 CLI 共用一份登录态（`~/.minimax/auth/prod/{cn|en}/mcode-public/`），因此平台只有一个切换目标，区域分国内版与国际版，账号库与其它平台隔离。平台提供「账号管理」「Token 统计」「积分统计」「平台设置」，支持积分领取、自动查询与提醒、空闲轮换和加密备份迁移。
 
 - **添加**：点「登录添加」在工具内完成设备码授权（弹窗显示用户码并自动打开浏览器，不用先打开客户端，也不切换客户端当前登录）；也可在官方客户端登录后点「识别本机账号」。
 - **切换**：先请求客户端正常退出，再成组写入 `auth.json` 与 `auth-state.json` 并把两份文件的 `generation` 同步抬高，写完读回核验，失败恢复原文件；随后按需重新打开客户端。客户端拒绝退出时停止，不强制终止进程。
 - **积分**：逐账号查询官方积分明细与套餐信息。非现场账号可用 refresh token 换新令牌并回写账号包；现场账号只读不刷，令牌过期时提示打开客户端刷新，不误判成登录失效。
 - **身份**：登录成功即用新令牌问官方身份接口，补上真实 uid、昵称与邮箱；同一账号的重复卡片自动合并。
-- **命令行**：`--target minimax-desktop` 专用目标，支持 `accounts` / `status` / `inspect` / `credits` / `switch` / `login`，`--variant cn|ai` 选区域。
+- **命令行**：`--target minimax-desktop` 专用目标，支持 `accounts` / `status` / `inspect` / `credits` / `switch` / `login` / `rewards` / `token-stats` / `credit-stats` / `automation`，`--variant cn|ai` 选区域。Token 为本机共享会话合计，不按账号归因。
 - **存储**：账号包在 `~/.wb-switch/minimax/accounts.json` 中以 Windows DPAPI 或 macOS Keychain 派生的 AES-256-GCM 加密保存，明文令牌不落盘；每次切换前保留加密备份，每个区域最近 10 份。
 - **验证范围**：Windows MiniMax Code 3.1.13 国内版已验证本机识别、工具内设备码登录、身份补全、加密保存、真实切换写入（代际 1→2、两文件一致）、过期令牌的报错路径与专用 CLI；国际版真实登录、macOS、桌面端与 CLI 同时在线尚未实测。详见 [MiniMax Code 接入](docs/minimax-integration.md)。
 
