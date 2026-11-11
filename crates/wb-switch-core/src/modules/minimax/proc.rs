@@ -159,7 +159,7 @@ impl Processes for NativeProcesses {
         #[cfg(not(windows))]
         {
             let deadline = std::time::Instant::now() + timeout;
-            while Instant::now() < deadline {
+            while std::time::Instant::now() < deadline {
                 if desktop_pids().is_empty() {
                     return Ok(());
                 }
