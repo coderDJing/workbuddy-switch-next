@@ -7,12 +7,12 @@ name: Retry unacquired macOS jobs
 
 on:
   workflow_run:
-    workflows: ["Build Next"]
+    workflows: ["Build Next", "test"]
     types: [completed]
   workflow_dispatch:
     inputs:
       run_id:
-        description: Build Next run id to retry
+        description: Workflow run id to retry
         required: true
 
 permissions:
