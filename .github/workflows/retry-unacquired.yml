@@ -25,7 +25,10 @@ concurrency:
 
 jobs:
   retry:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'failure' ||
+      github.event.workflow_run.conclusion == 'cancelled'
     runs-on: ubuntu-latest
     steps:
       - name: Rerun once more when no macOS runner was ever acquired
@@ -37,7 +40,7 @@ jobs:
           repo="$GITHUB_REPOSITORY"
           read -r conclusion attempt < <(gh api "repos/$repo/actions/runs/$RUN_ID" --jq '"\(.conclusion) \(.run_attempt)"')
 
-          if [ "$conclusion" != "failure" ]; then
+          if [ "$conclusion" != "failure" ] && [ "$conclusion" != "cancelled" ]; then
             echo "Run $RUN_ID finished as $conclusion; nothing to retry."
             exit 0
           fi
@@ -49,17 +52,19 @@ jobs:
           jobs=$(gh api "repos/$repo/actions/runs/$RUN_ID/jobs?per_page=50&filter=latest")
 
           # A step that actually failed means the code is broken; do not loop.
-          broken=$(echo "$jobs" | jq -r '[.jobs[] | select(.conclusion == "failure") | .name] | join(", ")')
+          broken=$(echo "$jobs" | jq -r '[.jobs[] | select([.steps[] | select(.conclusion == "failure")] | length > 0) | .name] | join(", ")')
           if [ -n "$broken" ]; then
             echo "Real step failures, not runner starvation: $broken"
             exit 0
           fi
 
-          # Cancelled jobs without a failing step never got a runner.
+          # Only a job cancelled before its first step never got a runner. A job
+          # cancelled mid-flight was superseded by the concurrency group, and
+          # rerunning it would cancel the newer run that replaced it.
           unacquired=$(echo "$jobs" | jq -r '[.jobs[] | select(.conclusion == "cancelled")
-            | select([.steps[] | select(.conclusion == "failure")] | length == 0) | .name]')
+            | select((.steps | length) == 0) | .name]')
           if [ "$(echo "$unacquired" | jq 'length')" -eq 0 ]; then
-            echo "No cancelled job without a failing step; nothing to retry."
+            echo "No job stopped before its first step; nothing to retry."
             exit 0
           fi
 
