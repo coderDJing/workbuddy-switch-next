@@ -94,9 +94,7 @@ impl Vault for SystemVault {
         }
     }
     fn open(&self, sealed: &str) -> Result<Vec<u8>, String> {
-        let bytes = STANDARD
-            .decode(sealed)
-            .map_err(|_| "豆包 账号密文损坏")?;
+        let bytes = STANDARD.decode(sealed).map_err(|_| "豆包 账号密文损坏")?;
         #[cfg(windows)]
         {
             crypt(&bytes, false)

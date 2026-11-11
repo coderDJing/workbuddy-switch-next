@@ -10,6 +10,7 @@ pub mod config;
 pub mod credit_usage;
 pub mod credits;
 pub mod daily_runner;
+pub mod doubao;
 pub mod error_log;
 pub mod export_import;
 pub mod jetbrains;
@@ -17,7 +18,6 @@ pub mod limits;
 #[cfg(target_os = "linux")]
 pub mod linux_keyring;
 pub mod minimax;
-pub mod doubao;
 pub mod notifications;
 pub mod oauth;
 pub mod official_usage;

@@ -1,9 +1,9 @@
 //! CLI shell around shared core services.
-mod doubao;
 mod accounts;
 mod args;
 mod control;
 mod credits;
+mod doubao;
 mod execute;
 mod minimax;
 mod operations;

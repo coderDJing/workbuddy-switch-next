@@ -1798,7 +1798,11 @@ pub async fn clear_notifications() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn get_doubao_status() -> Result<Value, String> {
- tauri::async_runtime::spawn_blocking(wb_switch_core::modules::doubao::status).await.map_err(|_| "豆包状态任务异常结束".to_string())?
+    tauri::async_runtime::spawn_blocking(wb_switch_core::modules::doubao::status)
+        .await
+        .map_err(|_| "豆包状态任务异常结束".to_string())?
 }
 #[tauri::command]
-pub async fn doubao_action(action:String,input:Value)->Result<Value,String>{wb_switch_core::modules::doubao::action(&action,input).await}
+pub async fn doubao_action(action: String, input: Value) -> Result<Value, String> {
+    wb_switch_core::modules::doubao::action(&action, input).await
+}

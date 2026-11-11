@@ -65,7 +65,10 @@ pub fn router() -> Router {
             post(api_trae_action).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
         )
         .route("/api/doubao/status", get(api_doubao_status))
-        .route("/api/doubao/action", post(api_doubao_action).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)))
+        .route(
+            "/api/doubao/action",
+            post(api_doubao_action).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
         .route("/api/minimax/status", get(api_minimax_status))
         .route(
             "/api/minimax/action",

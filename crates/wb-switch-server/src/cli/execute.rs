@@ -131,7 +131,9 @@ async fn execute_inner(
         value["version"] = json!(env!("CARGO_PKG_VERSION"));
         return Ok((value, 0));
     }
-    if options.target.is_doubao() { return super::doubao::execute(options,control).await; }
+    if options.target.is_doubao() {
+        return super::doubao::execute(options, control).await;
+    }
     if options.target.is_trae() {
         return super::trae::execute(options, control).await;
     }

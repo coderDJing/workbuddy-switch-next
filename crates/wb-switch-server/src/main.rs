@@ -23,7 +23,12 @@ use wb_switch_core::modules::{
 /// 签到时间段时固定 30 分钟）；自动轮换按配置间隔执行；
 /// 限额 hook 信号每秒轮询一次、启动时后台默认接入。
 fn spawn_background_loops() {
-    tokio::spawn(async move { loop { let _ = wb_switch_core::modules::doubao::automation::cycle().await; tokio::time::sleep(std::time::Duration::from_secs(30)).await; } });
+    tokio::spawn(async move {
+        loop {
+            let _ = wb_switch_core::modules::doubao::automation::cycle().await;
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        }
+    });
     tokio::spawn(async move {
         loop {
             let _ = wb_switch_core::modules::minimax::automation::cycle().await;

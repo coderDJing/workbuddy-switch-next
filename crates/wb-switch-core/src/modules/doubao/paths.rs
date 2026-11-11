@@ -16,16 +16,34 @@ impl Paths {
         } else if isolated {
             home.join("AppData/Local/Doubao/User Data")
         } else {
-            dirs::data_local_dir().unwrap_or_else(|| home.join("AppData/Local")).join("Doubao/User Data")
+            dirs::data_local_dir()
+                .unwrap_or_else(|| home.join("AppData/Local"))
+                .join("Doubao/User Data")
         };
-        Self { data, store: crate::modules::config::store_dir().join("doubao"), home, isolated }
+        Self {
+            data,
+            store: crate::modules::config::store_dir().join("doubao"),
+            home,
+            isolated,
+        }
     }
     pub fn executable(&self) -> Option<PathBuf> {
-        if self.isolated { return None; }
+        if self.isolated {
+            return None;
+        }
         let candidates = if cfg!(target_os = "macos") {
-            vec![PathBuf::from("/Applications/Doubao.app"), PathBuf::from("/Applications/豆包.app"), self.home.join("Applications/Doubao.app")]
+            vec![
+                PathBuf::from("/Applications/Doubao.app"),
+                PathBuf::from("/Applications/豆包.app"),
+                self.home.join("Applications/Doubao.app"),
+            ]
         } else {
-            vec![PathBuf::from("D:/Program Files/Doubao/Doubao.exe"), PathBuf::from("C:/Program Files/Doubao/Doubao.exe"), self.home.join("AppData/Local/Doubao/Application/Doubao.exe")]
+            vec![
+                PathBuf::from("D:/Program Files/Doubao/Doubao.exe"),
+                PathBuf::from("C:/Program Files/Doubao/Doubao.exe"),
+                self.home
+                    .join("AppData/Local/Doubao/Application/Doubao.exe"),
+            ]
         };
         candidates.into_iter().find(|p| p.exists())
     }

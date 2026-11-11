@@ -50,7 +50,9 @@ impl Target {
         }
     }
 
-    pub fn is_doubao(self) -> bool { matches!(self,Self::DoubaoDesktop) }
+    pub fn is_doubao(self) -> bool {
+        matches!(self, Self::DoubaoDesktop)
+    }
     pub fn is_trae(self) -> bool {
         matches!(self, Self::TraeDesktop)
     }

@@ -1,70 +1,174 @@
 use super::*;
-const ORIGIN:&str="https://www.doubao.com";
-const QUOTA:&str="/alice/commerce/sale/subscription/quota/summary/";
-const DETAIL:&str="/alice/ug/campaign/v3/detail/";
-const CLAIM:&str="/alice/ug/campaign/landing/checkin";
-const SCENE:&str="pc_incentive_task_mvp_v3";
+const ORIGIN: &str = "https://www.doubao.com";
+const QUOTA: &str = "/alice/commerce/sale/subscription/quota/summary/";
+const DETAIL: &str = "/alice/ug/campaign/v3/detail/";
+const CLAIM: &str = "/alice/ug/campaign/landing/checkin";
+const SCENE: &str = "pc_incentive_task_mvp_v3";
 const QUERY:&str="version_code=20800&language=zh&device_platform=web&aid=497858&real_aid=497858&pc_version=2.33.5&samantha_web=1&web_platform=desktop&use-olympus-account=1";
-pub(super) fn auth_error(e:&str)->bool { e=="豆包登录已过期，请重新登录并识别本机账号" }
-fn code_error(code:i64)->String {match code {
-    710012001=>"豆包登录已过期，请重新登录并识别本机账号".into(),
-    710022004=>"豆包需要验证，请在官方客户端完成验证后重试".into(),
-    710010702|712010702=>"豆包暂未接受此领取请求，请在官方客户端确认活动资格或完成今日签到".into(),
-    _=>format!("豆包接口暂不可用（状态码 {code}）")
-}}
-async fn request(id:&Identity,path:&str,body:Value,timeout:Option<u64>)->Result<Value,String>{
-    let client=reqwest::Client::builder().timeout(Duration::from_secs(timeout.unwrap_or(20).clamp(5,60))).redirect(reqwest::redirect::Policy::none()).build().map_err(|_|"无法创建豆包连接")?;
-    let url=if path==QUOTA{format!("{ORIGIN}{path}")}else{format!("{ORIGIN}{path}?{QUERY}")};
-    let response=client.post(url).header("Cookie",format!("sessionid={}; sessionid_ss={}",id.session,id.session)).header("Origin",ORIGIN).header("Referer","https://www.doubao.com/pc/agent-explore").header("User-Agent","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 SamanthaDoubao/2.33.5").json(&body).send().await.map_err(|_|"豆包请求超时或连接失败，请稍后查询状态")?;
-    if response.status().as_u16()==401{return Err(code_error(710012001));}
-    if !response.status().is_success(){return Err(format!("豆包服务暂不可用（HTTP {}）",response.status().as_u16()));}
-    if response.content_length().is_some_and(|v|v>2*1024*1024){return Err("豆包响应超过读取上限".into());}
-    let bytes=response.bytes().await.map_err(|_|"无法读取豆包响应")?;if bytes.len()>2*1024*1024{return Err("豆包响应超过读取上限".into());}
-    let value:Value=serde_json::from_slice(&bytes).map_err(|_|"豆包响应格式暂不受支持")?;
-    let code=value["code"].as_i64().or_else(||value["code"].as_str()?.parse().ok()).ok_or("豆包响应缺少业务状态")?;
-    if code!=0{return Err(code_error(code));}Ok(value)
+pub(super) fn auth_error(e: &str) -> bool {
+    e == "豆包登录已过期，请重新登录并识别本机账号"
 }
-fn timestamp(v:&Value)->Option<i64>{let n=v.as_i64().or_else(||v.as_str()?.parse().ok())?;if n<=0{None}else{Some(if n>1000000000000{n/1000}else{n})}}
-pub(super) fn parse_credits(value:&Value)->Result<Value,String>{
-    let data=value["data"].as_object().ok_or("豆包额度响应格式暂不受支持")?;
-    if !data.contains_key("window_limit_section")&&!data.contains_key("current_subscription")&&!data.contains_key("enterprise_window_limit_section"){return Err("豆包尚未返回可识别的额度结构".into());}
-    let mut windows=vec![];
-    for section in ["window_limit_section","enterprise_window_limit_section"] {
-        for group in value["data"][section]["window_limit_groups"].as_array().into_iter().flatten(){
-            let group_name=group["feature_group_name"].as_str().unwrap_or("额度");
-            for w in group["window_limits"].as_array().into_iter().flatten(){
-                let used=w["used_percent"].as_f64().filter(|v|v.is_finite()&&*v>=0.0&&*v<=100.0);
-                let kind=w["window_type"].as_i64().unwrap_or(0);
-                let label=match kind{1=>"当前时段",2=>"近 7 天",_=>"额度窗口"};
+fn code_error(code: i64) -> String {
+    match code {
+        710012001 => "豆包登录已过期，请重新登录并识别本机账号".into(),
+        710022004 => "豆包需要验证，请在官方客户端完成验证后重试".into(),
+        710010702 | 712010702 => {
+            "豆包暂未接受此领取请求，请在官方客户端确认活动资格或完成今日签到".into()
+        }
+        _ => format!("豆包接口暂不可用（状态码 {code}）"),
+    }
+}
+async fn request(
+    id: &Identity,
+    path: &str,
+    body: Value,
+    timeout: Option<u64>,
+) -> Result<Value, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(timeout.unwrap_or(20).clamp(5, 60)))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| "无法创建豆包连接")?;
+    let url = if path == QUOTA {
+        format!("{ORIGIN}{path}")
+    } else {
+        format!("{ORIGIN}{path}?{QUERY}")
+    };
+    let response=client.post(url).header("Cookie",format!("sessionid={}; sessionid_ss={}",id.session,id.session)).header("Origin",ORIGIN).header("Referer","https://www.doubao.com/pc/agent-explore").header("User-Agent","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 SamanthaDoubao/2.33.5").json(&body).send().await.map_err(|_|"豆包请求超时或连接失败，请稍后查询状态")?;
+    if response.status().as_u16() == 401 {
+        return Err(code_error(710012001));
+    }
+    if !response.status().is_success() {
+        return Err(format!(
+            "豆包服务暂不可用（HTTP {}）",
+            response.status().as_u16()
+        ));
+    }
+    if response
+        .content_length()
+        .is_some_and(|v| v > 2 * 1024 * 1024)
+    {
+        return Err("豆包响应超过读取上限".into());
+    }
+    let bytes = response.bytes().await.map_err(|_| "无法读取豆包响应")?;
+    if bytes.len() > 2 * 1024 * 1024 {
+        return Err("豆包响应超过读取上限".into());
+    }
+    let value: Value = serde_json::from_slice(&bytes).map_err(|_| "豆包响应格式暂不受支持")?;
+    let code = value["code"]
+        .as_i64()
+        .or_else(|| value["code"].as_str()?.parse().ok())
+        .ok_or("豆包响应缺少业务状态")?;
+    if code != 0 {
+        return Err(code_error(code));
+    }
+    Ok(value)
+}
+fn timestamp(v: &Value) -> Option<i64> {
+    let n = v.as_i64().or_else(|| v.as_str()?.parse().ok())?;
+    if n <= 0 {
+        None
+    } else {
+        Some(if n > 1000000000000 { n / 1000 } else { n })
+    }
+}
+pub(super) fn parse_credits(value: &Value) -> Result<Value, String> {
+    let data = value["data"]
+        .as_object()
+        .ok_or("豆包额度响应格式暂不受支持")?;
+    if !data.contains_key("window_limit_section")
+        && !data.contains_key("current_subscription")
+        && !data.contains_key("enterprise_window_limit_section")
+    {
+        return Err("豆包尚未返回可识别的额度结构".into());
+    }
+    let mut windows = vec![];
+    for section in ["window_limit_section", "enterprise_window_limit_section"] {
+        for group in value["data"][section]["window_limit_groups"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            let group_name = group["feature_group_name"].as_str().unwrap_or("额度");
+            for w in group["window_limits"].as_array().into_iter().flatten() {
+                let used = w["used_percent"]
+                    .as_f64()
+                    .filter(|v| v.is_finite() && *v >= 0.0 && *v <= 100.0);
+                let kind = w["window_type"].as_i64().unwrap_or(0);
+                let label = match kind {
+                    1 => "当前时段",
+                    2 => "近 7 天",
+                    _ => "额度窗口",
+                };
                 windows.push(json!({"key":format!("{section}:{group_name}:{kind}"),"name":format!("{group_name} · {label}"),"usedPercent":used,"remainingPercent":used.map(|v|100.0-v),"exhausted":w["usage_exhausted"].as_bool().unwrap_or(false)||used==Some(100.0),"resetsAt":timestamp(&w["end_time"])}));
             }
         }
     }
-    let remaining=windows.iter().filter_map(|w|w["remainingPercent"].as_f64()).reduce(f64::min);
-    let subscription=&value["data"]["current_subscription"];
-    Ok(json!({"available":remaining.is_some(),"unit":"percent","remaining":remaining,"windows":windows,"planName":subscription["display"]["short_name"].as_str().or_else(||subscription["display"]["product_name"].as_str()),"planActive":value["data"]["member_info"]["hasActiveSubscription"].as_bool().unwrap_or(false),"planExpiresAt":timestamp(&subscription["end_time"]),"checkedAt":now()}))
+    let remaining = windows
+        .iter()
+        .filter_map(|w| w["remainingPercent"].as_f64())
+        .reduce(f64::min);
+    let subscription = &value["data"]["current_subscription"];
+    Ok(
+        json!({"available":remaining.is_some(),"unit":"percent","remaining":remaining,"windows":windows,"planName":subscription["display"]["short_name"].as_str().or_else(||subscription["display"]["product_name"].as_str()),"planActive":value["data"]["member_info"]["hasActiveSubscription"].as_bool().unwrap_or(false),"planExpiresAt":timestamp(&subscription["end_time"]),"checkedAt":now()}),
+    )
 }
-pub(super) async fn credits(id:&Identity,timeout:Option<u64>)->Result<Value,String>{parse_credits(&request(id,QUOTA,json!({}),timeout).await?)}
-pub(super) fn parse_detail(v:&Value)->Result<Value,String>{
-    let tasks=v["data"]["tasks"].as_array().ok_or("豆包签到响应缺少任务状态")?;
-    let task=tasks.iter().find(|t|t["task_kind"]=="daily_signin");
-    let Some(task)=task else{return Ok(json!({"ok":false,"state":"closed","message":"该账号暂无每日签到活动","credits":null,"checkedAt":now()}));};
-    let daily=&task["daily_checkin"];
-    let checked=daily["checked_in_today"].as_bool().ok_or("豆包未明确返回今日签到状态")?;
-    Ok(json!({"ok":checked,"state":if checked{"already"}else{"available"},"message":if checked{"今日已领取"}else{"今日可领取"},"credits":null,"reward":daily["reward"]["reward_amount"].as_f64(),"continuousDays":daily["continuous_days"].as_i64(),"lastCheckinDate":daily["last_checkin_date"].as_str(),"earnedTotal":v["data"]["progress"]["total_amount"].as_f64(),"checkedAt":now()}))
+pub(super) async fn credits(id: &Identity, timeout: Option<u64>) -> Result<Value, String> {
+    parse_credits(&request(id, QUOTA, json!({}), timeout).await?)
 }
-pub(super) async fn checkin(id:&Identity,submit:bool,timeout:Option<u64>)->Result<Value,String>{
-    let before=parse_detail(&request(id,DETAIL,json!({"campaign_group_code":SCENE}),timeout).await?)?;
-    if !submit||before["state"]!="available"{return Ok(before);}
+pub(super) fn parse_detail(v: &Value) -> Result<Value, String> {
+    let tasks = v["data"]["tasks"]
+        .as_array()
+        .ok_or("豆包签到响应缺少任务状态")?;
+    let task = tasks.iter().find(|t| t["task_kind"] == "daily_signin");
+    let Some(task) = task else {
+        return Ok(
+            json!({"ok":false,"state":"closed","message":"该账号暂无每日签到活动","credits":null,"checkedAt":now()}),
+        );
+    };
+    let daily = &task["daily_checkin"];
+    let checked = daily["checked_in_today"]
+        .as_bool()
+        .ok_or("豆包未明确返回今日签到状态")?;
+    Ok(
+        json!({"ok":checked,"state":if checked{"already"}else{"available"},"message":if checked{"今日已领取"}else{"今日可领取"},"credits":null,"reward":daily["reward"]["reward_amount"].as_f64(),"continuousDays":daily["continuous_days"].as_i64(),"lastCheckinDate":daily["last_checkin_date"].as_str(),"earnedTotal":v["data"]["progress"]["total_amount"].as_f64(),"checkedAt":now()}),
+    )
+}
+pub(super) async fn checkin(
+    id: &Identity,
+    submit: bool,
+    timeout: Option<u64>,
+) -> Result<Value, String> {
+    let before =
+        parse_detail(&request(id, DETAIL, json!({"campaign_group_code":SCENE}), timeout).await?)?;
+    if !submit || before["state"] != "available" {
+        return Ok(before);
+    }
     // One submission only. Even a lost response is followed by a read, never another claim.
-    let claimed=request(id,CLAIM,json!({"scene":SCENE}),timeout).await;
-    let after=request(id,DETAIL,json!({"campaign_group_code":SCENE}),timeout).await.and_then(|v|parse_detail(&v));
-    if let Ok(mut after)=after {
-        if after["state"]=="already"{
-            let idempotent=claimed.as_ref().is_ok_and(|v|v["data"]["idempotent"]==true);
-            after["state"]=json!(if idempotent{"already"}else{"claimed"});after["message"]=json!(if idempotent{"今日已领取"}else{"今日签到已确认"});
-            after["credits"]=claimed.as_ref().ok().and_then(|v|v["data"]["reward_amount"].as_f64()).map_or(Value::Null,|v|json!(v));return Ok(after);
+    let claimed = request(id, CLAIM, json!({"scene":SCENE}), timeout).await;
+    let after = request(id, DETAIL, json!({"campaign_group_code":SCENE}), timeout)
+        .await
+        .and_then(|v| parse_detail(&v));
+    if let Ok(mut after) = after {
+        if after["state"] == "already" {
+            let idempotent = claimed
+                .as_ref()
+                .is_ok_and(|v| v["data"]["idempotent"] == true);
+            after["state"] = json!(if idempotent { "already" } else { "claimed" });
+            after["message"] = json!(if idempotent {
+                "今日已领取"
+            } else {
+                "今日签到已确认"
+            });
+            after["credits"] = claimed
+                .as_ref()
+                .ok()
+                .and_then(|v| v["data"]["reward_amount"].as_f64())
+                .map_or(Value::Null, |v| json!(v));
+            return Ok(after);
         }
     }
-    Ok(json!({"ok":false,"state":"unconfirmed","message":claimed.err().unwrap_or_else(||"领取回执尚未确认，请稍后刷新签到状态；本次不会重复提交".into()),"credits":null,"checkedAt":now()}))
+    Ok(
+        json!({"ok":false,"state":"unconfirmed","message":claimed.err().unwrap_or_else(||"领取回执尚未确认，请稍后刷新签到状态；本次不会重复提交".into()),"credits":null,"checkedAt":now()}),
+    )
 }
