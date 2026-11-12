@@ -5,12 +5,18 @@ const DETAIL: &str = "/alice/ug/campaign/v3/detail/";
 const CLAIM: &str = "/alice/ug/campaign/landing/checkin";
 const SCENE: &str = "pc_incentive_task_mvp_v3";
 const QUERY:&str="version_code=20800&language=zh&device_platform=web&aid=497858&real_aid=497858&pc_version=2.33.5&samantha_web=1&web_platform=desktop&use-olympus-account=1";
+/// 只有官方业务码 710012001 才能证明已保存的登录态失效。
+/// HTTP 401 也可能来自网关、代理或临时拒绝，不能据此要求用户重新登录。
+pub(super) const LOGIN_EXPIRED: &str = "豆包登录态已失效，请在官方客户端重新登录并识别本机账号";
+pub(super) const SESSION_UPDATED: &str = "豆包登录态已在官方客户端更新，请重新识别本机账号后再查询";
+pub(super) const HTTP_UNAUTHORIZED: &str =
+    "豆包拒绝本次查询（HTTP 401），请稍后重试；持续失败请重新登录并识别本机账号";
 pub(super) fn auth_error(e: &str) -> bool {
-    e == "豆包登录已过期，请重新登录并识别本机账号"
+    e == LOGIN_EXPIRED
 }
-fn code_error(code: i64) -> String {
+pub(super) fn code_error(code: i64) -> String {
     match code {
-        710012001 => "豆包登录已过期，请重新登录并识别本机账号".into(),
+        710012001 => LOGIN_EXPIRED.into(),
         710022004 => "豆包需要验证，请在官方客户端完成验证后重试".into(),
         710010702 | 712010702 => {
             "豆包暂未接受此领取请求，请在官方客户端确认活动资格或完成今日签到".into()
@@ -36,7 +42,7 @@ async fn request(
     };
     let response=client.post(url).header("Cookie",format!("sessionid={}; sessionid_ss={}",id.session,id.session)).header("Origin",ORIGIN).header("Referer","https://www.doubao.com/pc/agent-explore").header("User-Agent","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 SamanthaDoubao/2.33.5").json(&body).send().await.map_err(|_|"豆包请求超时或连接失败，请稍后查询状态")?;
     if response.status().as_u16() == 401 {
-        return Err(code_error(710012001));
+        return Err(HTTP_UNAUTHORIZED.into());
     }
     if !response.status().is_success() {
         return Err(format!(

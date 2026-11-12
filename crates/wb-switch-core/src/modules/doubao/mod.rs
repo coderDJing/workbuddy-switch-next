@@ -174,6 +174,25 @@ impl Engine {
         }
         Ok(id)
     }
+    /// 客户端重新登录或重启会轮换 `x-tt-multi-sids`，此时账号库里的会话快照
+    /// 已经过期，但用户并没有退出登录。判定时只比对本机当前会话，不联网。
+    fn session_updated(&self, a: &Account) -> bool {
+        let Ok(saved) = self.credential(a) else {
+            return false;
+        };
+        matches!(
+            profile::live(&self.paths.data),
+            Ok(Some(live)) if live.uid == a.uid && live.session != saved.session
+        )
+    }
+    /// 认证失败时给出可执行的提示：会话轮换只需重新识别，不必重新登录。
+    fn auth_failure(&self, a: &Account, e: String) -> String {
+        if network::auth_error(&e) && self.session_updated(a) {
+            network::SESSION_UPDATED.into()
+        } else {
+            e
+        }
+    }
     fn put(
         &self,
         store: &mut Store,
@@ -416,7 +435,7 @@ impl Engine {
                     s.accounts[index].needs_login = true;
                     self.save(&s)?;
                 }
-                Err(e)
+                Err(self.auth_failure(&a, e))
             }
         }
     }
@@ -439,7 +458,9 @@ impl Engine {
             let identity = self.credential(&a)?;
             (a, identity)
         };
-        let mut result = network::checkin(&identity, submit, timeout).await?;
+        let mut result = network::checkin(&identity, submit, timeout)
+            .await
+            .map_err(|e| self.auth_failure(&a, e))?;
         {
             let _g = self.lock()?;
             let mut s = self.load()?;

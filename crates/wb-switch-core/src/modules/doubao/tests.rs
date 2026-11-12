@@ -101,3 +101,42 @@ fn quota_without_windows_is_unknown_and_checkin_requires_explicit_state() {
     )
     .is_err());
 }
+#[test]
+fn only_official_login_code_marks_account_expired() {
+    assert!(network::auth_error(network::LOGIN_EXPIRED));
+    assert_eq!(network::code_error(710012001), network::LOGIN_EXPIRED);
+    // A bare HTTP 401 can be a proxy/gateway rejection; it must not disable switching.
+    assert!(!network::auth_error(network::HTTP_UNAUTHORIZED));
+    assert!(!network::auth_error("豆包服务暂不可用（HTTP 503）"));
+    assert!(!network::auth_error(network::SESSION_UPDATED));
+}
+#[test]
+fn rotated_client_session_gets_a_recapture_hint() {
+    let root = std::env::temp_dir().join(format!("wb-doubao-test-{}", uuid::Uuid::new_v4()));
+    let e = engine(&root);
+    fixture(&e.paths.data, "11111111");
+    e.capture(false, false).unwrap();
+    let account = e.load().unwrap().accounts.into_iter().next().unwrap();
+    assert!(!e.session_updated(&account));
+    assert_eq!(
+        e.auth_failure(&account, network::LOGIN_EXPIRED.into()),
+        network::LOGIN_EXPIRED
+    );
+    let state_path = e.paths.data.join("Local State");
+    let mut state: Value = serde_json::from_slice(&std::fs::read(&state_path).unwrap()).unwrap();
+    state["saman"]["local_storage_app_for_web"]["enterprise"] =
+        json!({"x-tt-multi-sids":"11111111:rotatedsession"})
+            .to_string()
+            .into();
+    write(&state_path, &state).unwrap();
+    assert!(e.session_updated(&account));
+    assert_eq!(
+        e.auth_failure(&account, network::LOGIN_EXPIRED.into()),
+        network::SESSION_UPDATED
+    );
+    assert_eq!(
+        e.auth_failure(&account, network::HTTP_UNAUTHORIZED.into()),
+        network::HTTP_UNAUTHORIZED
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
