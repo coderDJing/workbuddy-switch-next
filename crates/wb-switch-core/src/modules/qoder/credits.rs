@@ -449,11 +449,48 @@ pub async fn claim(ids: &[String], live_target: Option<QoderTarget>) -> Value {
         };
         let result =
             crate::modules::daily_runner::run(mode, candidate.token, candidate.uid, false).await;
+        record_claim(&result, candidate.target, ids);
         if result.get("authInvalid").and_then(Value::as_bool) != Some(true) {
             return result;
         }
     }
     json!({"ok":false,"message":"登录状态可能已失效，请重新登录"})
+}
+
+/// 把 Qoder 领奖结果写进领取记忆。`ids` 为空表示「本机当前登录、尚未加入账号库」，
+/// 用 `live:<target>` 作为键，页面按同一约定聚合。
+fn record_claim(result: &Value, target: QoderTarget, ids: &[String]) {
+    let state = result
+        .get("state")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| {
+            if result.get("ok").and_then(Value::as_bool) == Some(true) {
+                crate::modules::claim_ledger::STATE_CLAIMED
+            } else {
+                crate::modules::claim_ledger::STATE_ERROR
+            }
+        });
+    let message = result.get("message").and_then(Value::as_str).unwrap_or("");
+    let variant = if target.is_global() { "ai" } else { "cn" };
+    let keys: Vec<String> = if ids.is_empty() {
+        let raw = serde_json::to_value(target)
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_string))
+            .unwrap_or_default();
+        vec![format!("live:{raw}")]
+    } else {
+        ids.to_vec()
+    };
+    for key in keys {
+        crate::modules::claim_ledger::record(
+            crate::modules::claim_ledger::PLATFORM_QODER,
+            Some(variant),
+            &key,
+            crate::modules::claim_ledger::SCOPE_REWARDS,
+            crate::modules::claim_ledger::SOURCE_MANUAL,
+            crate::modules::claim_ledger::Outcome::single(state, message),
+        );
+    }
 }
 
 #[cfg(test)]

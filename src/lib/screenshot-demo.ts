@@ -512,6 +512,35 @@ function checkinLogs(): CheckinLog[] {
     : []);
 }
 
+/** 今日领取记忆：第 1 个账号已领完、第 2 个还剩 2 项，其余按「今天还没跑过」展示。 */
+function claimLedger() {
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
+  const eligible = hydratedAccounts().filter((account) => variantSupportsCheckin(accountVariant(account)));
+  const entries = eligible.flatMap((account, index) => {
+    if (index > 1) return [];
+    const partial = index === 1;
+    return [{
+      day,
+      platform: "workbuddy",
+      variant: accountVariant(account),
+      accountId: account.id,
+      scope: "daily",
+      state: partial ? "partial" : "claimed",
+      counts: partial
+        ? { total: 14, claimed: 11, claimable: 2, blocked: 1 }
+        : { total: 14, claimed: 13, claimable: 0, blocked: 1 },
+      tasks: partial
+        ? [{ label: "和 AI 聊天 5 次", state: "partial" }, { label: "夜猫子", state: "partial" }]
+        : [],
+      message: partial ? "成长任务完成 11/14；部分任务尚未完成" : "成长任务完成 13/14",
+      updatedAt: Date.now() - (index + 1) * 600_000,
+      source: "manual",
+      attemptCount: 1,
+    }];
+  });
+  return { day, timezone: "Asia/Shanghai", entries };
+}
+
 function rotateLogs(): RotateLog[] {
   return [
     { ts: atLocalTime(0, 9, 30), action: "skipped", reason: "当前账号仍是积分到期最紧迫的可用账号", from: { id: accounts[0].id, name: accounts[0].nickname }, to: null },
@@ -1018,6 +1047,7 @@ export function screenshotDemoResponse(command: string, args?: Record<string, un
     case "get_token_statistics": return demoTokenStatistics(typeof args?.days === "number" ? args.days : undefined);
     case "get_auto_checkin_config": return checkinConfig();
     case "get_checkin_logs": return { logs: checkinLogs() };
+    case "get_claim_ledger": return claimLedger();
     case "get_travel_status": return travelStatus(String(args?.accountId ?? ""));
     case "get_rate_limits": return rateLimits();
     case "get_rate_limit_hook_status": return rateLimitHookStatus();

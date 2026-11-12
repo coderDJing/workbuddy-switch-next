@@ -1414,6 +1414,34 @@
     "signature": "getCheckinLogs()",
     "parameters": {}
   },
+  "get_claim_ledger": {
+    "method": "GET",
+    "path": "/api/claim/ledger",
+    "input": "{}",
+    "signature": "getClaimLedger()",
+    "parameters": {}
+  },
+  "clear_claim_ledger": {
+    "method": "POST",
+    "path": "/api/claim/ledger/clear",
+    "input": "{ platform, scope }",
+    "signature": "clearClaimLedger(platform?: string, scope?: ClaimScope)",
+    "parameters": {
+      "platform": {
+        "type": "string | undefined",
+        "required": false
+      },
+      "scope": {
+        "type": "ClaimScope | undefined",
+        "required": false,
+        "enum": [
+          "checkin",
+          "daily",
+          "rewards"
+        ]
+      }
+    }
+  },
   "list_notifications": {
     "method": "GET",
     "path": "/api/notifications",

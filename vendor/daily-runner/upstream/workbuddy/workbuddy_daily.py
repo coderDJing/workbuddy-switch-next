@@ -1344,6 +1344,29 @@ def _task_is_ready(row):
     return target > 0 and current >= target
 
 
+def _task_is_claimable(row):
+    """进度已达标但尚未入账；与 `claim_ready_tasks` 的补领判定保持同一口径。
+
+    只看 progress.current >= progress.target，不依赖可能延迟或回滚的 accept_status。
+    """
+    if not isinstance(row, dict) or row.get("locked"):
+        return False
+    status = _task_status_of(row)
+    claimed = row.get("claimed")
+    if claimed is True or str(claimed).strip().lower() == "true":
+        return False
+    if status not in ("accepted", "completed"):
+        return False
+    if status == "completed":
+        return True
+    progress = row.get("progress") or {}
+    if not isinstance(progress, dict):
+        return False
+    current = _as_int(progress.get("current"))
+    target = _as_int(progress.get("target"))
+    return target > 0 and current >= target
+
+
 def _task_row_needs_action(row):
     return (bool(row) and not row.get("locked")
             and not _task_is_done(row) and not _task_is_ready(row))
@@ -4781,22 +4804,7 @@ def claim_ready_tasks(s, log):
     }
 
     def claimable(task):
-        if task.get("locked"):
-            return False
-        status = str(task.get("accept_status") or task.get("status") or "").strip().lower()
-        claimed_value = task.get("claimed")
-        if claimed_value is True or str(claimed_value).lower() == "true":
-            return False
-        if status not in ("accepted", "completed"):
-            return False
-        if status == "completed":
-            return True
-        progress = task.get("progress") or {}
-        current = _as_int(progress.get("current"))
-        target = _as_int(progress.get("target"))
-        if target > 0 and current >= target:
-            return True
-        return False
+        return _task_is_claimable(task)
 
     def collect(headers=None, mp=False):
         try:
@@ -5389,7 +5397,16 @@ def run_account(idx, acc, do_desktop):
         st_all, getattr(s, "_workbuddy_claim_receipts", {}))
     prof2 = (_json_or_empty(s.get(BASE + "/v2/activity/growth/profile", timeout=25,
                                        verify=False)).get("data") or {})
+    # claimable/blocked 给宿主派生「今日已领完」：只有 claimable == 0 才算领完，
+    # 锁定/未达标/未下发的任务不能把按钮永远钉在「未领完」。
+    rest_set = set(rest)
+    claimable_count = sum(
+        1 for task in st_all
+        if _task_code_of(task) in rest_set and _task_is_claimable(task))
     summary.update({"done": done, "total": len(st_all), "rest": rest,
+                    "claimed": done,
+                    "claimable": claimable_count,
+                    "blocked": max(0, len(st_all) - done - claimable_count),
                     "level": prof2.get("level", "?"), "energy": energy})
     # 签到结论：供 WORKBUDDY_NOTIFY 判断本轮是否「正常」
     summary["checked_in"] = bool(_checkin_state.get("checked_in"))

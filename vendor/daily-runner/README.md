@@ -5,7 +5,7 @@ Pinned upstream code:
 - WorkBuddy Daily, L0NE-6/WorkBuddy-Daily commit `db08e48d5bb04bae0079a23a827f1ef34ba3c65b`, MIT; see `upstream/workbuddy/LICENSE` and `NOTICE.md`.
 - Qoder Daily, L0NE-6/Qoder-Daily commit `fa30b6a491906e7a2a730c0af2006bb2c6b6ce7d` (v1.0.19), MIT; see `upstream/qoder/LICENSE` and `NOTICE.md`.
 
-The WorkBuddy snapshot has two integration patches: account loading runs only under `__main__`, and the local daemon lookup uses the session directory matching the active credential file, without an unused websocket import.
+The WorkBuddy snapshot has three integration patches: account loading runs only under `__main__`; the local daemon lookup uses the session directory matching the active credential file, without an unused websocket import; and the final task summary reports `claimable`/`blocked` counts through the extracted `_task_is_claimable` predicate so the host can tell "nothing left to claim" from "tasks are locked or not yet met".
 
 WorkBuddy v3.41 adds task-stage snapshots, delayed sign-in credit recognition, travel/blind-box ordering fixes, and narrower account-restriction detection. Upstream token-concurrency fixes are included in the snapshot; the adapter continues to leave token renewal to the host. The upstream import regression test explicitly loads accounts after checking that host imports never renew credentials.
 

@@ -231,7 +231,10 @@ async fn daily(
             },
         );
         write(engine, "automation-state.json", state)?;
-        let (outcome, message) = match engine.checkin(&account.id, None).await {
+        let (outcome, message) = match engine
+            .checkin(&account.id, None, crate::modules::claim_ledger::SOURCE_AUTO)
+            .await
+        {
             Ok(result) => {
                 let outcome = classify(&result);
                 if let Some(attempt) = state.claims.get_mut(&account.id) {

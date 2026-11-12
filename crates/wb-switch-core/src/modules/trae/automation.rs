@@ -233,7 +233,10 @@ async fn daily(
         write(engine, "automation-state.json", state)?;
         let args: Args = serde_json::from_value(json!({"accountId": account.id}))
             .map_err(|_| "自动签到参数无效".to_string())?;
-        let (outcome, message) = match engine.checkin(&args).await {
+        let (outcome, message) = match engine
+            .checkin(&args, crate::modules::claim_ledger::SOURCE_AUTO)
+            .await
+        {
             Ok(result) => {
                 let outcome = classify(&result);
                 if let Some(attempt) = state.claims.get_mut(&account.id) {

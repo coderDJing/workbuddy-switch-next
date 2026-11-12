@@ -131,11 +131,18 @@ def workbuddy_cn(token, skip_checkin=False):
     if summary.get("rest") == ["凭据失效"]:
         return {"ok": False, "authInvalid": True, "message": "登录状态失效"}
     done, total = summary.get("done", 0), summary.get("total", 0)
-    rest = [str(item)[:80] for item in summary.get("rest", [])[:30]]
+    # claimable / blocked 供宿主判定「今日已领完」：只有 claimable 为 0 才算领完。
+    claimable = int(summary.get("claimable") or 0)
+    blocked = int(summary.get("blocked") or 0)
+    # 转成中文任务名供界面直接展示；未知 code 与缺映射的桩实现都原样返回。
+    task_cn = getattr(daily, "task_cn", lambda code: code)
+    rest = [str(task_cn(str(item)))[:80] for item in summary.get("rest", [])[:30]]
     if not total:
-        return {"ok": False, "message": "未能确认成长任务状态", "remaining": rest}
+        return {"ok": False, "message": "未能确认成长任务状态", "remaining": rest,
+                "done": 0, "total": 0, "claimed": 0, "claimable": 0, "blocked": 0}
     warnings = [str(line)[:240] for line in lines if "⚠" in str(line) or "❌" in str(line)][:10]
-    return {"ok": not rest and not warnings, "message": "成长任务完成 %s/%s%s" % (done, total, "；部分任务尚未完成" if rest else ""), "done": done, "total": total, "remaining": rest, "warnings": warnings}
+    return {"ok": not rest and not warnings, "message": "成长任务完成 %s/%s%s" % (done, total, "；部分任务尚未完成" if rest else ""), "done": done, "total": total, "remaining": rest, "warnings": warnings,
+            "claimed": done, "claimable": claimable, "blocked": blocked}
 
 
 def workbuddy_global(token, uid, skip_checkin=False):
@@ -162,8 +169,12 @@ def workbuddy_global(token, uid, skip_checkin=False):
     keep_ok, _ = daily.keepalive(token, uid)
     web_ok, _ = daily.web_conversation(token, uid)
     message = note if skip_checkin else daily.day_completed_note(note, available, active, checked, claim_ok, report_ok, web_ok)
-    return {"ok": bool((skip_checkin or claim_ok or not (available and active)) and report_ok and keep_ok and web_ok),
-            "message": "%s；活跃上报%s，保活对话%s，网页会话%s" % (message, "成功" if report_ok else "失败", "成功" if keep_ok else "失败", "成功" if web_ok else "失败")}
+    # 国际版没有逐任务列表，按四步动作给粒度：领取 / 活跃上报 / 保活对话 / 网页会话。
+    steps = [bool(skip_checkin or claim_ok or not (available and active)), bool(report_ok), bool(keep_ok), bool(web_ok)]
+    claimed = sum(1 for step in steps if step)
+    return {"ok": all(steps),
+            "message": "%s；活跃上报%s，保活对话%s，网页会话%s" % (message, "成功" if report_ok else "失败", "成功" if keep_ok else "失败", "成功" if web_ok else "失败"),
+            "done": claimed, "total": 4, "claimed": claimed, "claimable": 4 - claimed, "blocked": 0}
 
 
 def qoder(token, uid, global_region, state):
@@ -174,11 +185,26 @@ def qoder(token, uid, global_region, state):
     account = {"access": token, "refresh": "", "uid": uid, "region": region,
                "base": daily.REGIONS[region]["base"]}
     daily_ok, daily_note = daily.do_checkin(account)
+    already = daily_note == "今日已领取"
     # 上游把“今日已领取”返回成失败布尔值，对本工具来说这是成功。
-    if daily_note == "今日已领取":
+    if already:
         daily_ok = True
-    pro_ok, _, pro_note = daily.do_pro_upgrade(account)
-    return {"ok": daily_ok and pro_ok, "message": "%s；%s" % (daily_note, pro_note),
+    if already:
+        state = "already"
+    elif daily_ok:
+        state = "claimed"
+    elif any(marker in daily_note for marker in (
+            "暂未给该账号下发", "官方设备身份", "才刷新")):
+        # 活动未下发 / 缺本地设备身份 / 10:00 前未开窗：今天暂时没有可领的。
+        state = "blocked"
+    else:
+        state = "failed"
+    try:
+        pro_ok, _, pro_note = daily.do_pro_upgrade(account)
+    except Exception:
+        pro_ok, pro_note = True, "Pro 升级检查已跳过"
+    return {"ok": daily_ok and pro_ok, "state": state,
+            "message": "%s；%s" % (daily_note, pro_note),
             "authInvalid": "鉴权失败" in daily_note or "HTTP 401" in daily_note}
 
 

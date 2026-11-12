@@ -52,6 +52,12 @@ def load_functions(*names, **globals_):
                          errno=errno, _TOKEN_STORE_THREAD_LOCK=threading.Lock(), uuid=uuid)
     if "_rebuild_token_file" in names and "_jwt_claims" not in names:
         names = ("_jwt_claims", *names)
+    # 补领判定抽成模块级 `_task_is_claimable` 后，按 ast 抽函数时需要一并装载。
+    if "claim_ready_tasks" in names:
+        extra = ["_task_status_of", "_task_is_claimable"]
+        if "_as_int" not in globals_:
+            extra.append("_as_int")
+        names = tuple(dict.fromkeys((*extra, *names)))
     body = [FUNCTIONS[name] for name in names]
     module = ast.Module(body=body, type_ignores=[])
     exec(compile(module, str(SOURCE_PATH), "exec"), namespace)

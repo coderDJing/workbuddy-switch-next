@@ -77,7 +77,7 @@ import { UpdateCheckTimeoutError, waitForUpdateCheck } from "./update-check";
 
 const DEMO_READ_COMMANDS = new Set([
   "get_doubao_status", "get_minimax_status", "get_trae_status", "get_status", "get_accounts", "get_codebuddy_cli_status", "get_codebuddy_cn_ide_status", "get_codebuddy_ide_status", "get_vscode_ext_status", "get_jetbrains_status", "get_qoder_status", "get_qoder_credits", "list_vscode_sessions", "list_codebuddy_ide_sessions", "list_codebuddy_intl_ide_sessions", "vscode_session_links_preview", "codebuddy_ide_session_links_preview", "codebuddy_intl_ide_session_links_preview", "list_account_sessions", "session_links_preview_cross", "list_session_groups", "get_session_group", "preview_session_group_pair", "get_checkin_status",
-  "get_credit_expiry", "get_credit_statistics", "get_auto_checkin_config",
+  "get_credit_expiry", "get_credit_statistics", "get_auto_checkin_config", "get_claim_ledger",
   "get_token_statistics", "get_qoder_statistics", "get_qoder_credit_statistics",
   "get_qoder_automation", "get_qoder_companion",
   "get_checkin_logs", "get_auto_rotate_config", "rotate_status", "get_rotate_logs",
@@ -990,6 +990,51 @@ export function saveAutoCheckinConfig(config: CheckinConfig): Promise<CheckinCon
 
 export function getCheckinLogs(): Promise<{ logs: CheckinLog[] }> {
   return call("get_checkin_logs");
+}
+
+/**
+ * 今日领取记忆（claim ledger）。服务端按 Asia/Shanghai 切日，只返回当天条目；
+ * 前端按 platform + variant + accountId 派生按钮态与卡片 chip。
+ *
+ * `state` 语义：claimed=已领完（没有可领项）、partial=还剩可领项、
+ * blocked=今日无可领取（未开放/企业版/受限）、error=失败可重试、
+ * unconfirmed=结果未知（不要重复提交）、skipped=本次跳过。
+ */
+export type ClaimState = "claimed" | "partial" | "blocked" | "error" | "unconfirmed" | "skipped";
+export type ClaimScope = "checkin" | "daily" | "rewards";
+export interface ClaimCounts {
+  total: number;
+  claimed: number;
+  claimable: number;
+  blocked: number;
+}
+export interface ClaimLedgerEntry {
+  day: string;
+  platform: string;
+  variant: string | null;
+  accountId: string;
+  scope: ClaimScope;
+  state: ClaimState;
+  counts: ClaimCounts;
+  tasks: { label: string; state: ClaimState }[];
+  message: string;
+  updatedAt: number;
+  source: string;
+  attemptCount: number;
+}
+export interface ClaimLedger {
+  day: string;
+  timezone: string;
+  entries: ClaimLedgerEntry[];
+}
+
+export function getClaimLedger(): Promise<ClaimLedger> {
+  return call("get_claim_ledger");
+}
+
+/** 清除今日领取记忆；不传参数时清空全部平台。 */
+export function clearClaimLedger(platform?: string, scope?: ClaimScope): Promise<{ removed: number }> {
+  return call("clear_claim_ledger", { platform, scope });
 }
 
 export async function getTravelStatus(accountId: string): Promise<TravelStatus> {

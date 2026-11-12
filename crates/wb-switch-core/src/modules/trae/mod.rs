@@ -323,8 +323,8 @@ impl Engine {
         self.cache_credit(&account, &credits)?;
         Ok(credits)
     }
-    async fn checkin(&self, args: &Args) -> Result<Value, String> {
-        let (auth, device) = {
+    async fn checkin(&self, args: &Args, source: &str) -> Result<Value, String> {
+        let (auth, device, account_id, variant) = {
             let _guard = self.lock_for_read()?;
             let store = self.load()?;
             let account = find(&store, args)?.clone();
@@ -335,9 +335,17 @@ impl Engine {
             let auth = protocol::identity(&keys)?;
             let device = checkin::device_id(&keys)
                 .ok_or("账号快照里没有官方注册的设备号，请在 TRAE 客户端登录后重新识别保存")?;
-            (auth, device)
+            (auth, device, account.id.clone(), account.variant)
         };
         let result = checkin::claim(&auth, &device, args.timeout_seconds.unwrap_or(30)).await?;
+        crate::modules::claim_ledger::record(
+            crate::modules::claim_ledger::PLATFORM_TRAE,
+            Some(variant.text()),
+            &account_id,
+            crate::modules::claim_ledger::SCOPE_REWARDS,
+            source,
+            crate::modules::claim_ledger::Outcome::single(result.state, &result.message),
+        );
         Ok(checkin::to_value(&result))
     }
     fn cache_credit(&self, account: &Account, credits: &Value) -> Result<(), String> {
@@ -389,7 +397,10 @@ impl Engine {
             "capture" => self.capture(&args),
             "switch" => self.switch(&args),
             "credits" => self.credit(&args).await,
-            "checkin" => self.checkin(&args).await,
+            "checkin" => {
+                self.checkin(&args, crate::modules::claim_ledger::SOURCE_MANUAL)
+                    .await
+            }
             "open" => {
                 self.processes
                     .launch(&self.paths, args.variant, args.client)?;

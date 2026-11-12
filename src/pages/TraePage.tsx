@@ -2,8 +2,9 @@ import { accountGrid } from "@/lib/account-layout";
 import { useAccountDensity } from "@/lib/account-layout";
 import { ACCOUNT_CARD_CLASS } from "@/lib/account-layout";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Clock3, Columns3, Ellipsis, ExternalLink, FileDown, FileUp, Gift, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Clock3, Columns3, Ellipsis, ExternalLink, FileDown, FileUp, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ClaimActionButton, ClaimStateBadge } from "@/components/claim-action";
 import { TraeBackupDialog } from "@/components/trae-backup-dialog";
 import { DemoAction } from "@/components/demo-action";
 import { TraeMark } from "@/components/product-marks";
@@ -17,6 +18,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import * as api from "@/lib/api";
 import { avatarTone } from "@/lib/avatar-tone";
+import { deriveClaimView, entryFor } from "@/lib/claim-status";
+import { useClaimLedger } from "@/lib/use-claim-ledger";
 import { cn } from "@/lib/utils";
 import { normalizeVariant, variantLabel } from "@/lib/variant";
 import { groupTraeAccounts, orderTraeAccounts, TRAE_SORT_OPTIONS, type TraeAccountGroup, type TraeSortKey } from "@/lib/trae-accounts";
@@ -124,6 +127,14 @@ export default function TraePage() {
   const clients = (status?.clients ?? []).filter(c => c.variant === variant);
   const accounts = (status?.accounts ?? []).filter(a => a.variant === variant);
   const groups = orderTraeAccounts(groupTraeAccounts(accounts), sortKey, clients);
+  /** 今日领取记忆：TRAE 每账号只有一次签到，同一官方设备每天只能签一个账号。 */
+  const { ledger: claimLedger, reload: reloadClaimLedger } = useClaimLedger();
+  const claimView = deriveClaimView(
+    claimLedger,
+    "trae",
+    accounts.map(account => ({ id: account.id, variant: account.variant })),
+    "rewards",
+  );
   const targets: api.TraeClient[] = ["desktop"];
   const current = clients.filter(c => c.configured && !c.activeAccountId);
   const statusFor = (client: api.TraeClient) => clients.find(c => c.client === client);
@@ -190,7 +201,7 @@ export default function TraePage() {
       if (!outcomes.length) { toast.warning("没有可签到的国内版账号"); return; }
       (failed ? toast.warning : toast.success)("签到处理完成", { description: outcomes.join("；"), duration: 10000 });
       await queryCredits(accountsRef.current.filter(item => item.variant === "cn"));
-    } finally { setClaiming(false); }
+    } finally { await reloadClaimLedger(); setClaiming(false); }
   }
   function capture(client: api.TraeClient) {
     void run(`capture:${client}`, async () => { await api.traeAction("capture", { variant, client }); setLoginOpen(false); }, "当前登录账号已添加");
@@ -252,7 +263,7 @@ export default function TraePage() {
           <Select value={sortKey} onValueChange={value => { setSortKey(value as TraeSortKey); try { localStorage.setItem("wb-switch.trae.sort", value); } catch { /* 本次选择有效。 */ } }}><SelectTrigger size="sm" className="w-auto min-w-32 gap-1.5 border-0 bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground" aria-label="账号排序方式"><SlidersHorizontal className="size-4" /><SelectValue /></SelectTrigger><SelectContent>{TRAE_SORT_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select>
           <Button variant="ghost" size="icon" className={cn("size-9 rounded-lg", compact && "bg-accent text-accent-foreground")} onClick={toggleCompact} aria-label={compact ? "切换为宽松模式" : "切换为紧凑模式"} title={compact ? "切换为宽松模式" : "切换为紧凑模式"}>{compact ? <Rows3 /> : <Columns3 />}</Button>
           <DemoAction><Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || accounts.length === 0 || accounts.some(a => creditLoading[a.id])} onClick={() => void queryCredits(accounts)} aria-label="刷新积分" title="查询当前档位所有账号的官方额度"><RefreshCw className={accounts.some(a => creditLoading[a.id]) ? "animate-spin" : undefined} />刷新积分</Button></DemoAction>
-          <DemoAction><Button variant="outline" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || claiming || variant !== "cn" || accounts.length === 0} onClick={() => void claimCheckins()} aria-label="领取积分" title={variant === "cn" ? "领取国内版每日签到积分。同一官方设备每天只能签一个账号" : "国际版签到暂未接入"}>{claiming ? <Loader2 className="animate-spin" /> : <Gift />}领取积分</Button></DemoAction>
+          <ClaimActionButton view={claimView} running={claiming} disabled={busy || variant !== "cn" || accounts.length === 0} hint={variant === "cn" ? "领取国内版每日签到积分。同一官方设备每天只能签一个账号" : "国际版签到暂未接入"} onClaim={() => void claimCheckins()} />
         </div>
       </div>
       {!status && !loadError ? <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />加载账号…</div>
@@ -267,6 +278,7 @@ export default function TraePage() {
             const active = group.accounts.some(a => statusFor(a.client)?.activeAccountId === a.id);
             const groupError = group.accounts.map(a => creditErrors[a.id]).find(Boolean);
             const needsLogin = group.accounts.every(a => a.needsLogin);
+            const claimEntry = group.accounts.map(a => entryFor(claimLedger, "trae", { id: a.id, variant: a.variant }, "rewards")).find(Boolean);
             return <article key={group.key} className={CARD_CLASS}>
               <header className={cn("relative flex items-center gap-2 border-b border-border", compact ? "min-h-[52px] px-3.5 py-1.5" : "min-h-[104px] px-5 py-3", active ? "bg-primary/5" : "bg-muted/30")}>
                 <div className="pointer-events-none absolute inset-0 overflow-hidden"><div className={cn("absolute -right-10 -top-16 rounded-full blur-2xl", compact ? "size-20" : "size-24", active ? "bg-primary/15" : "bg-muted/30")} />{active && <div className="absolute right-5 top-[64%] -translate-y-1/2 rotate-[7deg] opacity-[0.075] saturate-50 grayscale-[10%]"><TraeMark size={compact ? 40 : 56} global={variant === "ai"} /></div>}</div>
@@ -279,7 +291,7 @@ export default function TraePage() {
                   {!api.isDemoMode() && <><DropdownMenuItem onSelect={() => { cancelRename.current = false; setDraft(group.name); setEditing(group.key); }}><Pencil />重命名</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:bg-destructive/5 focus:text-destructive" onSelect={() => setPending({ kind: "delete", group })}><Trash2 />删除账号</DropdownMenuItem></>}
                 </DropdownMenuContent></DropdownMenu>
               </header>
-              <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}><CreditPanel credit={groupCredit(group)} loading={group.accounts.some(a => creditLoading[a.id])} error={groupError} compact={compact} accountName={group.name} />{needsLogin && <div className="mt-3 flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300"><span>登录已过期</span><DemoAction><Button size="sm" variant="ghost" disabled={busy} onClick={() => { setLoginOpen(true); }}>重新登录</Button></DemoAction></div>}</div>
+              <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}><CreditPanel credit={groupCredit(group)} loading={group.accounts.some(a => creditLoading[a.id])} error={groupError} compact={compact} accountName={group.name} />{claimEntry && <div className="mt-2"><ClaimStateBadge entry={claimEntry} /></div>}{needsLogin && <div className="mt-3 flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300"><span>登录已过期</span><DemoAction><Button size="sm" variant="ghost" disabled={busy} onClick={() => { setLoginOpen(true); }}>重新登录</Button></DemoAction></div>}</div>
               {!compact && <footer className="flex items-center gap-2 border-t border-border px-5 py-2.5">{switchControls(group)}{active && <span className="text-xs text-muted-foreground">当前使用</span>}</footer>}
             </article>;
           })}

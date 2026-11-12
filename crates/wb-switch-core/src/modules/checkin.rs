@@ -31,6 +31,10 @@ use std::time::Duration;
 use crate::modules::account::{
     account_display_name, build_auth_headers, envelope_token_error, load_accounts, variant_of,
 };
+use crate::modules::claim_ledger::{
+    self, Outcome as ClaimOutcome, PLATFORM_WORKBUDDY, SCOPE_CHECKIN, SCOPE_DAILY, SOURCE_AUTO,
+    SOURCE_MANUAL, STATE_BLOCKED, STATE_CLAIMED, STATE_ERROR,
+};
 use crate::modules::config::{
     add_checkin_log, http_request, is_route_missing, load_checkin_config, load_checkin_logs,
     now_ms, parse_clock, RunFlagGuard, CHECKIN_API_PREFIX,
@@ -340,24 +344,35 @@ fn decide_from_status(status: &Value) -> StatusDecision {
 
 /// 对单个账号执行完整签到流程：惰性刷新 → 查状态 → 未签到时提交 → 写提交日志。
 pub async fn checkin_account(account: &Value) -> Value {
+    checkin_account_with_source(account, SOURCE_MANUAL).await
+}
+
+/// 同 [`checkin_account`]，但记录触发来源（手动入口 / 自动周期）。
+pub async fn checkin_account_with_source(account: &Value, source: &str) -> Value {
     let Some(_account_guard) = AccountRunGuard::try_acquire(account) else {
         return json!({"result": "error", "error": "该账号正在签到，请稍后再试"});
     };
     // 国际版没有签到接口：自动周期、一键签到与单账号签到的公开入口都在这里汇聚，
     // 统一短路以确保不向任何签到接口发起请求。
     if !variant_of(account).supports_checkin() {
+        record_checkin_ledger(account, "skipped", "该档位没有签到接口", source);
         return json!({"result": "skipped", "reason": "unsupported_variant"});
     }
     let cfg = load_checkin_config();
     let acc = ensure_fresh_token(account.clone(), &cfg).await;
     if let Some(error) = crate::modules::refresh::refresh_failure(&acc) {
+        record_checkin_ledger(&acc, STATE_ERROR, error, source);
         return json!({"result": "error", "error": error});
     }
     let variant = variant_of(&acc).as_str();
     let status = get_checkin_status(&acc).await;
     match decide_from_status(&status) {
-        StatusDecision::Already => return json!({"result": "already"}),
+        StatusDecision::Already => {
+            record_checkin_ledger(&acc, STATE_CLAIMED, "今日已签到", source);
+            return json!({"result": "already"});
+        }
         StatusDecision::Error(error) => {
+            record_checkin_ledger(&acc, STATE_ERROR, &error, source);
             return json!({"result": "error", "error": error});
         }
         StatusDecision::Submit => {}
@@ -376,6 +391,12 @@ pub async fn checkin_account(account: &Value) -> Value {
         // inactive 语义（新增）：既不能记为成功，也不应让统计页计为失败，
         // 因此**不写签到日志**（写了必然被算作 success 或 failed 之一），
         // 也不做任何重试；结果对象显式带 inactive: true 供上层区分。
+        // 领取记忆仍要写：今天这个账号确实没有可签的东西。
+        let message = res
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("官方未开放签到");
+        record_checkin_ledger(&acc, STATE_BLOCKED, message, source);
         return json!({
             "result": "inactive",
             "inactive": true,
@@ -409,7 +430,28 @@ pub async fn checkin_account(account: &Value) -> Value {
         entry_map["error"] = json!(e);
     }
     add_checkin_log(&entry_map);
+    if result == "error" {
+        let message = error.as_deref().unwrap_or("签到失败");
+        record_checkin_ledger(&acc, STATE_ERROR, message, source);
+    } else {
+        record_checkin_ledger(&acc, STATE_CLAIMED, "今日已签到", source);
+    }
     json!({"result": result, "error": error})
+}
+
+/// 把签到结果写进领取记忆（scope = checkin）。缺稳定 id 时跳过，不影响签到本身。
+fn record_checkin_ledger(account: &Value, state: &str, message: &str, source: &str) {
+    let Some(account_id) = account.get("id").and_then(Value::as_str) else {
+        return;
+    };
+    claim_ledger::record(
+        PLATFORM_WORKBUDDY,
+        Some(variant_of(account).as_str()),
+        account_id,
+        SCOPE_CHECKIN,
+        source,
+        ClaimOutcome::single(state, message),
+    );
 }
 
 pub fn date_str(ts_ms: Option<i64>) -> String {
@@ -783,7 +825,7 @@ pub async fn run_checkin_cycle(_mode: CheckinCycleMode) -> Value {
         if idx > 0 {
             tokio::time::sleep(CHECKIN_STAGGER).await;
         }
-        let result = checkin_account(&acc).await;
+        let result = checkin_account_with_source(&acc, SOURCE_AUTO).await;
         let outcome = result.get("result").and_then(Value::as_str);
         if outcome == Some("error") {
             had_errors = true;
@@ -1018,7 +1060,36 @@ pub async fn run_daily_all(variant: WbVariant) -> Value {
         }
         row["rewards"] = result;
     }
+    record_daily_ledger(&rows, variant);
     json!({"accounts": rows})
+}
+
+/// 把每日任务的逐账号结果写进领取记忆（scope = daily）。
+///
+/// 判定交给 [`claim_ledger::daily_outcome`]：以 runner 返回的 `claimable` 为准，
+/// 缺该字段时退化为「有 remaining 就算未领完」。
+fn record_daily_ledger(rows: &[Value], variant: WbVariant) {
+    for row in rows {
+        let Some(account_id) = row.get("accountId").and_then(Value::as_str) else {
+            continue;
+        };
+        let outcome = match row.get("rewards").filter(|value| value.is_object()) {
+            Some(rewards) => claim_ledger::daily_outcome(rewards),
+            None => match row.get("reason").and_then(Value::as_str) {
+                Some("auto_checkin_disabled") => ClaimOutcome::skipped("该账号已关闭自动签到"),
+                Some("outside_checkin_window") => ClaimOutcome::skipped("当前不在签到时间段"),
+                _ => ClaimOutcome::single(STATE_ERROR, "未获取到每日任务结果"),
+            },
+        };
+        claim_ledger::record(
+            PLATFORM_WORKBUDDY,
+            Some(variant.as_str()),
+            account_id,
+            SCOPE_DAILY,
+            SOURCE_MANUAL,
+            outcome,
+        );
+    }
 }
 
 /// 批量签到的逐账号结果行；被排除账号不 poll 操作，因此不会发起任何请求。

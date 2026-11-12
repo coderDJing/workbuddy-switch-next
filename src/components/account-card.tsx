@@ -1,5 +1,5 @@
 import { ACCOUNT_CARD_CLASS } from "@/lib/account-layout";
-import { ArrowRight, CalendarCheck2, CalendarDays, CalendarOff, Check, CircleCheck, Clock3, Coins, Ellipsis, Gauge, History, Info, Loader2, PackageOpen, PlaneTakeoff, RefreshCw, Sparkles, Star, Trash2 } from "lucide-react";
+import { ArrowRight, CalendarCheck2, CalendarDays, CalendarOff, Check, CircleCheck, Clock3, Coins, Ellipsis, Gauge, History, Info, ListChecks, Loader2, PackageOpen, PlaneTakeoff, RefreshCw, Sparkles, Star, Trash2, TriangleAlert } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,8 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CodeBuddyCnIdeMark, CodeBuddyMark, JetbrainsMark, VscodeExtMark, WorkBuddyMark } from "@/components/product-marks";
+import type { ClaimLedgerEntry } from "@/lib/api";
+import { claimChipHint, claimChipLabel } from "@/lib/claim-status";
 import type { ToolId } from "@/lib/supported-tools";
 import { cn } from "@/lib/utils";
 import { accountIdentity, displayName } from "@/lib/account-display";
@@ -85,6 +87,31 @@ function creditResources(credit?: CreditExpiry): CreditResource[] {
 }
 
 const chipClass = "rounded-md px-1.5 py-0 text-[11px] font-medium";
+
+/**
+ * 每日任务领取 chip：与签到 chip 并列但语义独立。
+ * 只表达「今天所有账号的任务里还剩几项能领 / 已领完 / 无可领取」。
+ */
+function dailyClaimChip(entry?: ClaimLedgerEntry) {
+  const label = claimChipLabel(entry);
+  if (!entry || !label) return null;
+  return statusIconChip({
+    icon:
+      entry.state === "error" || entry.state === "unconfirmed" ? (
+        <TriangleAlert className="size-3.5" />
+      ) : (
+        <ListChecks className="size-3.5" />
+      ),
+    label,
+    tooltip: claimChipHint(entry),
+    variant:
+      entry.state === "claimed"
+        ? "success"
+        : entry.state === "error" || entry.state === "unconfirmed"
+          ? "warning"
+          : "secondary",
+  });
+}
 
 /**
  * 纯图标状态 chip：状态由图标 + 色调 + tooltip 共同表达，不再占文案宽度。
@@ -278,6 +305,11 @@ interface Props {
   todayCheckedIn?: boolean;
   /** 单账号参与许可，独立于全局开关；undefined 表示配置尚未加载。 */
   autoCheckinAllowed?: boolean;
+  /**
+   * 今日每日任务领取记忆（undefined=今天还没跑过）。
+   * 与「今日已签到」chip 语义分开：签到成功不代表成长任务都领完了。
+   */
+  dailyClaim?: ClaimLedgerEntry;
   /** 今日旅行状态（undefined=查询中/未知，不渲染标签） */
   travelStatus?: TravelStatus;
   /** 该账号当前受限的模型（来自本机日志台账）；空/缺失=无受限，不渲染图标。 */
@@ -420,7 +452,7 @@ function CreditResourceRow({ resource, compact, placeholderLabel }: { resource?:
   );
 }
 
-export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInfo, onSwitch, todayCheckedIn, autoCheckinAllowed, travelStatus, rateLimits, credit, creditLoading, creditUpdatedAt, creditPriority, mostRecentlyUsed, workbuddyActive, codebuddyCliConfigured, codebuddyCliActive, codebuddyCliBusy, onSwitchCodebuddyCli, codebuddyCliLoading, codebuddyCnIdeAvailable, codebuddyCnIdeActive, codebuddyCnIdeBusy, codebuddyCnIdeLoading, onSwitchCodebuddyCnIde, vscodeExtInstalled, vscodeExtExtensionInstalled, vscodeExtAvailable, vscodeExtActive, vscodeExtBusy, vscodeExtLoading, onSwitchVscodeExt, jetbrainsInstalled, jetbrainsPluginInstalled, jetbrainsAvailable, jetbrainsActive, jetbrainsBusy, jetbrainsLoading, onSwitchJetbrains, enabledTools, featuresDisabled = true, compact = false }: Props) {
+export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInfo, onSwitch, todayCheckedIn, dailyClaim, autoCheckinAllowed, travelStatus, rateLimits, credit, creditLoading, creditUpdatedAt, creditPriority, mostRecentlyUsed, workbuddyActive, codebuddyCliConfigured, codebuddyCliActive, codebuddyCliBusy, onSwitchCodebuddyCli, codebuddyCliLoading, codebuddyCnIdeAvailable, codebuddyCnIdeActive, codebuddyCnIdeBusy, codebuddyCnIdeLoading, onSwitchCodebuddyCnIde, vscodeExtInstalled, vscodeExtExtensionInstalled, vscodeExtAvailable, vscodeExtActive, vscodeExtBusy, vscodeExtLoading, onSwitchVscodeExt, jetbrainsInstalled, jetbrainsPluginInstalled, jetbrainsAvailable, jetbrainsActive, jetbrainsBusy, jetbrainsLoading, onSwitchJetbrains, enabledTools, featuresDisabled = true, compact = false }: Props) {
   /** 支持工具开关：关闭的端整块不渲染（缺省视为开启）。 */
   const toolEnabled = (id: ToolId) => enabledTools?.[id] !== false;
   const [resourcesOpen, setResourcesOpen] = useState(false);
@@ -476,6 +508,7 @@ export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInf
           tooltip: todayCheckedIn ? "今日已签到" : "今日未签到",
           variant: todayCheckedIn ? "success" : "secondary",
         })}
+      {dailyClaimChip(dailyClaim)}
       {travelChip(travelStatus)}
       {rateLimitChip(rateLimits, now)}
       {(account.needsRelogin || expired) && <Badge variant="warning" className={chipClass}>{account.needsRelogin ? "需重新登录" : "Token 已过期"}</Badge>}

@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use tauri::Emitter;
 use wb_switch_core::modules::{
-    account, auth_file, checkin, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
+    account, auth_file, checkin, claim_ledger, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
     codebuddy_ide_session, codebuddy_ide_session_sync, credit_usage, credits, error_log,
     export_import, jetbrains, limits, notifications, oauth, process, qoder, rate_limit_events,
     rate_limit_hook, refresh, rotate, session, session_groups, switch, token_stats, travel, update,
@@ -1426,6 +1426,24 @@ pub fn save_auto_checkin_config(config: Value) -> Result<Value, String> {
 #[tauri::command]
 pub fn get_checkin_logs() -> Value {
     json!({ "logs": checkin::load_checkin_logs_with_variant() })
+}
+
+/// GET /api/claim/ledger —— 今日领取记忆（只返回当天，按 Asia/Shanghai 切日）。
+#[tauri::command]
+pub fn get_claim_ledger() -> Value {
+    claim_ledger::snapshot()
+}
+
+/// POST /api/claim/ledger/clear —— 清除今日领取记忆（设置页「重新核对」入口）。
+#[tauri::command]
+pub fn clear_claim_ledger(
+    platform: Option<String>,
+    scope: Option<String>,
+) -> Result<Value, String> {
+    // 与 HTTP 路由保持同一响应结构：前端两种通道都读 `result.removed`。
+    claim_ledger::clear(platform.as_deref(), scope.as_deref())
+        .map(|removed| json!({ "removed": removed }))
+        .map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import { accountGrid } from "@/lib/account-layout";
 import { ACCOUNT_CARD_CLASS } from "@/lib/account-layout";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Clock3, Columns3, Ellipsis, FileDown, FileUp, Gift, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Clock3, Columns3, Ellipsis, FileDown, FileUp, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,9 @@ import { cn } from "@/lib/utils";
 import { avatarTone } from "@/lib/avatar-tone";
 import { normalizeVariant, variantLabel } from "@/lib/variant";
 import { groupQoderAccounts, orderQoderAccounts, QODER_SORT_OPTIONS, type QoderAccountGroup, type QoderSortKey } from "@/lib/qoder-accounts";
+import { ClaimActionButton, ClaimStateBadge } from "@/components/claim-action";
+import { deriveClaimView, entryFor } from "@/lib/claim-status";
+import { useClaimLedger } from "@/lib/use-claim-ledger";
 import { qoderTargets, useQoderView } from "@/stores/qoder-view";
 import { useQoderStatus } from "@/stores/qoder-status";
 
@@ -196,10 +199,12 @@ interface CardProps {
   refreshVersion: number;
   onCredit: CreditObserver;
   onLoading: LoadingObserver;
+  /** 今日领取记忆（该身份下任一端点的最近一次结果）。 */
+  claimEntry?: api.ClaimLedgerEntry;
 }
 
 /** Qoder 账号卡片：外观与 WorkBuddy / CodeBuddy 账号卡片一致（圆角卡片、header 标识、footer 操作）。 */
-function QoderAccountCard({ group, targets, targetStatus, compact, busy, busyKey, editing, draft, onDraftChange, onStartRename, onCommitRename, onCancelRename, onSwitch, onDelete, refreshVersion, onCredit, onLoading }: CardProps) {
+function QoderAccountCard({ group, targets, targetStatus, compact, busy, busyKey, editing, draft, onDraftChange, onStartRename, onCommitRename, onCancelRename, onSwitch, onDelete, refreshVersion, onCredit, onLoading, claimEntry }: CardProps) {
   const [infoOpen, setInfoOpen] = useState(false);
   const [localRefresh, setLocalRefresh] = useState(0);
   const activeFor = (target: QoderTarget) => group.bundles.some((bundle) => bundle.target === target && (bundle.id === targetStatus(target)?.currentId || (bundle.identityKey && bundle.identityKey === targetStatus(target)?.currentIdentityKey)));
@@ -275,6 +280,7 @@ function QoderAccountCard({ group, targets, targetStatus, compact, busy, busyKey
       </header>
       <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}>
         <QoderCreditPanel bundleIds={group.bundles.map((bundle) => bundle.id)} liveTarget={liveTarget} compact={compact} creditId={group.key} refreshVersion={refreshVersion + localRefresh} accountName={group.label} onCredit={onCredit} onLoading={onLoading} />
+        {claimEntry && <div className="mt-2"><ClaimStateBadge entry={claimEntry} /></div>}
       </div>
       {!compact && <footer className="flex items-center gap-2 border-t border-border px-5 py-2.5">{switchControls}{active && <span className="text-xs text-muted-foreground">当前使用</span>}</footer>}
       <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
@@ -451,6 +457,17 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
   const accountCount = groups.length + currentLogins.length;
   const busy = busyKey !== null;
   const refreshingCredits = [...groups.map((group) => group.key), ...currentLogins.map((s) => `live:${s.target}`)].some((key) => creditLoading[key]);
+  /** 今日领取记忆：Qoder 的条目按 bundle id 落盘，未加入账号库的本机登录用 live:<target>。 */
+  const { ledger: claimLedger, reload: reloadClaimLedger } = useClaimLedger();
+  const claimView = deriveClaimView(
+    claimLedger,
+    "qoder",
+    [
+      ...groups.flatMap((group) => group.bundles.map((bundle) => ({ id: bundle.id, variant }))),
+      ...currentLogins.map((state) => ({ id: `live:${state.target}`, variant })),
+    ],
+    "rewards",
+  );
 
   async function claimRewards() {
     if (claimingRewards) return;
@@ -481,6 +498,7 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
     } finally {
       toast.dismiss(progressToast);
       setCreditVersion((value) => value + 1);
+      await reloadClaimLedger();
       setClaimingRewards(false);
     }
   }
@@ -553,7 +571,7 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
             </Select>
             {onToggleCompact && <Button variant="ghost" size="icon" className={cn("size-9 rounded-lg", compact && "bg-accent text-accent-foreground")} onClick={onToggleCompact} aria-label={compact ? "切换为宽松模式" : "切换为紧凑模式"} title={compact ? "切换为宽松模式" : "切换为紧凑模式"}>{compact ? <Rows3 /> : <Columns3 />}</Button>}
             <DemoAction><Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" disabled={refreshingCredits || accountCount === 0} onClick={() => setCreditVersion((value) => value + 1)} aria-label="刷新积分" title="查询当前档位所有账号的积分"><RefreshCw className={refreshingCredits ? "animate-spin" : undefined} />刷新积分</Button></DemoAction>
-            <DemoAction><Button variant="outline" size="sm" className="h-9 rounded-lg text-xs" disabled={claimingRewards || accountCount === 0} onClick={() => void claimRewards()} aria-label="领取积分" title="领取可用奖励，完成后刷新积分">{claimingRewards ? <Loader2 className="animate-spin" /> : <Gift />}领取积分</Button></DemoAction>
+            <ClaimActionButton view={claimView} running={claimingRewards} disabled={accountCount === 0} hint="领取可用奖励，完成后刷新积分" onClaim={() => void claimRewards()} />
           </div>
         </div>
         {(!autoReady || (!status && !loadError)) ? (
@@ -596,6 +614,7 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
                 refreshVersion={creditVersion}
                 onCredit={onCredit}
                 onLoading={onLoading}
+                claimEntry={group.bundles.map((bundle) => entryFor(claimLedger, "qoder", { id: bundle.id, variant }, "rewards")).find(Boolean)}
               />
             ))}
           </div>

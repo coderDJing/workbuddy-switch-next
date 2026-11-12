@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Save,
   Shield,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -388,10 +389,27 @@ function AutoCheckinCard() {
   const [logsError, setLogsError] = useState("");
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [clearingClaimLedger, setClearingClaimLedger] = useState(false);
 
   useEffect(() => {
     void loadConfig();
   }, []);
+
+  /** 清除今日领取记忆：只影响「已领完/还剩 N」的显示，不改动任何账号状态。 */
+  async function clearClaimLedger() {
+    if (clearingClaimLedger) return;
+    setClearingClaimLedger(true);
+    try {
+      const result = await api.clearClaimLedger();
+      toast.success("已清除今日领取记录", {
+        description: result.removed > 0 ? `共清除 ${result.removed} 条；下次领取会重新生成。` : "今天还没有领取记录。",
+      });
+    } catch (e) {
+      toast.error("清除失败", { description: api.asError(e) });
+    } finally {
+      setClearingClaimLedger(false);
+    }
+  }
 
   // 账号列表来自全局 store：为空时补拉一次（只取状态与账号，不拉积分）。
   useEffect(() => {
@@ -716,6 +734,29 @@ function AutoCheckinCard() {
                     onChange={(text) => onNumberChange("lazy_refresh_hours", text)}
                     onCommit={(raw) => onNumberCommit("lazy_refresh_hours", raw)}
                   />
+                </div>
+              </AccordionSettingsRow>
+
+              <AccordionSettingsRow
+                value="claim-ledger"
+                label="今日领取记录"
+                description="账号页的「领取积分」按钮据此显示已领完。记录按北京时间每天 0 点自动换新，只保留最近 30 天汇总与 7 天任务明细。"
+              >
+                <div className={cn(INSET_PANEL, "flex flex-wrap items-center justify-between gap-3")}>
+                  <p className="min-w-0 flex-1 text-xs leading-5 text-muted-foreground">
+                    在官方客户端或另一台设备领过、页面仍显示「今日已领完」时，清除记录后按钮会回到普通领取态。
+                  </p>
+                  <DemoAction>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={clearingClaimLedger}
+                      onClick={() => void clearClaimLedger()}
+                    >
+                      {clearingClaimLedger ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                      清除今日记录
+                    </Button>
+                  </DemoAction>
                 </div>
               </AccordionSettingsRow>
 

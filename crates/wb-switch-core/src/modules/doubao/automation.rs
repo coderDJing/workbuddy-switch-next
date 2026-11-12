@@ -176,7 +176,9 @@ pub(super) async fn run(e: &Engine) -> Result<Value, String> {
                 },
             );
             write(&e.paths.store.join("automation-state.json"), &s)?;
-            let result = e.checkin(&a.id, true, None).await;
+            let result = e
+                .checkin(&a.id, true, None, crate::modules::claim_ledger::SOURCE_AUTO)
+                .await;
             let outcome = match &result {
                 Ok(v) => v["state"].as_str().unwrap_or("failed"),
                 Err(_) => "failed",

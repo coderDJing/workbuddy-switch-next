@@ -109,6 +109,8 @@ def claim_namespace(sleeps=None):
     return load_functions(
         "_api_code_ok",
         "_as_int",
+        "_task_status_of",
+        "_task_is_claimable",
         "_claim_readback",
         "_claim_response_ok",
         "claim",
@@ -898,6 +900,8 @@ class TaskSnapshotTests(unittest.TestCase):
         module = load_functions(
             "_api_code_ok",
             "_as_int",
+            "_task_status_of",
+            "_task_is_claimable",
             "_claim_response_ok",
             "claim",
             "_mp_claim",

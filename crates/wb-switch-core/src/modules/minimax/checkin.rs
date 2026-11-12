@@ -144,7 +144,12 @@ impl Engine {
         .await
         .map_err(|_| "查询签到状态超时".to_string())?
     }
-    pub(super) async fn checkin(&self, id: &str, timeout: Option<u64>) -> Result<Value, String> {
+    pub(super) async fn checkin(
+        &self,
+        id: &str,
+        timeout: Option<u64>,
+        source: &str,
+    ) -> Result<Value, String> {
         let _claim = StateLock::try_at(
             &self
                 .paths
@@ -152,10 +157,12 @@ impl Engine {
                 .join(format!("claim-{}.lock", short_hash(id))),
         )
         .map_err(|_| "该账号正在领取，请稍后查询结果")?;
+        let mut region: Option<Region> = None;
         let result = tokio::time::timeout(
             Duration::from_secs(timeout.unwrap_or(60).clamp(5, 600)),
             async {
                 let (account, credential) = self.usable_credential(id).await?;
+                region = Some(account.region);
                 claim_with(|post| request(account.region, &credential.access_token, post)).await
             },
         )
@@ -183,6 +190,19 @@ impl Engine {
                 Err(_) => value["warning"] = json!("领取已确认，余额刷新失败，请稍后刷新积分"),
             }
         }
+        let state = value
+            .get("state")
+            .and_then(Value::as_str)
+            .unwrap_or("failed");
+        let message = value.get("message").and_then(Value::as_str).unwrap_or("");
+        crate::modules::claim_ledger::record(
+            crate::modules::claim_ledger::PLATFORM_MINIMAX,
+            region.map(Region::text),
+            id,
+            crate::modules::claim_ledger::SCOPE_REWARDS,
+            source,
+            crate::modules::claim_ledger::Outcome::single(state, message),
+        );
         Ok(value)
     }
 }

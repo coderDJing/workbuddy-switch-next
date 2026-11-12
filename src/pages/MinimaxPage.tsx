@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Clock3, Ellipsis, FileDown, FileUp, Gift, Fingerprint, Info, Loader2, LogIn, Pencil, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ClaimActionButton, ClaimStateBadge } from "@/components/claim-action";
 import { DemoAction } from "@/components/demo-action";
 import { MinimaxLoginDialog } from "@/components/minimax-login-dialog";
 import { MinimaxBackupDialog } from "@/components/minimax-backup-dialog";
@@ -17,6 +18,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import * as api from "@/lib/api";
+import { deriveClaimView, entryFor } from "@/lib/claim-status";
+import { useClaimLedger } from "@/lib/use-claim-ledger";
 import { cn } from "@/lib/utils";
 import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { useMinimaxStatus } from "@/stores/minimax-status";
@@ -89,6 +92,8 @@ export default function MinimaxPage() {
   const [backupMode, setBackupMode] = useState<"import" | "export" | null>(null);
   const [claiming, setClaiming] = useState(false);
   const [claimResults, setClaimResults] = useState<Record<string, api.MinimaxCheckin>>({});
+  /** 今日领取记忆：MiniMax 每次领取只有一个签到任务，用来避免重复点击。 */
+  const { ledger: claimLedger, reload: reloadClaimLedger } = useClaimLedger();
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const cancelRename = useRef(false);
@@ -101,6 +106,12 @@ export default function MinimaxPage() {
 
   const client = (status?.clients ?? []).find(c => c.region === region);
   const accounts = orderBasicAccounts((status?.accounts ?? []).filter(a => a.region === region),sort,client?.activeAccountId);
+  const claimView = deriveClaimView(
+    claimLedger,
+    "minimax",
+    accounts.map(account => ({ id: account.id, variant: account.region })),
+    "rewards",
+  );
 
   useVisibleInterval(() => { void refresh(); }, 60_000);
   useEffect(() => {
@@ -144,7 +155,7 @@ export default function MinimaxPage() {
       }
       const message = `领取完成：成功 ${claimed}，已领取 ${already}，未开放 ${closed}，待处理 ${failed}`;
       if (failed) toast.warning(message); else toast.success(message);
-    } finally { await refresh(true); setClaiming(false); mutationRunning.current = false; }
+    } finally { await refresh(true); await reloadClaimLedger(); setClaiming(false); mutationRunning.current = false; }
   }
 
   async function run(key: string, action: () => Promise<void>, message: string) {
@@ -215,7 +226,7 @@ export default function MinimaxPage() {
         </div>
         <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1"><AccountViewControls compact={compact} toggleCompact={toggleCompact} sort={sort} setSort={setSort}/>
           <DemoAction><Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || accounts.length === 0 || accounts.some(a => creditLoading[a.id])} onClick={() => void queryCredits(accounts)} aria-label="刷新积分" title="查询当前区域所有账号的官方积分"><RefreshCw className={accounts.some(a => creditLoading[a.id]) ? "animate-spin" : undefined} />刷新积分</Button></DemoAction>
-          <DemoAction><Button variant="outline" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || !accounts.length} onClick={() => void claim(accounts)} aria-label="领取积分">{claiming ? <Loader2 className="animate-spin" /> : <Gift />}领取积分</Button></DemoAction>
+          <ClaimActionButton view={claimView} running={claiming} disabled={busyKey !== null || !accounts.length} hint="逐个账号领取 MiniMax 每日签到积分（已领完的账号会直接跳过）" onClaim={() => void claim(accounts)} />
         </div>
       </div>
       {!status && !loadError ? <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />加载账号…</div>
@@ -244,7 +255,11 @@ export default function MinimaxPage() {
                     : <DemoAction><Button variant="outline" size="icon" className="size-7 rounded-lg" disabled={busy || account.needsLogin} onClick={() => setPending({ kind: "switch", account })} aria-label="切换到此账号" title={account.needsLogin ? "登录已过期，请重新登录添加" : "将 MiniMax Code 切换到此账号"}>{busyKey === account.id ? <Loader2 className="size-4 animate-spin" /> : <MinimaxMark size={15} global={region === "en"} />}</Button></DemoAction>}
                 </span>
                 <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="relative z-20 size-7 rounded-lg text-muted-foreground" aria-label={`管理账号 ${account.name}`} disabled={busy}><Ellipsis className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-40">
-                  {!api.isDemoMode() && <DropdownMenuItem disabled={busy} onSelect={() => void claim([account])}><Gift />领取积分</DropdownMenuItem>}
+                  {!api.isDemoMode() && (() => {
+                    const entry = entryFor(claimLedger, "minimax", { id: account.id, variant: account.region }, "rewards");
+                    const settled = entry?.state === "claimed" || entry?.state === "blocked";
+                    return <DropdownMenuItem disabled={busy || settled} onSelect={() => void claim([account])}><Gift />{settled ? (entry?.state === "claimed" ? "今日已领完" : "今日无可领取") : "领取积分"}</DropdownMenuItem>;
+                  })()}
                   {!api.isDemoMode() && <DropdownMenuItem disabled={loading} onSelect={() => void queryCredits([account])}><RefreshCw />刷新积分</DropdownMenuItem>}
                   <DropdownMenuItem onSelect={() => setInfo(account)}><Info />账号信息</DropdownMenuItem>
                   {!api.isDemoMode() && account.uid.startsWith("epoch:") && <DropdownMenuItem disabled={loading} onSelect={() => resolveIdentity(account)}><Fingerprint />识别身份</DropdownMenuItem>}
@@ -253,6 +268,10 @@ export default function MinimaxPage() {
               </header>
               <div className="flex-1 px-3.5 pb-4 pt-3 text-xs leading-5 text-muted-foreground">
                 <CreditBlock credit={creditOf(account)} loading={!!loading} error={creditErrors[account.id]} accountName={account.name} />
+                {(() => {
+                  const entry = entryFor(claimLedger, "minimax", { id: account.id, variant: account.region }, "rewards");
+                  return entry ? <div className="mt-2"><ClaimStateBadge entry={entry} /></div> : null;
+                })()}
                 {claimResults[account.id] && <p className={cn("mt-3 text-xs", claimResults[account.id].ok ? "text-muted-foreground" : "text-amber-700")} role="status">{claimResults[account.id].message}{claimResults[account.id].warning ? ` · ${claimResults[account.id].warning}` : ""}</p>}
                 {account.needsLogin && <div className="mt-3 flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300"><span>登录已过期</span><DemoAction><Button size="sm" variant="ghost" disabled={busy} onClick={() => setLoginOpen(true)}>重新登录</Button></DemoAction></div>}
               </div>

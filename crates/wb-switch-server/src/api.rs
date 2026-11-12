@@ -18,7 +18,7 @@ use rust_embed::RustEmbed;
 use serde_json::{json, Value};
 
 use wb_switch_core::modules::{
-    account, auth_file, checkin, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
+    account, auth_file, checkin, claim_ledger, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
     codebuddy_ide_session, codebuddy_ide_session_sync, config, credit_usage, credits,
     export_import, jetbrains, limits, notifications, oauth, process, qoder, rate_limit_events,
     rate_limit_hook, refresh, rotate, session, session_groups, switch, token_stats, travel, update,
@@ -252,6 +252,8 @@ pub fn router() -> Router {
             get(api_checkin_config).post(api_save_checkin_config),
         )
         .route("/api/checkin/logs", get(api_checkin_logs))
+        .route("/api/claim/ledger", get(api_claim_ledger))
+        .route("/api/claim/ledger/clear", post(api_clear_claim_ledger))
         .route("/api/notifications", get(api_notifications))
         .route("/api/notifications/record", post(api_record_notification))
         .route("/api/notifications/clear", post(api_clear_notifications))
@@ -1924,6 +1926,27 @@ async fn api_save_checkin_config(Json(body): Json<Value>) -> Response {
 /// GET /api/checkin/logs —— 签到日志（每行带 `variant`，便于前端按档位过滤）。
 async fn api_checkin_logs() -> Response {
     json_ok(json!({ "logs": checkin::load_checkin_logs_with_variant() }))
+}
+
+/// GET /api/claim/ledger —— 今日领取记忆（只返回当天）。
+async fn api_claim_ledger() -> Response {
+    json_ok(claim_ledger::snapshot())
+}
+
+/// POST /api/claim/ledger/clear —— 清除今日领取记忆。
+async fn api_clear_claim_ledger(body: Option<Json<Value>>) -> Response {
+    let platform = body
+        .as_ref()
+        .and_then(|Json(value)| value.get("platform"))
+        .and_then(Value::as_str);
+    let scope = body
+        .as_ref()
+        .and_then(|Json(value)| value.get("scope"))
+        .and_then(Value::as_str);
+    match claim_ledger::clear(platform, scope) {
+        Ok(removed) => json_ok(json!({ "removed": removed })),
+        Err(error) => json_err(error.to_string(), StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 async fn api_travel_status() -> Response {

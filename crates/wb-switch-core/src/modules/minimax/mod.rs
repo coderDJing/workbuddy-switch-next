@@ -990,6 +990,7 @@ impl Engine {
                 self.checkin(
                     args.account_id.as_deref().ok_or("缺少账号")?,
                     args.timeout_seconds,
+                    crate::modules::claim_ledger::SOURCE_MANUAL,
                 )
                 .await
             }

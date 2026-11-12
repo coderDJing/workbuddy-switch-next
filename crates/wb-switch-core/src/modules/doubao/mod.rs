@@ -439,7 +439,13 @@ impl Engine {
             }
         }
     }
-    async fn checkin(&self, id: &str, submit: bool, timeout: Option<u64>) -> Result<Value, String> {
+    async fn checkin(
+        &self,
+        id: &str,
+        submit: bool,
+        timeout: Option<u64>,
+        source: &str,
+    ) -> Result<Value, String> {
         let _claim = StateLock::try_at(
             &self
                 .paths
@@ -479,6 +485,25 @@ impl Engine {
                 Err(e) => result["warning"] = json!(e),
             }
         }
+        // 签到状态查询（submit = false）同样是一次官方口径核对，按 server 回写；
+        // 领取动作则按调用来源记 manual / auto。
+        let state = result
+            .get("state")
+            .and_then(Value::as_str)
+            .unwrap_or("failed");
+        let message = result.get("message").and_then(Value::as_str).unwrap_or("");
+        crate::modules::claim_ledger::record(
+            crate::modules::claim_ledger::PLATFORM_DOUBAO,
+            None,
+            id,
+            crate::modules::claim_ledger::SCOPE_REWARDS,
+            if submit {
+                source
+            } else {
+                crate::modules::claim_ledger::SOURCE_SERVER
+            },
+            crate::modules::claim_ledger::Outcome::single(state, message),
+        );
         Ok(result)
     }
     async fn statistics(&self, refresh: bool) -> Result<Value, String> {
@@ -549,8 +574,13 @@ impl Engine {
             }
             "credits" => self.credit(id, args.timeout_seconds).await,
             "checkin" | "checkin_status" => {
-                self.checkin(id, action == "checkin", args.timeout_seconds)
-                    .await
+                self.checkin(
+                    id,
+                    action == "checkin",
+                    args.timeout_seconds,
+                    crate::modules::claim_ledger::SOURCE_MANUAL,
+                )
+                .await
             }
             "statistics" => self.statistics(args.refresh.unwrap_or(false)).await,
             "token_stats" => Ok(

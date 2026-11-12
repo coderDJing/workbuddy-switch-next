@@ -8,7 +8,6 @@ import {
   ExternalLink,
   FileDown,
   FileUp,
-  Gift,
   Loader2,
   QrCode,
   RefreshCw,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { AccountCard } from "@/components/account-card";
+import { ClaimActionButton } from "@/components/claim-action";
 import { AccountInfoDialog } from "@/components/account-info-dialog";
 import { JetbrainsSwitchDialog } from "@/components/jetbrains-switch-dialog";
 import { CodebuddyIdeSwitchAccountDialog } from "@/components/codebuddy-ide-switch-account-dialog";
@@ -57,6 +57,8 @@ import { OAuthLoginDialog } from "@/components/oauth-login-dialog";
 import { SwitchAccountDialog } from "@/components/switch-account-dialog";
 import { VscodeSwitchAccountDialog } from "@/components/vscode-switch-account-dialog";
 import * as api from "@/lib/api";
+import { deriveClaimView, entryFor } from "@/lib/claim-status";
+import { useClaimLedger } from "@/lib/use-claim-ledger";
 import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { createRateLimitLoader } from "@/lib/rate-limit-refresh";
 import {
@@ -195,6 +197,11 @@ export default function AccountsPage() {
   const [autoCheckinSettled, setAutoCheckinSettled] = useState(false);
   /** 账号 id -> 今日是否已签到（undefined=查询中/未知） */
   const [checkinMap, setCheckinMap] = useState<Record<string, boolean>>({});
+  /**
+   * 今日领取记忆：每日任务逐账号结果。签到有官方状态接口，每日任务没有，
+   * 只能靠这份记忆判断「今天到底还领不领得到东西」。
+   */
+  const { ledger: claimLedger, reload: reloadClaimLedger } = useClaimLedger();
   /** 账号 id -> 今日旅行状态（undefined=查询中/未知） */
   const [travelMap, setTravelMap] = useState<Record<string, TravelStatus>>({});
   /**
@@ -243,6 +250,17 @@ export default function AccountsPage() {
   /** 旅行 chip 与旅行状态轮询只在自动旅行开启后生效（配置未读到 = 未开启）。 */
   const autoTravelEnabled = travelAvailable && autoTravelConfig?.enabled === true;
   const claimCreditsHint = "执行每日任务并领取奖励（可能消耗积分或能量；签到遵守时间段，任务遵守账号开关）";
+  /** 当前档位的每日任务领取态：以记忆里的 claimable 为准（0 = 已领完）。 */
+  const dailyClaimView = useMemo(
+    () =>
+      deriveClaimView(
+        claimLedger,
+        "workbuddy",
+        visibleAccounts.map((account) => ({ id: account.id, variant: accountVariant(account) })),
+        "daily",
+      ),
+    [claimLedger, visibleAccounts],
+  );
   /** 关闭自动签到的账号 id（配置未读到/读取失败 = 空名单）。 */
   const excludedCheckinIds = useMemo(
     () => new Set(autoCheckinConfig?.excluded_account_ids ?? []),
@@ -699,6 +717,7 @@ export default function AccountsPage() {
     } finally {
       toast.dismiss(progressToast);
       setCheckinAllRunning(false);
+      void reloadClaimLedger();
     }
   }
 
@@ -1065,26 +1084,14 @@ export default function AccountsPage() {
                 </TooltipTrigger>
                 <TooltipContent side="top">{api.isDemoMode() ? "演示模式下不可操作" : "查询当前档位所有账号的积分"}</TooltipContent>
               </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <DemoAction>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 rounded-lg text-xs"
-                        disabled={checkinAllRunning || visibleAccounts.length === 0}
-                        onClick={() => void onClaimCredits()}
-                        aria-label="领取积分"
-                      >
-                        {checkinAllRunning ? <Loader2 className="animate-spin" /> : <Gift />}
-                        领取积分
-                      </Button>
-                    </DemoAction>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="top">{api.isDemoMode() ? "演示模式下不可操作" : claimCreditsHint}</TooltipContent>
-              </Tooltip>
+              <ClaimActionButton
+                view={dailyClaimView}
+                running={checkinAllRunning}
+                disabled={visibleAccounts.length === 0}
+                hint={api.isDemoMode() ? "演示模式下不可操作" : claimCreditsHint}
+                onClaim={() => void onClaimCredits()}
+                confirmNote="签到状态另有官方查询，不受这条记忆影响。"
+              />
             </div>
           </TooltipProvider>
         </div>
@@ -1122,6 +1129,7 @@ export default function AccountsPage() {
                 onCheckin={checkinAvailable ? onCheckin : undefined}
                 onRefresh={onRefresh}
                 todayCheckedIn={checkinMap[a.id]}
+                dailyClaim={entryFor(claimLedger, "workbuddy", { id: a.id, variant: accountVariant(a) }, "daily")}
                 autoCheckinAllowed={checkinAvailable && autoCheckinSettled ? !excludedCheckinIds.has(a.id) : undefined}
                 travelStatus={autoTravelEnabled ? travelMap[a.id] : undefined}
                 rateLimits={rateLimitEnabled ? rateLimitMap[a.id] : undefined}
