@@ -235,7 +235,7 @@ export default function MinimaxPage() {
         </div>
         <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1"><AccountViewControls compact={compact} toggleCompact={toggleCompact} sort={sort} setSort={setSort}/>
           <DemoAction><Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || accounts.length === 0 || accounts.some(a => creditLoading[a.id])} onClick={() => void queryCredits(accounts)} aria-label="刷新积分" title="查询当前区域所有账号的官方积分"><RefreshCw className={accounts.some(a => creditLoading[a.id]) ? "animate-spin" : undefined} />刷新积分</Button></DemoAction>
-          <ClaimActionButton view={claimView} running={claiming} disabled={busyKey !== null || !accounts.length} hint="逐个账号领取 MiniMax 每日签到积分（已领完的账号会直接跳过）" onClaim={() => void claim(accounts)} />
+          <ClaimActionButton view={claimView} running={claiming} disabled={busyKey !== null || !accounts.length} hint="逐个账号领取 MiniMax 每日签到积分（已领完的账号会直接跳过）" onOpen={() => setClaimDetailsOpen(true)} />
         </div>
       </div>
       {!status && !loadError ? <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />加载账号…</div>
@@ -305,6 +305,12 @@ export default function MinimaxPage() {
       entries={claimEntries}
       accountNames={claimAccountNames}
       pendingAccounts={claimPendingAccounts}
+      action={{
+        label: claimView.mode === "done" ? "重新核对" : "领取全部",
+        note: `会为 ${accounts.length} 个账号依次签到，可能需要几分钟`,
+        running: claiming,
+        onClick: () => void claim(accounts),
+      }}
     />
     <MinimaxLoginDialog open={loginOpen} onOpenChange={open => { if (!busy) setLoginOpen(open); }} region={region} label={regionLabel(region)} />
     <MinimaxBackupDialog mode={backupMode} onClose={() => setBackupMode(null)} />

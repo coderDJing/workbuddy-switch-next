@@ -186,21 +186,22 @@ export function claimButtonLabel(view: ClaimView): string {
 
 /** 按钮 tooltip：说清「几个账号已领完 / 还剩什么」。 */
 export function claimButtonHint(view: ClaimView, fallback: string): string {
+  // 点按钮只打开详情弹窗，真正的执行在弹窗里，所以提示统一以「看详情」收尾。
   if (view.mode === "idle") return fallback;
   const when = view.updatedAt ? ` · ${formatClock(view.updatedAt)} 核对` : "";
   if (view.mode === "done") {
-    return `${view.claimed}/${view.total} 个账号已领完${when}。点击可重新核对（会再跑一遍每日任务）`;
+    return `${view.claimed}/${view.total} 个账号已领完${when}。点击查看详情，可在里面重新核对`;
   }
   if (view.mode === "blocked") {
     const reason = view.notice ? `：${view.notice}` : "。活动未开放、企业版或账号受限时会出现这种情况";
-    return `今日暂无可领取的奖励${reason}${when}`;
+    return `今日暂无可领取的奖励${reason}${when}。点击查看详情`;
   }
   const pieces = [`${view.settled}/${view.total} 个账号已领完`];
   if (view.remaining.length) pieces.push(`未完成：${view.remaining.join("、")}`);
   else if (view.claimable > 0) pieces.push(`还剩 ${view.claimable} 项可领`);
   if (view.error > 0) pieces.push(`${view.error} 个账号失败，可重试`);
   if (view.unconfirmed > 0) pieces.push(`${view.unconfirmed} 个结果待确认`);
-  return `${pieces.join("；")}${when}`;
+  return `${pieces.join("；")}${when}。点击查看详情`;
 }
 
 /** 账号级状态文案（详情弹窗用整句）。 */

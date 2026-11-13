@@ -1,17 +1,7 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { BadgeCheck, Ban, Gift, ListChecks, Loader2 } from "lucide-react";
 
 import { DemoAction } from "@/components/demo-action";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { claimButtonHint, claimButtonLabel, claimChipHint, claimChipLabel, type ClaimView } from "@/lib/claim-status";
@@ -28,20 +18,18 @@ interface ClaimActionButtonProps {
   idleLabel?: string;
   /** 没有记忆时的默认 tooltip。 */
   hint: string;
-  onClaim: () => void;
+  /** 点击后打开今日领取详情；真正的执行放在弹窗里。 */
+  onOpen: () => void;
   /** 未领完时的图标，默认礼盒。 */
   icon?: ReactNode;
   className?: string;
-  /** 「已领完」时点击确认弹窗里的动作说明。 */
-  confirmNote?: string;
 }
 
 /**
- * 统一领取按钮：把「今日已领完 / 今日无可领取」做成真实状态，而不是永远可点的
- * 「领取积分」。
+ * 统一领取按钮：只负责展示今天的状态并打开详情弹窗。
  *
- * 已领完时按钮**仍可点**，但先弹一次确认——长任务（每账号 1–3 分钟）不能被
- * 无意触发，同时保留「在官方客户端领过、本地记忆过期」时的逃生口。
+ * 点一次不再直接跑几分钟的任务——先让用户看见「还剩哪几项、哪些账号没跑」，
+ * 再在弹窗里点「领取全部 / 重新核对」。`running` 时按钮仅展示进度，不再可点。
  */
 export function ClaimActionButton({
   view,
@@ -49,89 +37,54 @@ export function ClaimActionButton({
   disabled = false,
   idleLabel = "领取积分",
   hint,
-  onClaim,
+  onOpen,
   icon,
   className,
-  confirmNote,
 }: ClaimActionButtonProps) {
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const settled = view.mode === "done" || view.mode === "blocked";
   const label = running ? "领取中…" : settled ? claimButtonLabel(view) : idleLabel;
   const tooltip = running ? "正在执行领取任务…" : claimButtonHint(view, hint);
 
-  function handleClick() {
-    if (running || disabled) return;
-    if (settled) {
-      setConfirmOpen(true);
-      return;
-    }
-    onClaim();
-  }
-
   return (
-    <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span>
-            <DemoAction>
-              <Button
-                variant={settled ? "ghost" : "outline"}
-                size="sm"
-                className={cn("h-9 rounded-lg text-xs", className)}
-                disabled={running || disabled}
-                onClick={handleClick}
-                aria-label={label}
-              >
-                {running ? (
-                  <Loader2 className="animate-spin" />
-                ) : view.mode === "done" ? (
-                  <BadgeCheck />
-                ) : view.mode === "blocked" ? (
-                  <Ban />
-                ) : (
-                  icon ?? <Gift />
-                )}
-                {label}
-                {view.mode === "partial" && view.claimable > 0 ? (
-                  <span
-                    className="ml-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-primary"
-                    aria-hidden="true"
-                  >
-                    剩 {view.claimable}
-                  </span>
-                ) : null}
-              </Button>
-            </DemoAction>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top">{tooltip}</TooltipContent>
-      </Tooltip>
-
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>今日领取已经完成</AlertDialogTitle>
-            <AlertDialogDescription>
-              {view.mode === "blocked"
-                ? "今天没有可领取的奖励：活动未开放、企业版或账号受限时会出现这种情况。重新核对会再请求一次官方状态。"
-                : "所有账号都已领完。重新核对会再跑一遍每日任务，每个账号约 1–3 分钟。"}
-              {confirmNote ? ` ${confirmNote}` : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span>
+          <DemoAction>
+            <Button
+              variant={settled ? "ghost" : "outline"}
+              size="sm"
+              className={cn("h-9 rounded-lg text-xs", className)}
+              disabled={running || disabled}
               onClick={() => {
-                setConfirmOpen(false);
-                onClaim();
+                if (running || disabled) return;
+                onOpen();
               }}
+              aria-label={running ? label : `${label}：打开今日领取详情`}
             >
-              仍要重新核对
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+              {running ? (
+                <Loader2 className="animate-spin" />
+              ) : view.mode === "done" ? (
+                <BadgeCheck />
+              ) : view.mode === "blocked" ? (
+                <Ban />
+              ) : (
+                icon ?? <Gift />
+              )}
+              {label}
+              {view.mode === "partial" && view.claimable > 0 ? (
+                <span
+                  className="ml-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-primary"
+                  aria-hidden="true"
+                >
+                  剩 {view.claimable}
+                </span>
+              ) : null}
+            </Button>
+          </DemoAction>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
 

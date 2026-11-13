@@ -1,4 +1,4 @@
-import { Clock3, Info, ListChecks } from "lucide-react";
+import { Clock3, Gift, Info, ListChecks, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +24,14 @@ interface ClaimLedgerDialogProps {
   accountNames?: Record<string, string>;
   /** 今天还没有任何记录的账号，一并列出，避免「没显示＝没问题」的误解。 */
   pendingAccounts?: { id: string; name: string }[];
+  /** 弹窗里的主操作：打开面板看一眼，再决定是否真的去领。 */
+  action?: {
+    label: string;
+    /** 按钮左侧的说明，例如「会为 8 个账号跑一遍，可能需要几分钟」。 */
+    note?: string;
+    running?: boolean;
+    onClick: () => void;
+  };
 }
 
 /** 账号级状态色调：与卡片 chip 保持一致。 */
@@ -83,6 +91,7 @@ export function ClaimLedgerDialog({
   entries,
   accountNames,
   pendingAccounts = [],
+  action,
 }: ClaimLedgerDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -96,13 +105,23 @@ export function ClaimLedgerDialog({
         </DialogHeader>
         <ClaimLedgerList entries={entries} accountNames={accountNames} pendingAccounts={pendingAccounts} />
         <DialogFooter className="items-center gap-2 sm:justify-between">
-          <span className="flex items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
+          <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
             <Info className="size-3.5 shrink-0" />
-            需要重新核对时，可在设置页清除今日记录
+            <span className="min-w-0 break-words">
+              {action?.note ?? "需要重新核对时，可在设置页清除今日记录"}
+            </span>
           </span>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            关闭
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              关闭
+            </Button>
+            {action && (
+              <Button onClick={action.onClick} disabled={action.running}>
+                {action.running ? <Loader2 className="animate-spin" /> : <Gift />}
+                {action.running ? "领取中…" : action.label}
+              </Button>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

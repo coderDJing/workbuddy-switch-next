@@ -599,7 +599,7 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
             </Select>
             {onToggleCompact && <Button variant="ghost" size="icon" className={cn("size-9 rounded-lg", compact && "bg-accent text-accent-foreground")} onClick={onToggleCompact} aria-label={compact ? "切换为宽松模式" : "切换为紧凑模式"} title={compact ? "切换为宽松模式" : "切换为紧凑模式"}>{compact ? <Rows3 /> : <Columns3 />}</Button>}
             <DemoAction><Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" disabled={refreshingCredits || accountCount === 0} onClick={() => setCreditVersion((value) => value + 1)} aria-label="刷新积分" title="查询当前档位所有账号的积分"><RefreshCw className={refreshingCredits ? "animate-spin" : undefined} />刷新积分</Button></DemoAction>
-            <ClaimActionButton view={claimView} running={claimingRewards} disabled={accountCount === 0} hint="领取可用奖励，完成后刷新积分" onClaim={() => void claimRewards()} />
+            <ClaimActionButton view={claimView} running={claimingRewards} disabled={accountCount === 0} hint="领取可用奖励，完成后刷新积分" onOpen={() => setClaimDetailsOpen(true)} />
           </div>
         </div>
         {(!autoReady || (!status && !loadError)) ? (
@@ -660,6 +660,12 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
         entries={claimEntries}
         accountNames={claimAccountNames}
         pendingAccounts={claimPendingAccounts}
+        action={{
+          label: claimView.mode === "done" ? "重新核对" : "领取全部",
+          note: "会按身份逐个领取，可能需要几分钟",
+          running: claimingRewards,
+          onClick: () => void claimRewards(),
+        }}
       />
       <QoderBackupDialog mode={backupMode} onClose={() => setBackupMode(null)} groups={groupQoderAccounts(status?.bundles ?? [])} onImported={(result) => {
         const summary = `已导入 ${result.imported} 个账号${result.skipped ? `，${result.skipped} 个账号已存在` : ""}`;

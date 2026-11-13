@@ -278,7 +278,7 @@ export default function TraePage() {
           <Select value={sortKey} onValueChange={value => { setSortKey(value as TraeSortKey); try { localStorage.setItem("wb-switch.trae.sort", value); } catch { /* 本次选择有效。 */ } }}><SelectTrigger size="sm" className="w-auto min-w-32 gap-1.5 border-0 bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:bg-accent hover:text-foreground" aria-label="账号排序方式"><SlidersHorizontal className="size-4" /><SelectValue /></SelectTrigger><SelectContent>{TRAE_SORT_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select>
           <Button variant="ghost" size="icon" className={cn("size-9 rounded-lg", compact && "bg-accent text-accent-foreground")} onClick={toggleCompact} aria-label={compact ? "切换为宽松模式" : "切换为紧凑模式"} title={compact ? "切换为宽松模式" : "切换为紧凑模式"}>{compact ? <Rows3 /> : <Columns3 />}</Button>
           <DemoAction><Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" disabled={busy || accounts.length === 0 || accounts.some(a => creditLoading[a.id])} onClick={() => void queryCredits(accounts)} aria-label="刷新积分" title="查询当前档位所有账号的官方额度"><RefreshCw className={accounts.some(a => creditLoading[a.id]) ? "animate-spin" : undefined} />刷新积分</Button></DemoAction>
-          <ClaimActionButton view={claimView} running={claiming} disabled={busy || variant !== "cn" || accounts.length === 0} hint={variant === "cn" ? "领取国内版每日签到积分。同一官方设备每天只能签一个账号" : "国际版签到暂未接入"} onClaim={() => void claimCheckins()} />
+          <ClaimActionButton view={claimView} running={claiming} disabled={busy || variant !== "cn" || accounts.length === 0} hint={variant === "cn" ? "领取国内版每日签到积分。同一官方设备每天只能签一个账号" : "国际版签到暂未接入"} onOpen={() => setClaimDetailsOpen(true)} />
         </div>
       </div>
       {!status && !loadError ? <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />加载账号…</div>
@@ -321,6 +321,12 @@ export default function TraePage() {
       entries={claimEntries}
       accountNames={claimAccountNames}
       pendingAccounts={claimPendingAccounts}
+      action={variant === "cn" ? {
+        label: claimView.mode === "done" ? "重新核对" : "领取全部",
+        note: "同一官方设备每天只能签一个账号，其余账号会被跳过",
+        running: claiming,
+        onClick: () => void claimCheckins(),
+      } : undefined}
     />
     <Dialog open={loginOpen} onOpenChange={open => { if (!busy) setLoginOpen(open); }}><DialogContent><DialogHeader><DialogTitle>登录添加 TRAE {variantLabel(variant)}</DialogTitle><DialogDescription>在官方客户端完成登录后，返回此处添加账号。</DialogDescription></DialogHeader>
       <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-4"><TraeMark size={40} global={variant === "ai"} /><div><p className="text-sm font-medium">TRAE {variantLabel(variant)}</p><p className="mt-1 text-xs text-muted-foreground">登录信息由系统加密保存在本机。</p></div></div>

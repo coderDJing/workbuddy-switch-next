@@ -1122,8 +1122,7 @@ export default function AccountsPage() {
                 running={checkinAllRunning}
                 disabled={visibleAccounts.length === 0}
                 hint={api.isDemoMode() ? "演示模式下不可操作" : claimCreditsHint}
-                onClaim={() => void onClaimCredits()}
-                confirmNote="签到状态另有官方查询，不受这条记忆影响。"
+                onOpen={() => setClaimDetailsOpen(true)}
               />
             </div>
           </TooltipProvider>
@@ -1222,6 +1221,12 @@ export default function AccountsPage() {
         entries={claimEntries}
         accountNames={claimAccountNames}
         pendingAccounts={claimPendingAccounts}
+        action={{
+          label: dailyClaimView.mode === "done" ? "重新核对" : "领取全部",
+          note: `会为 ${visibleAccounts.length} 个账号跑一遍每日任务，可能需要几分钟`,
+          running: checkinAllRunning,
+          onClick: () => void onClaimCredits(),
+        }}
       />
       <SwitchAccountDialog
         open={switchAccount !== null}
