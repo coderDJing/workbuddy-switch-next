@@ -52,6 +52,18 @@ npm run build:app:release
 
 从正式版开始新 RC 周期时，用 `npm run version:set -- rc`，脚本将补丁位加一并按十进位进位，例如 `1.1.9 → 1.2.0`；已有 RC 保持基础版本不变。RC 用户转正式版需手动安装；正式版发布不改写 `preview` 更新入口。
 
+## 上游跟进
+
+领取链路依赖的上游（脚本快照 + 协议参考实现）固定在 [`docs/upstreams.json`](upstreams.json)，
+跟进流程见 [UPSTREAMS.md](UPSTREAMS.md)。日常只需：
+
+```bash
+npm run upstreams:check          # 看有没有上游在我们固定点之后改了东西
+```
+
+每周一 `.github/workflows/upstream-drift.yml` 会自动跑 `--strict`；它标红意味着该去评估上游变更，
+不是代码坏了。
+
 ## 依赖补丁（vendor-patched）
 
 `Cargo.toml` 的 `[patch.crates-io]` 指向仓库内的改写版本，改动都只修一个具体问题：

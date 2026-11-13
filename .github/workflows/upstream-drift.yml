@@ -1,0 +1,32 @@
+name: Upstream drift
+
+# 领积分依赖的上游（脚本与协议参考）随时会变。每周比对一次固定 commit，
+# 有落后就把 job 标红——这一版的红不是代码坏了，是该去 docs/UPSTREAMS.md 走一遍跟进流程。
+
+on:
+  schedule:
+    - cron: "0 1 * * 1" # 每周一 09:00（Asia/Shanghai）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: Check pinned upstreams
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Compare pinned commits with upstream HEAD
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/check-upstreams.mjs --markdown --strict | tee -a "$GITHUB_STEP_SUMMARY"
