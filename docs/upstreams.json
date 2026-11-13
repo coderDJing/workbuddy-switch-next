@@ -7,12 +7,18 @@
       "platform": "WorkBuddy / CodeBuddy",
       "repo": "L0NE-6/WorkBuddy-Daily",
       "kind": "vendored",
-      "pinned": "db08e48d5bb04bae0079a23a827f1ef34ba3c65b",
-      "pinnedLabel": "v3.41",
+      "pinned": "90c7501c9b7e1996bd31c36388d46df5e89d001a",
+      "pinnedLabel": "v3.48",
       "license": "MIT",
       "localPath": "vendor/daily-runner/upstream/workbuddy",
       "doc": "vendor/daily-runner/README.md",
-      "watch": ["任务 code 与 task_cn 映射", "claimable/blocked 口径", "补领与礼包防重", "登录/风控判定"],
+      "watch": [
+        "任务 code 与 task_cn 映射",
+        "claimable/blocked 口径",
+        "补领与礼包防重",
+        "app/mini-program 任务的自动执行判据",
+        "登录/风控判定"
+      ],
       "verify": "cd vendor/daily-runner && python -m unittest test_runner"
     },
     {
@@ -21,12 +27,17 @@
       "platform": "Qoder",
       "repo": "L0NE-6/Qoder-Daily",
       "kind": "vendored",
-      "pinned": "fa30b6a491906e7a2a730c0af2006bb2c6b6ce7d",
-      "pinnedLabel": "v1.0.19",
+      "pinned": "1fb1ba04191157f241bfc1fc096b6f6a1c88096e",
+      "pinnedLabel": "v1.0.22",
       "license": "MIT",
       "localPath": "vendor/daily-runner/upstream/qoder",
       "doc": "vendor/daily-runner/README.md",
-      "watch": ["活动接口与 state 语义", "国际版 UMID/风控身份", "奖励发放回执"],
+      "watch": [
+        "活动接口与 state 语义",
+        "额度回读与「待确认」判据",
+        "国际版 UMID/风控身份",
+        "奖励发放回执"
+      ],
       "verify": "cd vendor/daily-runner && python -m unittest test_runner"
     },
     {
@@ -40,7 +51,11 @@
       "license": "MIT",
       "localPath": "crates/wb-switch-core/src/modules/trae/checkin.rs",
       "doc": "docs/trae-integration.md",
-      "watch": ["checkin_credits/status 与 claim 的字段", "设备与版本兜底串", "同一设备每天一账号的限制"],
+      "watch": [
+        "checkin_credits/status 与 claim 的字段",
+        "设备与版本兜底串",
+        "同一设备每天一账号的限制"
+      ],
       "verify": "cargo test -p wb-switch-core trae"
     },
     {
@@ -54,7 +69,11 @@
       "license": "MIT",
       "localPath": "crates/wb-switch-core/src/modules/doubao/mod.rs",
       "doc": "docs/doubao-integration.md",
-      "watch": ["campaign v3 detail 的 daily_signin 状态", "landing/checkin 回执", "quota/summary 窗口语义"],
+      "watch": [
+        "campaign v3 detail 的 daily_signin 状态",
+        "landing/checkin 回执",
+        "quota/summary 窗口语义"
+      ],
       "verify": "cargo test -p wb-switch-core doubao"
     },
     {
@@ -68,7 +87,9 @@
       "license": "未声明",
       "localPath": null,
       "doc": "docs/doubao-integration.md",
-      "watch": ["仅看独立切换工具的账号场景"],
+      "watch": [
+        "仅看独立切换工具的账号场景"
+      ],
       "verify": null
     },
     {
@@ -82,7 +103,10 @@
       "license": "CC-BY-NC-SA-4.0",
       "localPath": null,
       "doc": "docs/research/minimax-parity.md",
-      "watch": ["签到与自动调度行为", "注意许可：仅参考，不得复制"],
+      "watch": [
+        "签到与自动调度行为",
+        "注意许可：仅参考，不得复制"
+      ],
       "verify": null
     },
     {
@@ -96,7 +120,11 @@
       "license": "MIT",
       "localPath": "crates/wb-switch-core/src/modules/minimax/checkin.rs",
       "doc": "docs/research/minimax-parity.md",
-      "watch": ["signin 的 timezone_id", "每日状态 1/2/3/4", "claim_result 1/2"],
+      "watch": [
+        "signin 的 timezone_id",
+        "每日状态 1/2/3/4",
+        "claim_result 1/2"
+      ],
       "verify": "cargo test -p wb-switch-core minimax"
     },
     {
@@ -110,7 +138,9 @@
       "license": "未声明",
       "localPath": null,
       "doc": "docs/research/minimax-parity.md",
-      "watch": ["凭据、额度与刷新的共存方式"],
+      "watch": [
+        "凭据、额度与刷新的共存方式"
+      ],
       "verify": null
     },
     {
@@ -124,7 +154,10 @@
       "license": "MIT",
       "localPath": null,
       "doc": "docs/research/minimax-parity.md",
-      "watch": ["oauth-core 代际与命名空间", "local-runtime-v2 的 canonical history"],
+      "watch": [
+        "oauth-core 代际与命名空间",
+        "local-runtime-v2 的 canonical history"
+      ],
       "verify": null
     },
     {
@@ -138,7 +171,10 @@
       "license": "见仓库 LICENSE",
       "localPath": "vendor/agent-companion",
       "doc": "vendor/agent-companion.version.json",
-      "watch": ["插件接口版本", "host-compatibility 补丁是否仍需要"],
+      "watch": [
+        "插件接口版本",
+        "host-compatibility 补丁是否仍需要"
+      ],
       "verify": "node scripts/prepare-agent-companion.mjs build"
     }
   ]

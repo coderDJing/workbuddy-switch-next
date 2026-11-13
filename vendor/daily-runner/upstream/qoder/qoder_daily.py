@@ -9,7 +9,8 @@
    2. 按 CLAIM_BENEFIT / CREDITS / 标题 / modelScope 识别唯一的每日签到活动
    3. POST /sash/api/v1/me/campaigns/{campaignId}/claim  领取 credits
    4. 活跃每日行的 CLAIMED 只作候选；幂等重发 claim，由 replayed 区分已领与本次真领
-   5. claim 使用最小鉴权头和空 body，避免完整设备头触发 503 风控
+   5. claim：中国版使用最小鉴权头和空 body（避免 503 风控）；国际版使用完整设备头
+      和 JSON body（上游 2026-11 起要求，最小头 + 空 body 会回 409 INTERNAL_ERROR）
    6. Pro 升级包：从 campaigns 中发现，GET /reward 只读核实面值后再 claim
 
    中国版和国际版（每日 100 Credits）的活动只下发给带对应官方设备身份的请求
@@ -290,7 +291,12 @@ def machine_os():
 
 
 def machine_hostname():
-    raw = (os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or "").strip()
+    raw = (
+        os.environ.get("QODER_MACHINE_HOSTNAME")
+        or os.environ.get("COMPUTERNAME")
+        or os.environ.get("HOSTNAME")
+        or ""
+    ).strip()
     if not raw:
         return ""
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
@@ -1150,9 +1156,14 @@ def pick_daily_campaign(rows):
 
 
 def claim_campaign(account, campaign_id):
+    url = "%s%s/%s/claim" % (account["base"], CAMPAIGNS_PATH, campaign_id)
+    if region_key(account.get("region", "cn")) == "global":
+        # 国际版上游已要求完整设备风控头和 JSON body；最小头 + 空 body 会回 409
+        # INTERNAL_ERROR（2026-11 实测）。中国版仍沿用最小头，避免 503 风控。
+        headers, _note = risky_sash_headers(account, account.get("uid", ""))
+        return request("POST", url, headers=headers, body={})
     headers = minimal_sash_headers(account["access"])
-    return request("POST", "%s%s/%s/claim" % (account["base"], CAMPAIGNS_PATH, campaign_id),
-                   headers=headers, body=None)
+    return request("POST", url, headers=headers, body=None)
 
 
 def do_checkin(account):
@@ -1206,12 +1217,22 @@ def do_checkin(account):
     if not campaign_id:
         return False, "活动数据里没有 campaignId，无法领取"
 
+    try:
+        before = quota_total_remaining(account)
+    except Exception:
+        before = None
     claim = claim_campaign(account, campaign_id)
     verdict, amount, verdict_message = claim_response_verdict(claim)
     if verdict == "already":
         return False, "今日已领取"
     if verdict != "claimed":
         return False, "领取失败：%s" % verdict_message
+
+    time.sleep(2)
+    try:
+        after = quota_total_remaining(account)
+    except Exception:
+        after = None
 
     if amount <= 0:
         _kind, amount = campaign_benefit(target)
@@ -1222,15 +1243,24 @@ def do_checkin(account):
     validity = benefit.get("validity") if isinstance(benefit.get("validity"), dict) else {}
     if validity.get("days") is not None:
         days = validity.get("days")
-    if amount > 0:
-        text = "获得 %s credits" % int(amount)
+    delta = None
+    if before is not None and after is not None:
+        delta = after - before
+    if delta is not None and delta > 0:
+        text = "签到成功，额度回读 +%d（%d → %d）" % (
+            int(delta), int(before), int(after))
+    elif delta is not None:
+        text = "签到已受理，额度回读待确认（%d → %d）" % (
+            int(before), int(after))
+    elif amount > 0:
+        text = "签到已受理，额度到账待确认（活动面值 %d credits，回读暂不可用）" % int(amount)
     elif verdict_message.startswith("已领取兑换券"):
-        text = verdict_message
+        text = "签到已受理，%s；到账待确认" % verdict_message
     else:
-        text = "领取已确认，积分回读稍后刷新"
+        text = "签到已受理，积分到账待回读确认"
     if days:
         text += "，%s 天有效" % days
-    return True, text
+    return (delta is not None and delta > 0), text
 
 
 def discover_pro_campaign(account, rows):

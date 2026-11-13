@@ -19,6 +19,9 @@ MP_HEADER = {"X-Client-Platform": "miniprogram"}
 
 def load_functions(*names, **globals_):
     namespace = {"__builtins__": __builtins__, **globals_}
+    # 补领判定抽成模块级 `_task_is_claimable` 后，按 ast 抽函数时要一并装载。
+    if set(names) & {"claim", "_claim_readback", "_claim_response_ok", "_mp_claim", "claim_ready_tasks"}:
+        names = tuple(dict.fromkeys((*names, "_task_is_claimable", "_task_status_of", "_as_int")))
     body = [FUNCTIONS[name] for name in names]
     module = ast.Module(body=body, type_ignores=[])
     exec(compile(module, str(SOURCE_PATH), "exec"), namespace)
@@ -109,8 +112,6 @@ def claim_namespace(sleeps=None):
     return load_functions(
         "_api_code_ok",
         "_as_int",
-        "_task_status_of",
-        "_task_is_claimable",
         "_claim_readback",
         "_claim_response_ok",
         "claim",
@@ -835,9 +836,13 @@ class TaskSnapshotTests(unittest.TestCase):
             "_task_code_of",
             "_task_status_of",
             "_task_is_done",
-            "prog",
+            "_growth_task_rows",
+            "_growth_task_status_map",
+            "_accept_response_settled",
             "t_accept_all",
             BASE=BASE,
+            ACCEPT_BATCH_SETTLE=0,
+            ACCEPT_BATCH_TRIES=3,
             time=types.SimpleNamespace(sleep=sleeps.append),
             _accept_with_verify=lambda *args: True,
             ensure_first_buddy=lambda *args: True,
@@ -900,8 +905,6 @@ class TaskSnapshotTests(unittest.TestCase):
         module = load_functions(
             "_api_code_ok",
             "_as_int",
-            "_task_status_of",
-            "_task_is_claimable",
             "_claim_response_ok",
             "claim",
             "_mp_claim",

@@ -193,6 +193,10 @@ def qoder(token, uid, global_region, state):
         state = "already"
     elif daily_ok:
         state = "claimed"
+    elif "已受理" in daily_note:
+        # v1.0.22 起 claim 以「额度回读是否增加」判成功：已受理但回读未确认时
+        # 既不是失败也不该重试，记为待确认，交给下一次运行复查。
+        state = "unconfirmed"
     elif any(marker in daily_note for marker in (
             "暂未给该账号下发", "官方设备身份", "才刷新")):
         # 活动未下发 / 缺本地设备身份 / 10:00 前未开窗：今天暂时没有可领的。

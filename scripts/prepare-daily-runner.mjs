@@ -20,7 +20,10 @@ const venv = path.join(root, 'target', `daily-python-${target}`);
 const python = path.join(venv, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
 const basePython = process.env.DAILY_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 if (!fs.existsSync(python)) execFileSync(basePython, ['-m', 'venv', venv], { cwd: root, stdio: 'inherit' });
-execFileSync(python, ['-m', 'pip', 'install', '--disable-pip-version-check', 'requests==2.32.5', 'pyinstaller==6.16.0'], { cwd: root, stdio: 'inherit' });
+// websocket-client 是上游 v3.48 起的新依赖（cdp_ui_send 的兜底通道）；
+// 漏装不会在导入时报错，只会在新账号走 UI 发送时 ImportError。
+execFileSync(python, ['-m', 'pip', 'install', '--disable-pip-version-check', 'requests==2.32.5',
+  'websocket-client==1.9.2', 'pyinstaller==6.16.0'], { cwd: root, stdio: 'inherit' });
 const project = path.join(root, 'vendor/daily-runner');
 const build = path.join(root, 'target', `daily-runner-build-${target}`);
 fs.mkdirSync(build, { recursive: true });

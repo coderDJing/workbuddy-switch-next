@@ -195,5 +195,16 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertIn("今日已领取", result["message"])
 
+    def test_qoder_accepted_but_unverified_is_unconfirmed(self):
+        """v1.0.22 起成功以额度回读为准：已受理但未确认时记待确认，不重试。"""
+        module = types.ModuleType("qoder_daily")
+        module.REGIONS = {"cn": {"base": "https://example.invalid"}}
+        module.do_checkin = lambda account: (False, "签到已受理，额度回读待确认（100 → 100）")
+        module.do_pro_upgrade = lambda account: (True, True, "当前未发现 Pro 升级活动")
+        with patch.dict(sys.modules, {"qoder_daily": module}):
+            result = runner.qoder("token", "user", False, "/tmp/state")
+        self.assertEqual("unconfirmed", result["state"])
+        self.assertIn("待确认", result["message"])
+
 if __name__ == "__main__":
     unittest.main()
