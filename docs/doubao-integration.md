@@ -5,6 +5,7 @@
 ## 参考实现与本机核对
 
 - [smart-open/TraeWorkAssistant](https://github.com/smart-open/TraeWorkAssistant/tree/b075a819d4b812895a1868b77e6972529a9ed822)（MIT）：核对多 Profile 登录态快照、`Local State` 的账号与会话、额度 `quota/summary/`、每日签到 `detail`/`landing/checkin` 的业务语义。只参考行为和字段，没有复制实现。
+- [L0NE-6/DoubaoWork-Daily](https://github.com/L0NE-6/DoubaoWork-Daily/tree/fc6db08100f9edff821a881c0b7ea24a1e33db6d)（MIT，v1.3.2）：同一协议族的每日签到实现，用于核对 `campaign/v3/detail` 的 `daily_signin` 判据、`landing/checkin` 回执与回查，以及我们尚未实现的 `campaign/list` + `item/reward/claim` 逐项领奖。`landing/report` 这类合成写请求上游已移除，我们同样不发。
 - [cyz824/DoubaoSwitcher](https://github.com/cyz824/DoubaoSwitcher)：核对独立豆包切换工具的账号场景；功能范围较小，不作为登录态协议依据。
 - 本机 Windows x64 豆包安装路径为 `D:\Program Files\Doubao\Doubao.exe`。当前用户的 `Local State` 活跃 Profile、Profile 身份、`Preferences` 登录资料与 `x-tt-multi-sids` 会话对应同一账号。对官方额度和签到状态端点只读请求均返回 HTTP 200 / 业务码 0；当前账号订阅额度窗口为空、每日签到任务存在。测试不输出账号 ID 或令牌。
 

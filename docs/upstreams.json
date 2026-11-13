@@ -77,6 +77,25 @@
       "verify": "cargo test -p wb-switch-core doubao"
     },
     {
+      "id": "doubao-work-daily",
+      "scope": "claim",
+      "platform": "豆包（领取实现）",
+      "repo": "L0NE-6/DoubaoWork-Daily",
+      "kind": "protocol",
+      "pinned": "fc6db08100f9edff821a881c0b7ea24a1e33db6d",
+      "pinnedLabel": "v1.3.2",
+      "license": "MIT",
+      "localPath": "crates/wb-switch-core/src/modules/doubao/network.rs",
+      "doc": "docs/doubao-integration.md",
+      "watch": [
+        "campaign v3 detail 的 daily_signin 判据",
+        "landing/checkin 回执与回查",
+        "campaign/list 与 item/reward/claim 的逐项领奖",
+        "回执不明时是否重提"
+      ],
+      "verify": "cargo test -p wb-switch-core doubao"
+    },
+    {
       "id": "doubao-switcher",
       "scope": "claim",
       "platform": "豆包（场景参考）",
