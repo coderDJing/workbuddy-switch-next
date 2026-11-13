@@ -52,6 +52,17 @@ npm run build:app:release
 
 从正式版开始新 RC 周期时，用 `npm run version:set -- rc`，脚本将补丁位加一并按十进位进位，例如 `1.1.9 → 1.2.0`；已有 RC 保持基础版本不变。RC 用户转正式版需手动安装；正式版发布不改写 `preview` 更新入口。
 
+## 依赖补丁（vendor-patched）
+
+`Cargo.toml` 的 `[patch.crates-io]` 指向仓库内的改写版本，改动都只修一个具体问题：
+
+| 包 | 改动 |
+| --- | --- |
+| `indexmap` | 维持既有补丁，用于本地缓存键的哈希行为。 |
+| `tauri-build` 2.6.3 | `copy_binaries` 删除已存在的 sidecar 时不再 `unwrap`：hosted macOS runner 上该 `remove_file` 会返回 EPERM，直接中断整次构建；紧随其后的 `fs::copy` 本身会覆盖目标，删除失败可以忽略。 |
+
+升级 `tauri-build` 时需同步更新 `vendor-patched/tauri-build`，并确认上游是否已修复该处 `unwrap`。
+
 ## 更新签名
 
 Next 使用自己的 Tauri updater 签名。当前机器的签名材料在用户目录 `~/.wb-switch-next/release-signing/`，公钥写入 `src-tauri/tauri.conf.json`。私钥与密码不得进入仓库，应单独备份；后续版本必须使用相同密钥以便已有安装验证更新。

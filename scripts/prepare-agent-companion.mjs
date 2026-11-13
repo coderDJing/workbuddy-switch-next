@@ -35,18 +35,10 @@ if (mode !== 'copy') {
   ], { cwd: root, stdio: 'inherit', env: { ...process.env, CARGO_TARGET_DIR: path.join(root, 'target') } });
   const binaries = path.join(root, 'src-tauri/binaries');
   await fs.mkdir(binaries, { recursive: true });
-  const built = path.join(root, 'target', target, 'release', `agent-studio-runtime${suffix}`);
-  const packaged = path.join(binaries, `agent-studio-runtime-${target}${suffix}`);
-  // 用 rename 而不是 copy：tauri-build 的 copy_binaries 会先把 profile 目录里的同名
-  // sidecar 删掉再复制，而在部分 macOS runner 上删刚产出的可执行文件会 EPERM
-  // （`fs::remove_file` 直接 unwrap 崩溃）。移走后目标位置不存在，那一步就不会执行。
-  // 同一仓库根目录下必然同卷；跨卷或文件被占用时退回复制 + 删除。
-  try {
-    await fs.rename(built, packaged);
-  } catch {
-    await fs.copyFile(built, packaged);
-    await fs.rm(built, { force: true });
-  }
+  await fs.copyFile(
+    path.join(root, 'target', target, 'release', `agent-studio-runtime${suffix}`),
+    path.join(binaries, `agent-studio-runtime-${target}${suffix}`),
+  );
 }
 
 for (const page of ['desktop.html', 'desktop-settings.html']) {

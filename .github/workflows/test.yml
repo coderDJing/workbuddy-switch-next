@@ -137,20 +137,6 @@ jobs:
       - name: Verify macOS architecture check
         run: node --test scripts/daily-macos-arch.test.mjs
 
-      # tauri-build 的 copy_binaries 会先 remove_file 再复制 sidecar；macOS runner 上
-      # 删除已存在的 agent-studio-runtime 会 EPERM（build script 直接 unwrap 崩溃）。
-      # 缓存恢复的 target/ 里通常就带着这个文件，先清掉，让复制落在空位置上。
-      - name: Drop cached sidecar before clippy
-        if: runner.os == 'macOS'
-        run: |
-          set -euo pipefail
-          for file in target/*/debug/agent-studio-runtime target/debug/agent-studio-runtime; do
-            [ -e "$file" ] || continue
-            chflags nouchg "$file" 2>/dev/null || true
-            chmod u+w "$file" 2>/dev/null || true
-            rm -f "$file"
-          done
-
       - name: Check formatting
         run: cargo fmt --check -p wb-switch-core -p wb-switch-server -p wb-switch-rust
 
@@ -163,19 +149,6 @@ jobs:
 
       # src-tauri 的 40 个测试此前从不运行（rust-tests 只覆盖 core）。
       # 前置 dist 与 stub companion binary 已由上方步骤就位。
-      # 与 clippy 前同样的原因：这里可能重新跑 build script，先把上一步复制的
-      # sidecar 清掉，避免 copy_binaries 的 remove_file 在 macOS 上 EPERM。
-      - name: Drop sidecar before desktop tests
-        if: runner.os == 'macOS'
-        run: |
-          set -euo pipefail
-          for file in target/*/debug/agent-studio-runtime target/debug/agent-studio-runtime; do
-            [ -e "$file" ] || continue
-            chflags nouchg "$file" 2>/dev/null || true
-            chmod u+w "$file" 2>/dev/null || true
-            rm -f "$file"
-          done
-
       - name: Desktop app tests
         run: cargo test -p wb-switch-rust
 

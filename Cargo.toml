@@ -15,3 +15,5 @@ resolver = "2"
 # 则不需要它，可以整段删除并移除 `vendor-patched/`。
 [patch.crates-io]
 indexmap = { path = "vendor-patched/indexmap" }
+# Remove_file on an existing sidecar is best-effort; see the comment in the patch.
+tauri-build = { path = "vendor-patched/tauri-build" }
