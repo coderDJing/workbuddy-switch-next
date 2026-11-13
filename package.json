@@ -1,7 +1,7 @@
 {
   "name": "workbuddy-switch-next",
   "private": true,
-  "version": "0.2.8-rc.202611131344",
+  "version": "0.2.8-rc.202611131601",
   "type": "module",
   "scripts": {
     "dev": "vite",
