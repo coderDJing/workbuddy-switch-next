@@ -4519,8 +4519,6 @@ dependencies = [
 [[package]]
 name = "tauri-build"
 version = "2.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc9ce40b16101cb6ea63d3e221567affd1c3a9205f95d7bc574941a10636b632"
 dependencies = [
  "anyhow",
  "cargo_toml",
@@ -5595,7 +5593,7 @@ dependencies = [
 
 [[package]]
 name = "wb-switch-core"
-version = "0.2.8-rc.202611130947"
+version = "0.2.8-rc.202611131005"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -5621,7 +5619,7 @@ dependencies = [
 
 [[package]]
 name = "wb-switch-rust"
-version = "0.2.8-rc.202611130947"
+version = "0.2.8-rc.202611131005"
 dependencies = [
  "libc",
  "objc2",
@@ -5646,7 +5644,7 @@ dependencies = [
 
 [[package]]
 name = "wb-switch-server"
-version = "0.2.8-rc.202611130947"
+version = "0.2.8-rc.202611131005"
 dependencies = [
  "axum",
  "chrono",
