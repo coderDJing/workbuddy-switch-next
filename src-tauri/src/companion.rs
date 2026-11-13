@@ -3,11 +3,16 @@
 
 use tauri::AppHandle;
 
+/// sidecar 的打包名。刻意与 cargo 产物 `agent-studio-runtime` 区分：两者同名时，
+/// tauri-build 会在 `target/<triple>/<profile>` 上先删后拷，macOS 托管 runner 上
+/// 该路径被占成目录会让删除返回 EPERM、复制返回 EISDIR，整次构建中断。
+const RUNTIME_NAME: &str = "agent-runtime";
+
 fn runtime_path() -> std::path::PathBuf {
     let suffix = if cfg!(windows) { ".exe" } else { "" };
     let bundled = std::env::current_exe().ok().and_then(|exe| {
         exe.parent()
-            .map(|dir| dir.join(format!("agent-studio-runtime{suffix}")))
+            .map(|dir| dir.join(format!("{RUNTIME_NAME}{suffix}")))
     });
     if let Some(path) = bundled.filter(|path| path.is_file()) {
         return path;
@@ -15,7 +20,7 @@ fn runtime_path() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("binaries")
         .join(format!(
-            "agent-studio-runtime-{}{suffix}",
+            "{RUNTIME_NAME}-{}{suffix}",
             env!("AGENT_COMPANION_TARGET")
         ))
 }

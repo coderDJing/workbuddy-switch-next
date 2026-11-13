@@ -15,6 +15,7 @@ dist-bin/
 dist-ssr
 public/companion/
 public/companion-demo/
+src-tauri/binaries/agent-runtime-*
 src-tauri/binaries/agent-studio-runtime-*
 src-tauri/binaries/workbuddy-switch-next-*
 src-tauri/binaries/daily-runner*

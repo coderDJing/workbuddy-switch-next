@@ -130,7 +130,7 @@ jobs:
       - name: Stub companion runtime binary
         run: |
           mkdir -p src-tauri/binaries
-          touch "src-tauri/binaries/agent-studio-runtime-$(rustc -vV | sed -n "s/^host: //p")"
+          touch "src-tauri/binaries/agent-runtime-$(rustc -vV | sed -n "s/^host: //p")"
           touch "src-tauri/binaries/workbuddy-switch-next-$(rustc -vV | sed -n "s/^host: //p")"
           touch "src-tauri/binaries/daily-runner-$(rustc -vV | sed -n "s/^host: //p")"
 

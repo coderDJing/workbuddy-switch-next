@@ -35,9 +35,14 @@ if (mode !== 'copy') {
   ], { cwd: root, stdio: 'inherit', env: { ...process.env, CARGO_TARGET_DIR: path.join(root, 'target') } });
   const binaries = path.join(root, 'src-tauri/binaries');
   await fs.mkdir(binaries, { recursive: true });
+  // 打包名故意不叫 agent-studio-runtime：cargo 已经把这个可执行文件产出到
+  // `target/<triple>/release/agent-studio-runtime`，而 tauri-build 的 copy_binaries
+  // 会在同一路径上先删后拷。macOS 托管 runner 上该路径会被占成目录，删除返回
+  // EPERM、复制返回 EISDIR，整次发布构建中断。换一个不冲突的名字后，tauri-build
+  // 的目标是全新的 `agent-runtime`，不再触碰 cargo 的产物路径。
   await fs.copyFile(
     path.join(root, 'target', target, 'release', `agent-studio-runtime${suffix}`),
-    path.join(binaries, `agent-studio-runtime-${target}${suffix}`),
+    path.join(binaries, `agent-runtime-${target}${suffix}`),
   );
 }
 
