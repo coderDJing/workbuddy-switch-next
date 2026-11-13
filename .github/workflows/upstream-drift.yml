@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   drift:
-    name: Check pinned upstreams
+    name: Pinned upstream drift（红＝上游有更新，非构建失败）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,4 +29,10 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          {
+            echo "> 这个 job 标红＝**上游在固定 commit 之后有新提交，需要评估是否跟进**，"
+            echo "> 不是构建或发布失败；发布状态看 \`Build Next\`。"
+            echo "> 跟进流程见 \`docs/UPSTREAMS.md\`。"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
           node scripts/check-upstreams.mjs --markdown --strict | tee -a "$GITHUB_STEP_SUMMARY"
