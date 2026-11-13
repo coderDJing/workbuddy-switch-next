@@ -1,4 +1,4 @@
-import type { ClaimLedger, ClaimLedgerEntry, ClaimScope } from "./api";
+import type { ClaimLedger, ClaimLedgerEntry, ClaimScope, ClaimState } from "./api";
 
 /**
  * 从「今日领取记忆」派生按钮态与卡片 chip 的纯逻辑。
@@ -201,6 +201,62 @@ export function claimButtonHint(view: ClaimView, fallback: string): string {
   if (view.error > 0) pieces.push(`${view.error} 个账号失败，可重试`);
   if (view.unconfirmed > 0) pieces.push(`${view.unconfirmed} 个结果待确认`);
   return `${pieces.join("；")}${when}`;
+}
+
+/** 账号级状态文案（详情弹窗用整句）。 */
+export function claimStateLabel(state: ClaimState | undefined): string {
+  switch (state) {
+    case "claimed":
+      return "今日已领完";
+    case "partial":
+      return "还有可领项";
+    case "blocked":
+      return "今日无可领取";
+    case "error":
+      return "领取失败";
+    case "unconfirmed":
+      return "结果待确认";
+    case "skipped":
+      return "本次跳过";
+    default:
+      return "今天还没跑过";
+  }
+}
+
+/** 任务级状态文案：`可领取` / `未达标` / `待确认`。 */
+export function claimTaskLabel(state: ClaimState | string): string {
+  switch (state) {
+    case "claimed":
+      return "已领取";
+    case "partial":
+      return "可领取";
+    case "blocked":
+      return "未达标";
+    case "unconfirmed":
+      return "待确认";
+    case "error":
+      return "失败";
+    case "skipped":
+      return "跳过";
+    default:
+      return "未知";
+  }
+}
+
+/** 取某平台 / scope 下今天的全部条目，按账号名（调用方提供）或 id 排序。 */
+export function ledgerEntriesFor(
+  ledger: ClaimLedger | null | undefined,
+  platform: string,
+  scope: ClaimScope,
+  variant?: string | null,
+): ClaimLedgerEntry[] {
+  const entries = (ledger?.entries ?? []).filter(
+    (entry) =>
+      entry.platform === platform &&
+      entry.scope === scope &&
+      (variant == null || entry.variant == null || entry.variant === variant),
+  );
+  return [...entries].sort((left, right) => left.accountId.localeCompare(right.accountId));
 }
 
 /** 卡片 chip 文案：`已领完` / `3 项待领` / `待确认` / `无任务`。 */

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, Clock3, Columns3, Ellipsis, ExternalLink, FileDown, FileUp, Info, Loader2, LogIn, Pencil, RefreshCw, Rows3, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ClaimActionButton, ClaimStateBadge } from "@/components/claim-action";
+import { ClaimLedgerDialog } from "@/components/claim-ledger-dialog";
 import { TraeBackupDialog } from "@/components/trae-backup-dialog";
 import { DemoAction } from "@/components/demo-action";
 import { TraeMark } from "@/components/product-marks";
@@ -18,7 +19,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import * as api from "@/lib/api";
 import { avatarTone } from "@/lib/avatar-tone";
-import { deriveClaimView, entryFor } from "@/lib/claim-status";
+import { deriveClaimView, entryFor, ledgerEntriesFor } from "@/lib/claim-status";
 import { useClaimLedger } from "@/lib/use-claim-ledger";
 import { cn } from "@/lib/utils";
 import { normalizeVariant, variantLabel } from "@/lib/variant";
@@ -129,12 +130,18 @@ export default function TraePage() {
   const groups = orderTraeAccounts(groupTraeAccounts(accounts), sortKey, clients);
   /** 今日领取记忆：TRAE 每账号只有一次签到，同一官方设备每天只能签一个账号。 */
   const { ledger: claimLedger, reload: reloadClaimLedger } = useClaimLedger();
+  const [claimDetailsOpen, setClaimDetailsOpen] = useState(false);
   const claimView = deriveClaimView(
     claimLedger,
     "trae",
     accounts.map(account => ({ id: account.id, variant: account.variant })),
     "rewards",
   );
+  const claimEntries = ledgerEntriesFor(claimLedger, "trae", "rewards", variant);
+  const claimAccountNames = Object.fromEntries(accounts.map(account => [account.id, account.name]));
+  const claimPendingAccounts = accounts
+    .filter(account => !claimEntries.some(entry => entry.accountId === account.id))
+    .map(account => ({ id: account.id, name: account.name }));
   const targets: api.TraeClient[] = ["desktop"];
   const current = clients.filter(c => c.configured && !c.activeAccountId);
   const statusFor = (client: api.TraeClient) => clients.find(c => c.client === client);
@@ -187,19 +194,27 @@ export default function TraePage() {
   async function claimCheckins() {
     if (claiming || variant !== "cn") return;
     setClaiming(true);
-    const outcomes: string[] = [];
+    let attempted = 0;
     let failed = 0;
     try {
       for (const account of accountsRef.current.filter(item => item.variant === "cn" && !item.needsLogin)) {
+        attempted++;
         try {
           const result = await api.traeAction("checkin", { accountId: account.id }) as { ok?: boolean; message?: string; credits?: number | null };
           if (!result.ok) failed++;
-          const gain = typeof result.credits === "number" && result.credits > 0 ? `（+${result.credits} 积分）` : "";
-          outcomes.push(`${account.name}：${result.message || "已处理"}${gain}`);
-        } catch (error) { failed++; outcomes.push(`${account.name}：${api.asError(error)}`); }
+        } catch {
+          failed++;
+        }
       }
-      if (!outcomes.length) { toast.warning("没有可签到的国内版账号"); return; }
-      (failed ? toast.warning : toast.success)("签到处理完成", { description: outcomes.join("；"), duration: 10000 });
+      if (!attempted) { toast.warning("没有可签到的国内版账号"); return; }
+      // 只报数量；哪个账号、哪一步没成，去「今日领取详情」看。
+      const parts = [`${attempted - failed} 个账号已完成`];
+      if (failed) parts.push(`${failed} 个失败`);
+      (failed ? toast.warning : toast.success)("签到处理完成", {
+        description: parts.join("，"),
+        duration: 10000,
+        action: { label: "查看详情", onClick: () => setClaimDetailsOpen(true) },
+      });
       await queryCredits(accountsRef.current.filter(item => item.variant === "cn"));
     } finally { await reloadClaimLedger(); setClaiming(false); }
   }
@@ -291,7 +306,7 @@ export default function TraePage() {
                   {!api.isDemoMode() && <><DropdownMenuItem onSelect={() => { cancelRename.current = false; setDraft(group.name); setEditing(group.key); }}><Pencil />重命名</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:bg-destructive/5 focus:text-destructive" onSelect={() => setPending({ kind: "delete", group })}><Trash2 />删除账号</DropdownMenuItem></>}
                 </DropdownMenuContent></DropdownMenu>
               </header>
-              <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}><CreditPanel credit={groupCredit(group)} loading={group.accounts.some(a => creditLoading[a.id])} error={groupError} compact={compact} accountName={group.name} />{claimEntry && <div className="mt-2"><ClaimStateBadge entry={claimEntry} /></div>}{needsLogin && <div className="mt-3 flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300"><span>登录已过期</span><DemoAction><Button size="sm" variant="ghost" disabled={busy} onClick={() => { setLoginOpen(true); }}>重新登录</Button></DemoAction></div>}</div>
+              <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}><CreditPanel credit={groupCredit(group)} loading={group.accounts.some(a => creditLoading[a.id])} error={groupError} compact={compact} accountName={group.name} />{claimEntry && <div className="mt-2"><ClaimStateBadge entry={claimEntry} onClick={() => setClaimDetailsOpen(true)} /></div>}{needsLogin && <div className="mt-3 flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300"><span>登录已过期</span><DemoAction><Button size="sm" variant="ghost" disabled={busy} onClick={() => { setLoginOpen(true); }}>重新登录</Button></DemoAction></div>}</div>
               {!compact && <footer className="flex items-center gap-2 border-t border-border px-5 py-2.5">{switchControls(group)}{active && <span className="text-xs text-muted-foreground">当前使用</span>}</footer>}
             </article>;
           })}
@@ -299,6 +314,14 @@ export default function TraePage() {
     </section>
     <p className="mt-6 text-xs leading-6 text-muted-foreground">切换保留本机项目与历史，云端会话仍归原账号所有。</p>
 
+    <ClaimLedgerDialog
+      open={claimDetailsOpen}
+      onOpenChange={setClaimDetailsOpen}
+      title={`今日领取详情 · TRAE ${variantLabel(variant)}`}
+      entries={claimEntries}
+      accountNames={claimAccountNames}
+      pendingAccounts={claimPendingAccounts}
+    />
     <Dialog open={loginOpen} onOpenChange={open => { if (!busy) setLoginOpen(open); }}><DialogContent><DialogHeader><DialogTitle>登录添加 TRAE {variantLabel(variant)}</DialogTitle><DialogDescription>在官方客户端完成登录后，返回此处添加账号。</DialogDescription></DialogHeader>
       <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-4"><TraeMark size={40} global={variant === "ai"} /><div><p className="text-sm font-medium">TRAE {variantLabel(variant)}</p><p className="mt-1 text-xs text-muted-foreground">登录信息由系统加密保存在本机。</p></div></div>
       <DemoAction><Button variant="outline" disabled={busy} onClick={() => void run("open", async () => { await api.traeAction("open", { variant, client: "desktop" }); }, "已打开官方客户端，请完成登录")}><ExternalLink />打开官方客户端登录</Button></DemoAction>

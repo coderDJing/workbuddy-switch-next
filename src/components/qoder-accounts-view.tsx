@@ -32,7 +32,8 @@ import { avatarTone } from "@/lib/avatar-tone";
 import { normalizeVariant, variantLabel } from "@/lib/variant";
 import { groupQoderAccounts, orderQoderAccounts, QODER_SORT_OPTIONS, type QoderAccountGroup, type QoderSortKey } from "@/lib/qoder-accounts";
 import { ClaimActionButton, ClaimStateBadge } from "@/components/claim-action";
-import { deriveClaimView, entryFor } from "@/lib/claim-status";
+import { ClaimLedgerDialog } from "@/components/claim-ledger-dialog";
+import { deriveClaimView, entryFor, ledgerEntriesFor } from "@/lib/claim-status";
 import { useClaimLedger } from "@/lib/use-claim-ledger";
 import { qoderTargets, useQoderView } from "@/stores/qoder-view";
 import { useQoderStatus } from "@/stores/qoder-status";
@@ -201,10 +202,12 @@ interface CardProps {
   onLoading: LoadingObserver;
   /** 今日领取记忆（该身份下任一端点的最近一次结果）。 */
   claimEntry?: api.ClaimLedgerEntry;
+  /** 点击领取标记时打开今日领取详情。 */
+  onShowClaimDetails?: () => void;
 }
 
 /** Qoder 账号卡片：外观与 WorkBuddy / CodeBuddy 账号卡片一致（圆角卡片、header 标识、footer 操作）。 */
-function QoderAccountCard({ group, targets, targetStatus, compact, busy, busyKey, editing, draft, onDraftChange, onStartRename, onCommitRename, onCancelRename, onSwitch, onDelete, refreshVersion, onCredit, onLoading, claimEntry }: CardProps) {
+function QoderAccountCard({ group, targets, targetStatus, compact, busy, busyKey, editing, draft, onDraftChange, onStartRename, onCommitRename, onCancelRename, onSwitch, onDelete, refreshVersion, onCredit, onLoading, claimEntry, onShowClaimDetails }: CardProps) {
   const [infoOpen, setInfoOpen] = useState(false);
   const [localRefresh, setLocalRefresh] = useState(0);
   const activeFor = (target: QoderTarget) => group.bundles.some((bundle) => bundle.target === target && (bundle.id === targetStatus(target)?.currentId || (bundle.identityKey && bundle.identityKey === targetStatus(target)?.currentIdentityKey)));
@@ -280,7 +283,7 @@ function QoderAccountCard({ group, targets, targetStatus, compact, busy, busyKey
       </header>
       <div className={cn("flex-1 text-xs leading-5 text-muted-foreground", compact ? "px-3.5 pb-4 pt-3" : "px-5 pb-5 pt-4")}>
         <QoderCreditPanel bundleIds={group.bundles.map((bundle) => bundle.id)} liveTarget={liveTarget} compact={compact} creditId={group.key} refreshVersion={refreshVersion + localRefresh} accountName={group.label} onCredit={onCredit} onLoading={onLoading} />
-        {claimEntry && <div className="mt-2"><ClaimStateBadge entry={claimEntry} /></div>}
+        {claimEntry && <div className="mt-2"><ClaimStateBadge entry={claimEntry} onClick={onShowClaimDetails} /></div>}
       </div>
       {!compact && <footer className="flex items-center gap-2 border-t border-border px-5 py-2.5">{switchControls}{active && <span className="text-xs text-muted-foreground">当前使用</span>}</footer>}
       <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
@@ -459,6 +462,7 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
   const refreshingCredits = [...groups.map((group) => group.key), ...currentLogins.map((s) => `live:${s.target}`)].some((key) => creditLoading[key]);
   /** 今日领取记忆：Qoder 的条目按 bundle id 落盘，未加入账号库的本机登录用 live:<target>。 */
   const { ledger: claimLedger, reload: reloadClaimLedger } = useClaimLedger();
+  const [claimDetailsOpen, setClaimDetailsOpen] = useState(false);
   const claimView = deriveClaimView(
     claimLedger,
     "qoder",
@@ -468,12 +472,19 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
     ],
     "rewards",
   );
+  const claimEntries = ledgerEntriesFor(claimLedger, "qoder", "rewards", variant);
+  const claimTargets = [
+    ...groups.flatMap((group) => group.bundles.map((bundle) => ({ id: bundle.id, name: `${group.label} · ${TARGET_LABELS[bundle.target]}` }))),
+    ...currentLogins.map((state) => ({ id: `live:${state.target}`, name: `本机登录 · ${TARGET_LABELS[state.target]}` })),
+  ];
+  const claimAccountNames = Object.fromEntries(claimTargets.map((item) => [item.id, item.name]));
+  const claimPendingAccounts = claimTargets.filter((item) => !claimEntries.some((entry) => entry.accountId === item.id));
 
   async function claimRewards() {
     if (claimingRewards) return;
     setClaimingRewards(true);
     const progressToast = toast.loading("正在领取 Qoder 奖励…");
-    const outcomes: string[] = [];
+    let attempted = 0;
     let failed = 0;
     try {
       for (const group of groups) {
@@ -483,18 +494,35 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
         });
         try {
           const result = await api.claimQoderRewards(group.bundles.map((bundle) => bundle.id), active);
+          attempted++;
           if (!result.ok) failed++;
-          outcomes.push(`${group.label}：${result.message}`);
-        } catch (error) { failed++; outcomes.push(`${group.label}：${api.asError(error)}`); }
+        } catch {
+          attempted++;
+          failed++;
+        }
       }
       for (const state of currentLogins) {
         try {
           const result = await api.claimQoderRewards([], state.target);
+          attempted++;
           if (!result.ok) failed++;
-          outcomes.push(`${TARGET_LABELS[state.target]}：${result.message}`);
-        } catch (error) { failed++; outcomes.push(`${TARGET_LABELS[state.target]}：${api.asError(error)}`); }
+        } catch {
+          attempted++;
+          failed++;
+        }
       }
-      (failed ? toast.warning : toast.success)("领奖处理完成", { description: outcomes.join("；"), duration: 10000 });
+      if (attempted === 0) {
+        toast.warning("没有可领奖的 Qoder 账号");
+      } else {
+        // 只报数量；具体哪一项没成，去「今日领取详情」看。
+        const parts = [`${attempted - failed} 个账号已完成`];
+        if (failed) parts.push(`${failed} 个失败`);
+        (failed ? toast.warning : toast.success)("领奖处理完成", {
+          description: parts.join("，"),
+          duration: 10000,
+          action: { label: "查看详情", onClick: () => setClaimDetailsOpen(true) },
+        });
+      }
     } finally {
       toast.dismiss(progressToast);
       setCreditVersion((value) => value + 1);
@@ -615,6 +643,7 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
                 onCredit={onCredit}
                 onLoading={onLoading}
                 claimEntry={group.bundles.map((bundle) => entryFor(claimLedger, "qoder", { id: bundle.id, variant }, "rewards")).find(Boolean)}
+                onShowClaimDetails={() => setClaimDetailsOpen(true)}
               />
             ))}
           </div>
@@ -624,6 +653,14 @@ export function QoderAccountsView({ compact = false, onToggleCompact }: Props) {
         </p>
       </section>
 
+      <ClaimLedgerDialog
+        open={claimDetailsOpen}
+        onOpenChange={setClaimDetailsOpen}
+        title={`今日领取详情 · Qoder ${variantLabel(variant)}`}
+        entries={claimEntries}
+        accountNames={claimAccountNames}
+        pendingAccounts={claimPendingAccounts}
+      />
       <QoderBackupDialog mode={backupMode} onClose={() => setBackupMode(null)} groups={groupQoderAccounts(status?.bundles ?? [])} onImported={(result) => {
         const summary = `已导入 ${result.imported} 个账号${result.skipped ? `，${result.skipped} 个账号已存在` : ""}`;
         if (result.warnings.length) toast.warning(summary, { description: result.warnings.join("；"), duration: 15000 });

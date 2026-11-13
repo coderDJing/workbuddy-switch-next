@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   Columns3,
   ExternalLink,
+  ListChecks,
   FileDown,
   FileUp,
   Loader2,
@@ -19,6 +20,7 @@ import {
 import { AccountCard } from "@/components/account-card";
 import { ClaimActionButton } from "@/components/claim-action";
 import { AccountInfoDialog } from "@/components/account-info-dialog";
+import { ClaimLedgerDialog } from "@/components/claim-ledger-dialog";
 import { JetbrainsSwitchDialog } from "@/components/jetbrains-switch-dialog";
 import { CodebuddyIdeSwitchAccountDialog } from "@/components/codebuddy-ide-switch-account-dialog";
 import { DemoAction } from "@/components/demo-action";
@@ -57,7 +59,7 @@ import { OAuthLoginDialog } from "@/components/oauth-login-dialog";
 import { SwitchAccountDialog } from "@/components/switch-account-dialog";
 import { VscodeSwitchAccountDialog } from "@/components/vscode-switch-account-dialog";
 import * as api from "@/lib/api";
-import { deriveClaimView, entryFor } from "@/lib/claim-status";
+import { deriveClaimView, entryFor, ledgerEntriesFor } from "@/lib/claim-status";
 import { useClaimLedger } from "@/lib/use-claim-ledger";
 import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { createRateLimitLoader } from "@/lib/rate-limit-refresh";
@@ -202,6 +204,8 @@ export default function AccountsPage() {
    * 只能靠这份记忆判断「今天到底还领不领得到东西」。
    */
   const { ledger: claimLedger, reload: reloadClaimLedger } = useClaimLedger();
+  /** 今日领取详情弹窗：把「还剩哪几项、叫什么」摊开，tooltip 只看得到一瞬。 */
+  const [claimDetailsOpen, setClaimDetailsOpen] = useState(false);
   /** 账号 id -> 今日旅行状态（undefined=查询中/未知） */
   const [travelMap, setTravelMap] = useState<Record<string, TravelStatus>>({});
   /**
@@ -260,6 +264,21 @@ export default function AccountsPage() {
         "daily",
       ),
     [claimLedger, visibleAccounts],
+  );
+  const claimEntries = useMemo(
+    () => ledgerEntriesFor(claimLedger, "workbuddy", "daily", variant),
+    [claimLedger, variant],
+  );
+  const claimAccountNames = useMemo(
+    () => Object.fromEntries(accounts.map((account) => [account.id, displayName(account)])),
+    [accounts],
+  );
+  const claimPendingAccounts = useMemo(
+    () =>
+      visibleAccounts
+        .filter((account) => !claimEntries.some((entry) => entry.accountId === account.id))
+        .map((account) => ({ id: account.id, name: displayName(account) })),
+    [visibleAccounts, claimEntries],
   );
   /** 关闭自动签到的账号 id（配置未读到/读取失败 = 空名单）。 */
   const excludedCheckinIds = useMemo(
@@ -660,43 +679,39 @@ export default function AccountsPage() {
         try {
           const res = await api.runDailyTasks(variant);
           const entries = res.accounts ?? [];
-          const success = entries.filter((e) => e.result === "success").length;
-          const already = entries.filter((e) => e.result === "already").length;
           const failed = entries.filter((e) => e.result === "error").length;
           const inactive = entries.filter((e) => e.inactive === true || e.result === "inactive").length;
           const skipped = entries.filter((e) => e.result === "skipped" && e.reason === "auto_checkin_disabled").length;
           const outsideWindow = entries.filter((e) => e.result === "skipped" && e.reason === "outside_checkin_window").length;
+          // 完成提示只报数量：还剩哪几项、为什么没完成，都在「今日领取详情」里。
+          const rewards = entries.map((entry) => entry.rewards).filter((item): item is NonNullable<typeof item> => Boolean(item));
+          const withLeft = rewards.filter((item) => (item.claimable ?? item.remaining?.length ?? 0) > 0).length;
+          const finished = rewards.length - withLeft;
           const parts: string[] = [];
-          const rewardErrors = entries.filter((entry) => entry.rewards && !entry.rewards.ok).length;
-          for (const entry of entries) {
-            if (entry.rewards) parts.push(`${entry.email}：${entry.rewards.message}${entry.rewards.remaining?.length ? `（未完成：${entry.rewards.remaining.join("、")}）` : ""}${entry.rewards.warnings?.length ? `；${entry.rewards.warnings.join("；")}` : ""}`);
-          }
-          if (success > 0) parts.push(`${success} 个签到成功`);
-          if (already > 0) parts.push(`${already} 个已签到`);
+          if (finished > 0) parts.push(`${finished} 个账号已领完`);
+          if (withLeft > 0) parts.push(`${withLeft} 个还有任务未完成`);
+          if (failed > 0) parts.push(`${failed} 个领取失败`);
+          if (skipped > 0) parts.push(`${skipped} 个已关闭自动签到，已跳过`);
           if (inactive > 0) parts.push(`${inactive} 个未开放签到`);
-          if (failed > 0) parts.push(`${failed} 个失败`);
-          if (skipped > 0) parts.push(`已忽略 ${skipped} 个关闭自动签到的账号`);
-          if (outsideWindow > 0) parts.push(`${outsideWindow} 个不在签到时间段，已跳过签到`);
-          summary = res.status === "skipped" && res.reason === "already_running"
-            ? "每日任务正在进行"
-            : parts.length > 0 ? parts.join("，") : "无账号需要领取";
+          if (outsideWindow > 0) parts.push(`${outsideWindow} 个不在签到时间段`);
+          summary = parts.join("，") || "无账号需要领取";
           const allFailed = entries.length > 0 && failed === entries.length;
-          const allSkippedOrInactive = res.status === "skipped" || entries.length === 0 ||
-            (success === 0 && already === 0 && failed === 0 && !entries.some((entry) => entry.rewards));
-          if (rewardErrors > 0) {
-            notify = toast.warning;
-            title = "部分每日任务未完成";
-          } else if (allFailed) {
-            // 全部失败：没有成功、已签、未开放或忽略的账号。
-            notify = toast.error;
-            title = "签到出现错误";
-          } else if (allSkippedOrInactive) {
-            // 全部被跳过或官方未开放签到活动：既不算成功也不算失败，不呈现为绿色成功。
+          const nothingRan = rewards.length === 0;
+          if (res.status === "skipped" && res.reason === "already_running") {
             notify = toast.info;
-            title = res.reason === "already_running" ? "每日任务正在进行" : "没有需要执行的每日任务";
-          } else if (failed > 0) {
+            title = "每日任务正在进行";
+          } else if (allFailed) {
+            notify = toast.error;
+            title = "领取失败";
+          } else if (nothingRan) {
+            // 全部被跳过或官方未开放：既不算成功也不算失败，不呈现为绿色成功。
+            notify = toast.info;
+            title = "没有需要执行的每日任务";
+          } else if (withLeft > 0 || failed > 0) {
             notify = toast.warning;
-            title = "部分签到未完成";
+            title = "领取完成，有未完成项";
+          } else {
+            title = "领取完成";
           }
           // 只重查实际处理过的账号状态；被跳过的账号本次未发请求，状态保持未知。
           const next = checkinAvailable ? await fetchTodayCheckinMap(entries.filter((e) => e.result !== "skipped").map((e) => e.accountId)) : {};
@@ -713,7 +728,11 @@ export default function AccountsPage() {
       if (manualCreditRefresh.current) await manualCreditRefresh.current.catch(() => {});
       await refreshCredits(ids);
       if (autoTravelEnabled) await loadTravelMap(ids);
-      notify(title, { description: summary || undefined, duration: 12000 });
+      notify(title, {
+        description: summary || undefined,
+        duration: 12000,
+        action: { label: "查看详情", onClick: () => setClaimDetailsOpen(true) },
+      });
     } finally {
       toast.dismiss(progressToast);
       setCheckinAllRunning(false);
@@ -1084,6 +1103,20 @@ export default function AccountsPage() {
                 </TooltipTrigger>
                 <TooltipContent side="top">{api.isDemoMode() ? "演示模式下不可操作" : "查询当前档位所有账号的积分"}</TooltipContent>
               </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-9 rounded-lg"
+                    onClick={() => setClaimDetailsOpen(true)}
+                    aria-label="今日领取详情"
+                  >
+                    <ListChecks />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">今日领取详情：逐账号看还剩哪几个任务</TooltipContent>
+              </Tooltip>
               <ClaimActionButton
                 view={dailyClaimView}
                 running={checkinAllRunning}
@@ -1130,6 +1163,7 @@ export default function AccountsPage() {
                 onRefresh={onRefresh}
                 todayCheckedIn={checkinMap[a.id]}
                 dailyClaim={entryFor(claimLedger, "workbuddy", { id: a.id, variant: accountVariant(a) }, "daily")}
+                onShowClaimDetails={() => setClaimDetailsOpen(true)}
                 autoCheckinAllowed={checkinAvailable && autoCheckinSettled ? !excludedCheckinIds.has(a.id) : undefined}
                 travelStatus={autoTravelEnabled ? travelMap[a.id] : undefined}
                 rateLimits={rateLimitEnabled ? rateLimitMap[a.id] : undefined}
@@ -1180,6 +1214,14 @@ export default function AccountsPage() {
         onOpenChange={setImportOpen}
         onImported={onImported}
         variant={variant}
+      />
+      <ClaimLedgerDialog
+        open={claimDetailsOpen}
+        onOpenChange={setClaimDetailsOpen}
+        title={`今日领取详情 · ${variant === "ai" ? "国际版" : "国内版"}`}
+        entries={claimEntries}
+        accountNames={claimAccountNames}
+        pendingAccounts={claimPendingAccounts}
       />
       <SwitchAccountDialog
         open={switchAccount !== null}

@@ -5,8 +5,11 @@ import {
   claimButtonLabel,
   claimChipHint,
   claimChipLabel,
+  claimStateLabel,
+  claimTaskLabel,
   deriveClaimView,
   entryFor,
+  ledgerEntriesFor,
 } from "./claim-status";
 
 function entry(
@@ -172,6 +175,33 @@ describe("deriveClaimView", () => {
       "daily",
     );
     expect(view.mode).toBe("idle");
+  });
+});
+
+describe("dialog labels", () => {
+  it("spells out account and task states", () => {
+    expect(claimStateLabel("claimed")).toBe("今日已领完");
+    expect(claimStateLabel("blocked")).toBe("今日无可领取");
+    expect(claimStateLabel("unconfirmed")).toBe("结果待确认");
+    expect(claimStateLabel(undefined)).toBe("今天还没跑过");
+    expect(claimTaskLabel("partial")).toBe("可领取");
+    expect(claimTaskLabel("blocked")).toBe("未达标");
+  });
+
+  it("selects today's entries for one platform, scope and variant", () => {
+    const entries = ledgerEntriesFor(
+      ledger([
+        entry("b", "partial"),
+        entry("a", "claimed"),
+        entry("c", "claimed", { variant: "ai" }),
+        entry("d", "claimed", { platform: "minimax" }),
+        entry("e", "claimed", { scope: "checkin" }),
+      ]),
+      "workbuddy",
+      "daily",
+      "cn",
+    );
+    expect(entries.map((item) => item.accountId)).toEqual(["a", "b"]);
   });
 });
 

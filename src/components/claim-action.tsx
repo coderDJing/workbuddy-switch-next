@@ -144,9 +144,12 @@ export function ClaimActionButton({
 export function ClaimStateBadge({
   entry,
   className,
+  onClick,
 }: {
   entry?: ClaimLedgerEntry;
   className?: string;
+  /** 提供时渲染为按钮，打开今日领取详情。 */
+  onClick?: () => void;
 }) {
   const label = claimChipLabel(entry);
   if (!entry || !label) return null;
@@ -156,17 +159,33 @@ export function ClaimStateBadge({
       : entry.state === "error" || entry.state === "unconfirmed"
         ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
         : "border-border bg-muted/40 text-muted-foreground";
-  return (
-    <span
-      title={claimChipHint(entry)}
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4",
-        tone,
-        className,
-      )}
-    >
+  const classes = cn(
+    "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4",
+    tone,
+    className,
+  );
+  const content = (
+    <>
       <ListChecks className="size-3" />
       {label}
+    </>
+  );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={claimChipHint(entry)}
+        aria-label={`查看今日领取详情（${label}）`}
+        className={cn(classes, "cursor-pointer transition-opacity hover:opacity-80")}
+      >
+        {content}
+      </button>
+    );
+  }
+  return (
+    <span title={claimChipHint(entry)} className={classes}>
+      {content}
     </span>
   );
 }

@@ -6,6 +6,7 @@ import { Check, Clock3, Ellipsis, FileDown, FileUp, Gift, Fingerprint, Info, Loa
 import { toast } from "sonner";
 
 import { ClaimActionButton, ClaimStateBadge } from "@/components/claim-action";
+import { ClaimLedgerDialog } from "@/components/claim-ledger-dialog";
 import { DemoAction } from "@/components/demo-action";
 import { MinimaxLoginDialog } from "@/components/minimax-login-dialog";
 import { MinimaxBackupDialog } from "@/components/minimax-backup-dialog";
@@ -18,7 +19,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import * as api from "@/lib/api";
-import { deriveClaimView, entryFor } from "@/lib/claim-status";
+import { deriveClaimView, entryFor, ledgerEntriesFor } from "@/lib/claim-status";
 import { useClaimLedger } from "@/lib/use-claim-ledger";
 import { cn } from "@/lib/utils";
 import { useVisibleInterval } from "@/lib/use-visible-interval";
@@ -94,6 +95,7 @@ export default function MinimaxPage() {
   const [claimResults, setClaimResults] = useState<Record<string, api.MinimaxCheckin>>({});
   /** 今日领取记忆：MiniMax 每次领取只有一个签到任务，用来避免重复点击。 */
   const { ledger: claimLedger, reload: reloadClaimLedger } = useClaimLedger();
+  const [claimDetailsOpen, setClaimDetailsOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const cancelRename = useRef(false);
@@ -112,6 +114,11 @@ export default function MinimaxPage() {
     accounts.map(account => ({ id: account.id, variant: account.region })),
     "rewards",
   );
+  const claimEntries = ledgerEntriesFor(claimLedger, "minimax", "rewards", region);
+  const claimAccountNames = Object.fromEntries(accounts.map(account => [account.id, account.name]));
+  const claimPendingAccounts = accounts
+    .filter(account => !claimEntries.some(entry => entry.accountId === account.id))
+    .map(account => ({ id: account.id, name: account.name }));
 
   useVisibleInterval(() => { void refresh(); }, 60_000);
   useEffect(() => {
@@ -153,8 +160,10 @@ export default function MinimaxPage() {
         if (result.balance) setCreditOverrides(values => ({ ...values, [account.id]: result.balance! }));
         if (result.state === "claimed") claimed++; else if (result.state === "already") already++; else if (result.state === "closed") closed++; else failed++;
       }
-      const message = `领取完成：成功 ${claimed}，已领取 ${already}，未开放 ${closed}，待处理 ${failed}`;
-      if (failed) toast.warning(message); else toast.success(message);
+      // 只报数量；原因与账号明细去「今日领取详情」看。
+      const message = `成功 ${claimed}，已领取 ${already}，未开放 ${closed}${failed ? `，失败 ${failed}` : ""}`;
+      const options = { description: message, action: { label: "查看详情", onClick: () => setClaimDetailsOpen(true) } };
+      if (failed) toast.warning("领取完成，有未完成项", options); else toast.success("领取完成", options);
     } finally { await refresh(true); await reloadClaimLedger(); setClaiming(false); mutationRunning.current = false; }
   }
 
@@ -270,7 +279,11 @@ export default function MinimaxPage() {
                 <CreditBlock credit={creditOf(account)} loading={!!loading} error={creditErrors[account.id]} accountName={account.name} />
                 {(() => {
                   const entry = entryFor(claimLedger, "minimax", { id: account.id, variant: account.region }, "rewards");
-                  return entry ? <div className="mt-2"><ClaimStateBadge entry={entry} /></div> : null;
+                  return entry ? (
+                    <div className="mt-2">
+                      <ClaimStateBadge entry={entry} onClick={() => setClaimDetailsOpen(true)} />
+                    </div>
+                  ) : null;
                 })()}
                 {claimResults[account.id] && <p className={cn("mt-3 text-xs", claimResults[account.id].ok ? "text-muted-foreground" : "text-amber-700")} role="status">{claimResults[account.id].message}{claimResults[account.id].warning ? ` · ${claimResults[account.id].warning}` : ""}</p>}
                 {account.needsLogin && <div className="mt-3 flex items-center justify-between gap-2 text-amber-700 dark:text-amber-300"><span>登录已过期</span><DemoAction><Button size="sm" variant="ghost" disabled={busy} onClick={() => setLoginOpen(true)}>重新登录</Button></DemoAction></div>}
@@ -285,6 +298,14 @@ export default function MinimaxPage() {
     </section>
     <p className="mt-6 text-xs leading-6 text-muted-foreground">切换会先退出 MiniMax Code，写入账号凭据后重新打开；本机项目与历史保留，云端会话仍归原账号所有。CLI 与桌面端共用登录态，切换后两者同时生效。</p>
 
+    <ClaimLedgerDialog
+      open={claimDetailsOpen}
+      onOpenChange={setClaimDetailsOpen}
+      title={`今日领取详情 · MiniMax ${regionLabel(region)}`}
+      entries={claimEntries}
+      accountNames={claimAccountNames}
+      pendingAccounts={claimPendingAccounts}
+    />
     <MinimaxLoginDialog open={loginOpen} onOpenChange={open => { if (!busy) setLoginOpen(open); }} region={region} label={regionLabel(region)} />
     <MinimaxBackupDialog mode={backupMode} onClose={() => setBackupMode(null)} />
 

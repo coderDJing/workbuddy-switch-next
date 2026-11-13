@@ -92,10 +92,11 @@ const chipClass = "rounded-md px-1.5 py-0 text-[11px] font-medium";
  * 每日任务领取 chip：与签到 chip 并列但语义独立。
  * 只表达「今天所有账号的任务里还剩几项能领 / 已领完 / 无可领取」。
  */
-function dailyClaimChip(entry?: ClaimLedgerEntry) {
+function dailyClaimChip(entry?: ClaimLedgerEntry, onShowDetails?: () => void) {
   const label = claimChipLabel(entry);
   if (!entry || !label) return null;
   return statusIconChip({
+    onClick: onShowDetails,
     icon:
       entry.state === "error" || entry.state === "unconfirmed" ? (
         <TriangleAlert className="size-3.5" />
@@ -124,6 +125,7 @@ function statusIconChip({
   variant,
   count,
   muted,
+  onClick,
 }: {
   icon: ReactNode;
   label: string;
@@ -133,27 +135,38 @@ function statusIconChip({
   count?: number;
   /** 置灰（未激活状态，如「未旅行」）：图标与角标一起使用 muted 前景色。 */
   muted?: boolean;
+  /** 提供时 chip 变为按钮（例如打开今日领取详情）。 */
+  onClick?: () => void;
 }) {
   const badge = count != null && count > 1;
+  const content = (
+    <>
+      {icon}
+      {badge ? (
+        <span
+          aria-hidden="true"
+          className="flex h-3 min-w-3 items-center justify-center rounded-full bg-amber-600 px-0.5 text-[9px] font-semibold leading-none tabular-nums text-white"
+        >
+          {count}
+        </span>
+      ) : null}
+    </>
+  );
+  const chipClassNames = cn(chipClass, "px-1", badge && "gap-0.5", muted && "text-muted-foreground");
+  const trigger = onClick ? (
+    <Badge asChild variant={variant}>
+      <button type="button" onClick={onClick} aria-label={label} className={cn(chipClassNames, "cursor-pointer transition-opacity hover:opacity-80")}>
+        {content}
+      </button>
+    </Badge>
+  ) : (
+    <Badge variant={variant} className={chipClassNames} aria-label={label}>
+      {content}
+    </Badge>
+  );
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Badge
-          variant={variant}
-          className={cn(chipClass, "px-1", badge && "gap-0.5", muted && "text-muted-foreground")}
-          aria-label={label}
-        >
-          {icon}
-          {badge ? (
-            <span
-              aria-hidden="true"
-              className="flex h-3 min-w-3 items-center justify-center rounded-full bg-amber-600 px-0.5 text-[9px] font-semibold leading-none tabular-nums text-white"
-            >
-              {count}
-            </span>
-          ) : null}
-        </Badge>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
       <TooltipContent side="top">{tooltip}</TooltipContent>
     </Tooltip>
   );
@@ -310,6 +323,8 @@ interface Props {
    * 与「今日已签到」chip 语义分开：签到成功不代表成长任务都领完了。
    */
   dailyClaim?: ClaimLedgerEntry;
+  /** 点击领取 chip 时打开今日领取详情。 */
+  onShowClaimDetails?: () => void;
   /** 今日旅行状态（undefined=查询中/未知，不渲染标签） */
   travelStatus?: TravelStatus;
   /** 该账号当前受限的模型（来自本机日志台账）；空/缺失=无受限，不渲染图标。 */
@@ -452,7 +467,7 @@ function CreditResourceRow({ resource, compact, placeholderLabel }: { resource?:
   );
 }
 
-export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInfo, onSwitch, todayCheckedIn, dailyClaim, autoCheckinAllowed, travelStatus, rateLimits, credit, creditLoading, creditUpdatedAt, creditPriority, mostRecentlyUsed, workbuddyActive, codebuddyCliConfigured, codebuddyCliActive, codebuddyCliBusy, onSwitchCodebuddyCli, codebuddyCliLoading, codebuddyCnIdeAvailable, codebuddyCnIdeActive, codebuddyCnIdeBusy, codebuddyCnIdeLoading, onSwitchCodebuddyCnIde, vscodeExtInstalled, vscodeExtExtensionInstalled, vscodeExtAvailable, vscodeExtActive, vscodeExtBusy, vscodeExtLoading, onSwitchVscodeExt, jetbrainsInstalled, jetbrainsPluginInstalled, jetbrainsAvailable, jetbrainsActive, jetbrainsBusy, jetbrainsLoading, onSwitchJetbrains, enabledTools, featuresDisabled = true, compact = false }: Props) {
+export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInfo, onSwitch, todayCheckedIn, dailyClaim, onShowClaimDetails, autoCheckinAllowed, travelStatus, rateLimits, credit, creditLoading, creditUpdatedAt, creditPriority, mostRecentlyUsed, workbuddyActive, codebuddyCliConfigured, codebuddyCliActive, codebuddyCliBusy, onSwitchCodebuddyCli, codebuddyCliLoading, codebuddyCnIdeAvailable, codebuddyCnIdeActive, codebuddyCnIdeBusy, codebuddyCnIdeLoading, onSwitchCodebuddyCnIde, vscodeExtInstalled, vscodeExtExtensionInstalled, vscodeExtAvailable, vscodeExtActive, vscodeExtBusy, vscodeExtLoading, onSwitchVscodeExt, jetbrainsInstalled, jetbrainsPluginInstalled, jetbrainsAvailable, jetbrainsActive, jetbrainsBusy, jetbrainsLoading, onSwitchJetbrains, enabledTools, featuresDisabled = true, compact = false }: Props) {
   /** 支持工具开关：关闭的端整块不渲染（缺省视为开启）。 */
   const toolEnabled = (id: ToolId) => enabledTools?.[id] !== false;
   const [resourcesOpen, setResourcesOpen] = useState(false);
@@ -508,7 +523,7 @@ export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInf
           tooltip: todayCheckedIn ? "今日已签到" : "今日未签到",
           variant: todayCheckedIn ? "success" : "secondary",
         })}
-      {dailyClaimChip(dailyClaim)}
+      {dailyClaimChip(dailyClaim, onShowClaimDetails)}
       {travelChip(travelStatus)}
       {rateLimitChip(rateLimits, now)}
       {(account.needsRelogin || expired) && <Badge variant="warning" className={chipClass}>{account.needsRelogin ? "需重新登录" : "Token 已过期"}</Badge>}

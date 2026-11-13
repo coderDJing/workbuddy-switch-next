@@ -965,7 +965,7 @@ export function checkin(accountId: string): Promise<CheckinResult> {
  * 与改造前等价（改造前账号库里只有国内版账号）。
  */
 export function checkinAll(variant?: WbVariant, respectWindow?: boolean): Promise<{
-  accounts: { accountId: string; email: string; result: string; error?: string; inactive?: boolean; reason?: string; rewards?: {ok: boolean; message: string; remaining?: string[]; warnings?: string[]} }[];
+  accounts: { accountId: string; email: string; result: string; error?: string; inactive?: boolean; reason?: string; rewards?: {ok: boolean; message: string; remaining?: string[]; warnings?: string[]; total?: number; claimed?: number; claimable?: number; blocked?: number} }[];
   status?: string;
   reason?: string;
 }> {

@@ -180,6 +180,12 @@ HTTP（webui）：`GET /api/claim/ledger`、`POST /api/claim/ledger/clear`
 
 实现：账号卡片用 `dailyClaimChip()`（`account-card.tsx`），其余四个平台用
 `ClaimStateBadge`（`claim-action.tsx`），两者共用 `claimChipLabel` / `claimChipHint`。
+chip 可点击，打开 `ClaimLedgerDialog`（`claim-ledger-dialog.tsx`）：逐账号列出
+`已完成 / 可领 / 未达标` 计数、未完成任务名与其状态、原因、核对时间与触发来源，
+今天还没跑过的账号也一并列出。
+
+跑完的提示只报数量（`3 个账号已领完，2 个还有任务未完成`），并带一个
+「查看详情」动作直接打开上面的弹窗；不再把任务名、warning 或错误原文塞进 toast。
 
 明细的展示深度（已定）：只做到 **chip + tooltip**，不做独立的「今日领取明细」面板。
 tooltip 里给三档计数与最多 3 个任务名（超出的写「等 N 项」），需要完整信息时走「重新核对」看 toast 汇总。
