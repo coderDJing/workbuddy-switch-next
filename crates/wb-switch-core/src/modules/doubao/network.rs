@@ -2,7 +2,11 @@ use super::*;
 const ORIGIN: &str = "https://www.doubao.com";
 const QUOTA: &str = "/alice/commerce/sale/subscription/quota/summary/";
 const DETAIL: &str = "/alice/ug/campaign/v3/detail/";
+/// 非 v3 活动组用列表接口取详情（与官方前端一致）。
+const DETAIL_LEGACY: &str = "/alice/ug/campaign/list/";
 const CLAIM: &str = "/alice/ug/campaign/landing/checkin";
+const LAUNCH: &str = "/alice/user/launch";
+/// 已知的 v3 活动组；官方换组名时以 launch 返回值为准，这里只作兜底。
 const SCENE: &str = "pc_incentive_task_mvp_v3";
 const QUERY:&str="version_code=20800&language=zh&device_platform=web&aid=497858&real_aid=497858&pc_version=2.33.5&samantha_web=1&web_platform=desktop&use-olympus-account=1";
 /// 只有官方业务码 710012001 才能证明已保存的登录态失效。
@@ -70,6 +74,40 @@ async fn request(
     }
     Ok(value)
 }
+/// 从 `POST /alice/user/launch` 的响应里取活动组；官方换组名时只有这里能跟上。
+pub(super) fn parse_group(value: &Value) -> Option<String> {
+    let code = value["data"]["ug_campaign_info"]["campaign_group_code"]
+        .as_str()?
+        .trim();
+    (!code.is_empty()).then(|| code.to_string())
+}
+
+/// 详情接口随活动组变化：v3 组走 detail，其它组走 list。
+pub(super) fn detail_path(group: &str) -> &'static str {
+    if group == SCENE {
+        DETAIL
+    } else {
+        DETAIL_LEGACY
+    }
+}
+
+/// 领取回执里的 `data.biz_error.code`：顶层 code 为 0 也可能带业务错误。
+pub(super) fn receipt_biz_code(value: &Value) -> Option<i64> {
+    let biz = &value["data"]["biz_error"];
+    if biz.is_null() {
+        return None;
+    }
+    let code = biz["code"]
+        .as_i64()
+        .or_else(|| biz["code"].as_str()?.parse().ok())?;
+    (code != 0).then_some(code)
+}
+
+/// 官方明确拒绝（资格/前置条件未满足）：今天没有可领的，重试也没用。
+fn rejected(code: i64) -> bool {
+    matches!(code, 710010702 | 712010702)
+}
+
 fn timestamp(v: &Value) -> Option<i64> {
     let n = v.as_i64().or_else(|| v.as_str()?.parse().ok())?;
     if n <= 0 {
@@ -140,22 +178,60 @@ pub(super) fn parse_detail(v: &Value) -> Result<Value, String> {
         json!({"ok":checked,"state":if checked{"already"}else{"available"},"message":if checked{"今日已领取"}else{"今日可领取"},"credits":null,"reward":daily["reward"]["reward_amount"].as_f64(),"continuousDays":daily["continuous_days"].as_i64(),"lastCheckinDate":daily["last_checkin_date"].as_str(),"earnedTotal":v["data"]["progress"]["total_amount"].as_f64(),"checkedAt":now()}),
     )
 }
+/// 解析活动组：官方换组名（`_v3` → `_v4`）时只有 launch 能跟上，失败则退回已知组。
+async fn campaign_group(id: &Identity, timeout: Option<u64>) -> String {
+    request(id, LAUNCH, json!({}), timeout)
+        .await
+        .ok()
+        .and_then(|value| parse_group(&value))
+        .unwrap_or_else(|| SCENE.to_string())
+}
+
+/// 签到状态回查：官方落库有延迟，按 0 / 1.5 / 3 秒重试三次，
+/// 避免把「其实已经领到」记成待确认。
+async fn readback(
+    id: &Identity,
+    path: &'static str,
+    group: &str,
+    timeout: Option<u64>,
+) -> Option<Value> {
+    let mut last = None;
+    for delay in [0u64, 1500, 3000] {
+        if delay > 0 {
+            tokio::time::sleep(Duration::from_millis(delay)).await;
+        }
+        let Ok(value) = request(id, path, json!({"campaign_group_code": group}), timeout).await
+        else {
+            continue;
+        };
+        let Ok(parsed) = parse_detail(&value) else {
+            continue;
+        };
+        if parsed["state"] == "already" {
+            return Some(parsed);
+        }
+        last = Some(parsed);
+    }
+    last
+}
+
 pub(super) async fn checkin(
     id: &Identity,
     submit: bool,
     timeout: Option<u64>,
 ) -> Result<Value, String> {
+    let group = campaign_group(id, timeout).await;
+    let path = detail_path(&group);
     let before =
-        parse_detail(&request(id, DETAIL, json!({"campaign_group_code":SCENE}), timeout).await?)?;
+        parse_detail(&request(id, path, json!({"campaign_group_code": group}), timeout).await?)?;
     if !submit || before["state"] != "available" {
         return Ok(before);
     }
-    // One submission only. Even a lost response is followed by a read, never another claim.
-    let claimed = request(id, CLAIM, json!({"scene":SCENE}), timeout).await;
-    let after = request(id, DETAIL, json!({"campaign_group_code":SCENE}), timeout)
-        .await
-        .and_then(|v| parse_detail(&v));
-    if let Ok(mut after) = after {
+    // One submission only. Even a lost response is followed by reads, never another claim.
+    let claimed = request(id, CLAIM, json!({"scene": group}), timeout).await;
+    // 先回查：回执里的 biz_error 可能只是重复提交，而状态已经落库。
+    let after = readback(id, path, &group, timeout).await;
+    if let Some(mut after) = after {
         if after["state"] == "already" {
             let idempotent = claimed
                 .as_ref()
@@ -173,6 +249,16 @@ pub(super) async fn checkin(
                 .map_or(Value::Null, |v| json!(v));
             return Ok(after);
         }
+    }
+    // 回执带业务错误：被官方拒绝时今天没有可领的，其它情况按错误上报（可重试）。
+    if let Some(code) = claimed.as_ref().ok().and_then(receipt_biz_code) {
+        return Ok(json!({
+            "ok": false,
+            "state": if rejected(code) { "blocked" } else { "error" },
+            "message": code_error(code),
+            "credits": Value::Null,
+            "checkedAt": now()
+        }));
     }
     Ok(
         json!({"ok":false,"state":"unconfirmed","message":claimed.err().unwrap_or_else(||"领取回执尚未确认，请稍后刷新签到状态；本次不会重复提交".into()),"credits":null,"checkedAt":now()}),

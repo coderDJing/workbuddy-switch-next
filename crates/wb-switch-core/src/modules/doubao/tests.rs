@@ -140,3 +140,47 @@ fn rotated_client_session_gets_a_recapture_hint() {
     );
     let _ = std::fs::remove_dir_all(root);
 }
+#[test]
+fn campaign_group_follows_launch_and_picks_the_matching_detail_path() {
+    let launch = json!({"code":0,"data":{"ug_campaign_info":
+        {"campaign_group_code":"pc_incentive_task_mvp_v4"}}});
+    assert_eq!(
+        Some("pc_incentive_task_mvp_v4".to_string()),
+        network::parse_group(&launch)
+    );
+    // 官方换组名后必须走列表接口，否则 detail 会 404。
+    assert_eq!(
+        "/alice/ug/campaign/list/",
+        network::detail_path("pc_incentive_task_mvp_v4")
+    );
+    assert_eq!(
+        "/alice/ug/campaign/v3/detail/",
+        network::detail_path("pc_incentive_task_mvp_v3")
+    );
+    assert_eq!(None, network::parse_group(&json!({"code":0,"data":{}})));
+    assert_eq!(
+        None,
+        network::parse_group(&json!({"data":{"ug_campaign_info":{"campaign_group_code":"  "}}}))
+    );
+}
+
+#[test]
+fn receipt_biz_error_surfaces_even_when_top_level_code_is_zero() {
+    assert_eq!(
+        None,
+        network::receipt_biz_code(&json!({"code":0,"data":{"reward_amount":1}}))
+    );
+    assert_eq!(
+        None,
+        network::receipt_biz_code(&json!({"code":0,"data":{"biz_error":{"code":0}}}))
+    );
+    assert_eq!(
+        Some(710010702),
+        network::receipt_biz_code(&json!({"code":0,"data":{"biz_error":{"code":710010702}}}))
+    );
+    // 官方有时把业务码序列化成字符串。
+    assert_eq!(
+        Some(710012001),
+        network::receipt_biz_code(&json!({"code":0,"data":{"biz_error":{"code":"710012001"}}}))
+    );
+}
