@@ -1,6 +1,6 @@
 {
   "name": "workbuddy-switch-next",
-  "version": "0.2.8-rc.202611122341",
+  "version": "0.2.8-rc.202611130947",
   "description": "五平台 AI 账号工作台：管理 WorkBuddy / CodeBuddy、Qoder、TRAE、MiniMax Code 与豆包，提供账号切换、额度统计、每日任务、加密备份与 Agent CLI。",
   "bin": {
     "workbuddy-switch-next": "bin/workbuddy-switch.js",
@@ -11,8 +11,8 @@
     "scripts"
   ],
   "optionalDependencies": {
-    "workbuddy-switch-next-darwin-arm64": "0.2.8-rc.202611122341",
-    "workbuddy-switch-next-win32-x64": "0.2.8-rc.202611122341"
+    "workbuddy-switch-next-darwin-arm64": "0.2.8-rc.202611130947",
+    "workbuddy-switch-next-win32-x64": "0.2.8-rc.202611130947"
   },
   "scripts": {
     "postinstall": "node scripts/install.js"
