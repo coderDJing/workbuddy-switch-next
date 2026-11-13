@@ -347,7 +347,7 @@ fn current_cli_variant(accounts: &[Value], state: &Value) -> Option<WbVariant> {
 
 #[cfg(target_os = "windows")]
 const WINDOWS_CLI_PROCESS_FILTER: &str = "Where-Object { \
-      $_.ProcessId -ne $PID -and $_.CommandLine -and ( \
+      $_.ProcessId -ne $PID -and $_.Name -ine 'WorkBuddy.exe' -and $_.CommandLine -and ( \
         $_.CommandLine -like '*@tencent-ai/codebuddy-code*' -or \
         $_.CommandLine -like '*codebuddy-code*dist-server*' -or \
         $_.CommandLine -like '*\\bin\\codebuddy*' -or \
@@ -530,7 +530,7 @@ struct CliProcessInfo {
 #[cfg(target_os = "windows")]
 fn windows_cli_inventory_query() -> String {
     format!(
-        "$all = @(Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate,CommandLine -ErrorAction Stop); \
+        "$all = @(Get-CimInstance Win32_Process -Property Name,ProcessId,ParentProcessId,CreationDate,CommandLine -ErrorAction Stop); \
          $matched = @($all | {WINDOWS_CLI_PROCESS_FILTER} | ForEach-Object {{ [uint32]$_.ProcessId }}); \
          $affected = [System.Collections.Generic.HashSet[uint32]]::new(); \
          foreach ($processId in $matched) {{ [void]$affected.Add($processId) }}; \
@@ -1986,6 +1986,24 @@ mod tests {
         assert_eq!(preview["matchedProcessCount"], 1);
         assert_eq!(preview["processes"][0]["pid"], 12);
         assert!(preview["processes"][0]["startedAt"].is_i64());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cli_filter_keeps_desktop_prewarm_out_of_switch_targets() {
+        let script = format!(
+            "@([pscustomobject]@{{Name='WorkBuddy.exe'; ProcessId=21001; CommandLine='WorkBuddy.exe --prewarm-id cbc-prewarm-1'}}, \
+             [pscustomobject]@{{Name='node.exe'; ProcessId=21002; CommandLine='node C:/npm/@tencent-ai/codebuddy-code/bin/codebuddy --print'}}, \
+             [pscustomobject]@{{Name='node.exe'; ProcessId=21003; CommandLine='node unrelated.js'}}) \
+             | {WINDOWS_CLI_PROCESS_FILTER} | ForEach-Object {{ $_.ProcessId }}"
+        );
+        let stdout = process::ps_output(&script, WINDOWS_PROCESS_TEST_TIMEOUT_SECS)
+            .expect("PowerShell process filter failed");
+        let matched: Vec<u32> = stdout
+            .lines()
+            .filter_map(|line| line.trim().parse().ok())
+            .collect();
+        assert_eq!(matched, vec![21002]);
     }
 
     #[cfg(target_os = "windows")]
